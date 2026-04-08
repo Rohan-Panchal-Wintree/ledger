@@ -375,9 +375,9 @@ const normalizeRow = (row) => ({
 		.trim()
 		.toUpperCase(),
 	processingAmount: parseSheetNumber(row.AMOUNT || row.processingAmount || 0),
-	rate: parseSheetNumber(row.RATE || row.rate || 0),
+	rate: 0,
 	settlementCurrency: String(
-		row["SETTLEMENT CURRENCY"] || row.settlementCurrency || "",
+		row["PROCESSING CURRENCY"] || row.processingCurrency || "",
 	)
 		.trim()
 		.toUpperCase(),

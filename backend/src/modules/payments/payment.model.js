@@ -13,6 +13,7 @@ const paymentSchema = new mongoose.Schema(
       required: true
     },
     amountPaid: { type: Number, required: true },
+    settlementAmount: { type: Number, default: 0 },
     paymentCurrency: { type: String, required: true },
     paymentMethod: { type: String, enum: ["CRYPTO", "WIRE", "UNKNOWN"], required: true },
     paymentDate: { type: Date, required: true },

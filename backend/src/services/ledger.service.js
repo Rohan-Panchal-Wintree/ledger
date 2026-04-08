@@ -46,8 +46,15 @@ export const getLedgerEntries = async (filters) => {
 		{
 			$lookup: {
 				from: "payments",
-				localField: "_id",
-				foreignField: "settlementTransactionId",
+				let: { settlementTransactionId: "$_id" },
+				pipeline: [
+					{
+						$match: {
+							$expr: { $eq: ["$settlementTransactionId", "$$settlementTransactionId"] },
+						},
+					},
+					{ $sort: { paidToMerchantDate: 1, createdAt: 1, _id: 1 } },
+				],
 				as: "payments",
 			},
 		},
@@ -57,17 +64,28 @@ export const getLedgerEntries = async (filters) => {
 				mid: 1,
 				acquirer: "$acquirer.name",
 				processingCurrency: 1,
-				settlementCurrency: 1,
+				settlementCurrency: {
+					$ifNull: [
+						{ $arrayElemAt: ["$payments.paymentCurrency", -1] },
+						"$settlementCurrency",
+					],
+				},
 				payable: 1,
 				paid: 1,
 				balance: 1,
-				paymentMethod: "$merchantAccount.paymentMethod",
+				paymentMethod: {
+					$ifNull: [
+						{ $arrayElemAt: ["$payments.paymentMethod", -1] },
+						"$merchantAccount.paymentMethod",
+					],
+				},
 				status: 1,
 				startDate: 1,
 				endDate: 1,
 				lastPaidToMerchantDate: { $max: "$payments.paidToMerchantDate" },
 				lastPaymentRate: { $arrayElemAt: ["$payments.paymentRate", -1] },
 				lastPaymentBank: { $arrayElemAt: ["$payments.paymentBank", -1] },
+				lastSettlementAmount: { $arrayElemAt: ["$payments.settlementAmount", -1] },
 			},
 		},
 	];
