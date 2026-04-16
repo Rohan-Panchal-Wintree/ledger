@@ -26,7 +26,7 @@ function SidebarProvider({ children, defaultOpen = true }) {
 
   return (
     <SidebarContext.Provider value={{ open, setOpen, toggleSidebar }}>
-      <div className="flex min-h-screen w-full">{children}</div>
+      <div className="flex h-full w-full">{children}</div>
     </SidebarContext.Provider>
   );
 }
@@ -37,8 +37,8 @@ function Sidebar({ children, className = "", ...props }) {
   return (
     <aside
       className={cn(
-        "min-h-screen shrink-0 border-r border-[#1f2937] bg-[#0b1220] text-white transition-all duration-300 ease-in-out",
-        open ? "w-56 md:w-64" : "w-18",
+        "h-full shrink-0 border-r border-outline-variant/20 bg-surface-container-lowest text-on-surface transition-all duration-300 ease-in-out",
+        open ? "w-56 md:w-64" : "w-[72px]",
         className,
       )}
       {...props}
@@ -56,7 +56,7 @@ function SidebarTrigger({ className = "", ...props }) {
       type="button"
       onClick={toggleSidebar}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-md text-[#1f2937] transition-colors hover:bg-gray-200",
+        "inline-flex h-9 w-9 items-center justify-center rounded-full text-on-surface transition-colors hover:bg-surface-container-low",
         className,
       )}
       {...props}
@@ -68,7 +68,10 @@ function SidebarTrigger({ className = "", ...props }) {
 
 function SidebarHeader({ children, className = "", ...props }) {
   return (
-    <div className={cn("border-b border-[#1f2937] p-4", className)} {...props}>
+    <div
+      className={cn("border-b border-outline-variant/20 p-4", className)}
+      {...props}
+    >
       {children}
     </div>
   );
@@ -88,7 +91,7 @@ function SidebarContent({ children, className = "", ...props }) {
 function SidebarFooter({ children, className = "", ...props }) {
   return (
     <div
-      className={cn("border-t border-[#1f2937] px-3 py-3", className)}
+      className={cn("border-t border-outline-variant/20 px-3 py-3", className)}
       {...props}
     >
       {children}
@@ -110,7 +113,7 @@ function SidebarGroupLabel({ children, className = "", ...props }) {
   return (
     <div
       className={cn(
-        "mb-2 px-2 text-xs font-medium text-[#64748b]",
+        "mb-2 px-2 text-xs font-medium uppercase tracking-wide text-on-surface-variant",
         !open && "hidden",
         className,
       )}
@@ -157,10 +160,10 @@ function SidebarMenuButton({
     <button
       className={cn(
         "flex w-full items-center rounded-lg text-sm transition-colors",
-        open ? "justify-start gap-4 px-2 py-1.5" : "justify-center p-2",
+        open ? "justify-start gap-4 px-3 py-2.5" : "justify-center p-2.5",
         isActive
-          ? "bg-[#1e293b] text-white"
-          : "text-[#e5e7eb] hover:bg-[#141d2f] hover:text-white",
+          ? "bg-primary text-white"
+          : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         className,
       )}
       {...props}
@@ -171,7 +174,12 @@ function SidebarMenuButton({
 }
 
 function SidebarSeparator({ className = "", ...props }) {
-  return <div className={cn("my-3 h-px bg-[#1f2937]", className)} {...props} />;
+  return (
+    <div
+      className={cn("my-3 h-px bg-outline-variant/20", className)}
+      {...props}
+    />
+  );
 }
 
 function SidebarInset({ children, className = "", ...props }) {
@@ -190,7 +198,7 @@ function SidebarInput({ className = "", ...props }) {
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-[#1f2937] bg-[#111827] px-3 py-2 text-sm text-white outline-none placeholder:text-[#64748b] focus:border-[#3b52d9]",
+        "w-full rounded-full border border-outline-variant/20 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none placeholder:text-on-surface-variant focus:border-primary focus:ring-2 focus:ring-primary/15",
         className,
       )}
       {...props}
@@ -202,7 +210,7 @@ function SidebarGroupAction({ children, className = "", ...props }) {
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-md p-2 text-[#94a3b8] hover:bg-[#111827] hover:text-white",
+        "inline-flex items-center justify-center rounded-full p-2 text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         className,
       )}
       {...props}
@@ -216,7 +224,7 @@ function SidebarMenuAction({ children, className = "", ...props }) {
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-md p-1 text-[#94a3b8] hover:bg-[#111827] hover:text-white",
+        "inline-flex items-center justify-center rounded-full p-1 text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         className,
       )}
       {...props}
@@ -230,7 +238,7 @@ function SidebarMenuBadge({ children, className = "", ...props }) {
   return (
     <span
       className={cn(
-        "ml-auto rounded-md bg-[#111827] px-2 py-0.5 text-xs text-[#94a3b8]",
+        "ml-auto rounded-full bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant",
         className,
       )}
       {...props}
@@ -246,7 +254,13 @@ function SidebarMenuSub({ children, className = "", ...props }) {
   if (!open) return null;
 
   return (
-    <ul className={cn("ml-4 mt-1 space-y-1", className)} {...props}>
+    <ul
+      className={cn(
+        "ml-4 mt-1 space-y-1 border-l border-outline-variant/20 pl-3",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </ul>
   );
@@ -271,8 +285,8 @@ function SidebarMenuSubButton({
       className={cn(
         "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
         isActive
-          ? "bg-[#1e293b] text-white"
-          : "text-[#cbd5e1] hover:bg-[#111827] hover:text-white",
+          ? "bg-surface-container text-on-surface"
+          : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         className,
       )}
       {...props}

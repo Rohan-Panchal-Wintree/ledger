@@ -5,14 +5,24 @@ import NotFound from "../pages/NotFound";
 import Reports from "../pages/Reports";
 import ErrorBoundary from "../component/ErrorBoundary";
 import Dashboard from "../pages/Dashboard";
+import Merchants from "../pages/Merchants";
+import Acquirers from "../pages/Acquirers";
 import Profile from "../pages/Profile";
 import ProtectedRoutes from "../utils/ProtectedRoutes";
 import Unauthorized from "../pages/Unauthorized";
+import Upload from "../pages/Upload";
+import ManageEmails from "../pages/ManageEmails";
+
+const authenticatedRoles = ["admin", "finance", "settlement", "viewer"];
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <App />,
+    element: (
+      <ProtectedRoutes allowedRoles={authenticatedRoles}>
+        <App />
+      </ProtectedRoutes>
+    ),
     // errorElement: <ErrorBoundary />,
     children: [
       {
@@ -20,15 +30,31 @@ const router = createBrowserRouter([
         element: <Navigate to="/dashboard" replace />,
       },
       {
-        path: "/dashboard",
+        path: "dashboard",
         element: (
-          <ProtectedRoutes allowedRoles={["admin", "merchant"]}>
+          <ProtectedRoutes allowedRoles={authenticatedRoles}>
             <Dashboard />
           </ProtectedRoutes>
         ),
       },
       {
-        path: "/reports",
+        path: "merchants",
+        element: (
+          <ProtectedRoutes allowedRoles={authenticatedRoles}>
+            <Merchants />
+          </ProtectedRoutes>
+        ),
+      },
+      {
+        path: "acquirers",
+        element: (
+          <ProtectedRoutes allowedRoles={authenticatedRoles}>
+            <Acquirers />
+          </ProtectedRoutes>
+        ),
+      },
+      {
+        path: "reports",
         element: (
           <ProtectedRoutes allowedRoles={["admin"]}>
             <Reports />
@@ -36,9 +62,25 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/profile",
+        path: "upload",
         element: (
-          <ProtectedRoutes allowedRoles={["admin", "merchant"]}>
+          <ProtectedRoutes allowedRoles={["admin"]}>
+            <Upload />
+          </ProtectedRoutes>
+        ),
+      },
+      {
+        path: "manage-emails",
+        element: (
+          <ProtectedRoutes allowedRoles={["admin"]}>
+            <ManageEmails />
+          </ProtectedRoutes>
+        ),
+      },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoutes allowedRoles={authenticatedRoles}>
             <Profile />
           </ProtectedRoutes>
         ),

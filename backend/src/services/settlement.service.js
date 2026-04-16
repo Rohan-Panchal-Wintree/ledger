@@ -12,16 +12,16 @@ import {
 } from "../utils/currencyUtils.js";
 import { parseSheetDate } from "../utils/dateUtils.js";
 
-const DREAMZPAY_KEYWORDS = [
-	"DRIFT CLOUD LIMITED (DP)",
-	"CABBAGINO PAYMENTS (DP) (DP)",
-	"CABBAGINO PAYMENTS (DP)",
-];
+const normalizeText = (value) =>
+	String(value || "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.toUpperCase();
 
-const PORTFOLIO_DEFAULT_MERCHANTS = {
-	DIMOCO: "Transactworld Merchant",
-	TRANSACTPAY: "Transactworld Merchant",
-};
+const resolveMerchantTag = (merchantName) =>
+	normalizeText(merchantName).includes("(DP)")
+		? "Dreamzpay Merchant"
+		: "Transactworld Merchant";
 
 const parseSheetNumber = (value) => {
 	if (value === null || value === undefined) return 0;
@@ -35,29 +35,6 @@ const parseSheetNumber = (value) => {
 
 	const parsed = Number(normalized);
 	return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const normalizeText = (value) =>
-	String(value || "")
-		.replace(/\s+/g, " ")
-		.trim()
-		.toUpperCase();
-
-const resolvePortfolioMerchantName = ({ merchantName, acquirerName }) => {
-	const normalizedMerchantName = normalizeText(merchantName);
-	const normalizedAcquirerName = normalizeText(acquirerName);
-
-	if (
-		DREAMZPAY_KEYWORDS.some((keyword) =>
-			normalizedMerchantName.includes(keyword),
-		)
-	) {
-		return "Dreamzpay Merchant";
-	}
-
-	return (
-		PORTFOLIO_DEFAULT_MERCHANTS[normalizedAcquirerName] || merchantName
-	);
 };
 
 const buildBatchName = ({ acquirerName, startDate, endDate }) =>
@@ -156,17 +133,8 @@ const prepareUploadContext = ({ fileBuffer, originalName, acquirer }) => {
 	};
 };
 
-const ensureMerchants = async (rows, acquirerName) => {
-	const merchantNames = [
-		...new Set(
-			rows.map((row) =>
-				resolvePortfolioMerchantName({
-					merchantName: row.merchantName,
-					acquirerName,
-				}),
-			),
-		),
-	];
+const ensureMerchants = async (rows) => {
+	const merchantNames = [...new Set(rows.map((row) => row.merchantName))];
 
 	const existingMerchants = await Merchant.find(
 		{ merchantName: { $in: merchantNames } },
@@ -182,10 +150,14 @@ const ensureMerchants = async (rows, acquirerName) => {
 
 	if (missingMerchantNames.length) {
 		await Merchant.insertMany(
-			missingMerchantNames.map((merchantName) => ({
-				merchantName,
-				status: "active",
-			})),
+			missingMerchantNames.map((merchantName) => {
+				const matchingRow = rows.find((row) => row.merchantName === merchantName);
+				return {
+					merchantName,
+					merchantTag: resolveMerchantTag(matchingRow?.merchantName || merchantName),
+					status: "active",
+				};
+			}),
 			{ ordered: false },
 		).catch((error) => {
 			if (error.code !== 11000) {
@@ -206,7 +178,7 @@ const ensureMerchants = async (rows, acquirerName) => {
 	return merchantMap;
 };
 
-const ensureMerchantAccounts = async ({ rows, acquirerId, acquirerName, merchantMap }) => {
+const ensureMerchantAccounts = async ({ rows, acquirerId, merchantMap }) => {
 	const mids = [...new Set(rows.map((row) => row.mid))];
 	const existingAccounts = await MerchantAccount.find(
 		{ acquirerId, mid: { $in: mids } },
@@ -235,11 +207,7 @@ const ensureMerchantAccounts = async ({ rows, acquirerId, acquirerName, merchant
 			continue;
 		}
 
-		const portfolioMerchantName = resolvePortfolioMerchantName({
-			merchantName: row.merchantName,
-			acquirerName,
-		});
-		const merchant = merchantMap.get(portfolioMerchantName);
+		const merchant = merchantMap.get(row.merchantName);
 
 		missingAccountDocs.push({
 			merchantId: merchant._id,
@@ -284,22 +252,17 @@ const ensureMerchantAccounts = async ({ rows, acquirerId, acquirerName, merchant
 };
 
 const createSettlementBatch = async (context) => {
-	const merchantMap = await ensureMerchants(context.rows, context.acquirer.name);
+	const merchantMap = await ensureMerchants(context.rows);
 	const accountMap = await ensureMerchantAccounts({
 		rows: context.rows,
 		acquirerId: context.acquirer._id,
-		acquirerName: context.acquirer.name,
 		merchantMap,
 	});
 
 	let totalPayable = 0;
 
 	const transactionDocs = context.rows.map((row) => {
-		const portfolioMerchantName = resolvePortfolioMerchantName({
-			merchantName: row.merchantName,
-			acquirerName: context.acquirer.name,
-		});
-		const merchant = merchantMap.get(portfolioMerchantName);
+		const merchant = merchantMap.get(row.merchantName);
 		const merchantAccount = accountMap.get(
 			`${String(context.acquirer._id)}:${row.mid}`,
 		);
@@ -310,6 +273,8 @@ const createSettlementBatch = async (context) => {
 		return {
 			merchantId: merchant._id,
 			merchantAccountId: merchantAccount._id,
+			sourceMerchantName: row.merchantName,
+			merchantTag: resolveMerchantTag(row.merchantName),
 			mid: row.mid,
 			startDate: row.startDate,
 			endDate: row.endDate,
@@ -413,7 +378,7 @@ export const processWiresheetUploads = async ({ files, acquirerId }) => {
 		? await SettlementBatch.find(
 				{ batchName: { $in: batchNames } },
 				{ batchName: 1 },
-			).lean()
+		  ).lean()
 		: [];
 	const existingBatchMap = new Map(
 		existingBatches.map((batch) => [batch.batchName, batch]),

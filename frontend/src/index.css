@@ -1,0 +1,115 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", sans-serif;
+  /* Brand colors */
+  --color-brand-50: #f0efff;
+  --color-brand-100: #dee0ff;
+  --color-brand-200: #bac3ff;
+  --color-brand-300: #96a5ff;
+  --color-brand-400: #7187ff;
+  --color-brand-500: #516bee;
+  --color-brand-600: #3550d4;
+  --color-brand-700: #1234bc;
+  --color-brand-800: #00208f;
+  --color-brand-900: #00105a;
+
+  /* Exact dashboard semantic colors */
+  --color-background: #f8f9fb;
+  --color-surface: #f8f9fb;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #edeef0;
+  --color-surface-container-high: #e7e8ea;
+  --color-surface-container-highest: #e1e2e4;
+
+  --color-primary: #1234bc;
+  --color-primary-container: #3550d4;
+
+  --color-on-background: #191c1e;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #444654;
+
+  --color-outline: #757686;
+  --color-outline-variant: #c5c5d7;
+
+  --color-secondary: #525b90;
+
+  /* Keep aliases for old components */
+  --color-app-bg: #f8f9fb;
+  --color-app-surface: #ffffff;
+  --color-app-surfaceAlt: #f2f4f6;
+  --color-app-text: #191c1e;
+  --color-app-muted: #444654;
+  --color-app-border: #c5c5d7;
+
+  /* Exact radii from reference */
+  --radius-sm: 0.5rem;
+  --radius-default: 1rem;
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+  --radius-full: 9999px;
+
+  /* Keep your existing utility names too */
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    @apply bg-app-bg text-app-text font-sans;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-sans text-app-text;
+  }
+
+  p {
+    @apply text-app-text;
+  }
+}
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c5c5d7; /* outline-variant */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #96a5ff; /* brand-300 */
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c5c5d7 transparent;
+}
+
+/* Hide scrollbar but keep scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE & Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}

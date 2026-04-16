@@ -451,11 +451,12 @@ export const processPaymentUpload = async ({
   for (const { row, transaction } of matchedRows) {
     const paymentDateValue = row.paymentDate || new Date();
     const normalizedAmountPaid = roundMoney(row.amountPaid);
+    const normalizedSettlementAmount = roundMoney(row.settlementAmount);
     const paymentDoc = {
       settlementTransactionId: transaction._id,
       merchantAccountId: transaction.merchantAccountId,
       amountPaid: normalizedAmountPaid,
-      settlementAmount: roundMoney(row.settlementAmount),
+      settlementAmount: normalizedSettlementAmount,
       paymentCurrency: row.settlementCurrency,
       paymentMethod: row.paymentMethod,
       paymentDate: paymentDateValue,
@@ -592,3 +593,4 @@ export const processPaymentUpload = async ({
     skippedRows
   };
 };
+

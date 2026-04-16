@@ -25,3 +25,13 @@ export const updateMerchant = async (req, res) => {
   if (!merchant) throw new ApiError(404, "Merchant not found");
   res.json({ success: true, data: merchant });
 };
+
+export const deleteMerchant = async (req, res) => {
+  const merchant = await Merchant.findByIdAndDelete(req.params.id);
+  if (!merchant) throw new ApiError(404, "Merchant not found");
+
+  res.json({
+    success: true,
+    message: "Merchant deleted successfully"
+  });
+};

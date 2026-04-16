@@ -5,6 +5,8 @@ const settlementTransactionSchema = new mongoose.Schema(
     batchId: { type: mongoose.Schema.Types.ObjectId, ref: "SettlementBatch", required: true },
     merchantId: { type: mongoose.Schema.Types.ObjectId, ref: "Merchant", required: true },
     merchantAccountId: { type: mongoose.Schema.Types.ObjectId, ref: "MerchantAccount", required: true },
+    sourceMerchantName: { type: String, required: true, trim: true },
+    merchantTag: { type: String, trim: true },
     mid: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
@@ -27,3 +29,4 @@ const settlementTransactionSchema = new mongoose.Schema(
 settlementTransactionSchema.index({ mid: 1, settlementCurrency: 1, startDate: 1, endDate: 1 });
 
 export const SettlementTransaction = mongoose.model("SettlementTransaction", settlementTransactionSchema);
+
