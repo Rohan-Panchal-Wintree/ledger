@@ -49,6 +49,19 @@ const normalizeLabel = (value) =>
     .trim()
     .toUpperCase();
 
+const normalizeMerchantKey = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+const MATCH_TIME_TOLERANCE_MS = 60 * 1000;
+
+const isSameMoment = (left, right, toleranceMs = MATCH_TIME_TOLERANCE_MS) => {
+  if (!left || !right) return false;
+  return Math.abs(new Date(left).getTime() - new Date(right).getTime()) <= toleranceMs;
+};
+
 const inferPaymentDate = ({ explicitPaymentDate, originalFilename, sheetName }) => {
   if (explicitPaymentDate) {
     return parseSheetDate(explicitPaymentDate);
@@ -157,8 +170,24 @@ const scoreTransactionMatch = (transaction, row) => {
     score += 100;
   }
 
-  if (row.settlementCurrency && transaction.settlementCurrency === row.settlementCurrency) {
-    score += 10;
+  if (
+    row.merchantName &&
+    transaction.sourceMerchantName &&
+    normalizeMerchantKey(transaction.sourceMerchantName) === normalizeMerchantKey(row.merchantName)
+  ) {
+    score += 75;
+  }
+
+  if (row.processingAmount) {
+    const amountDiff = Math.abs(
+      roundMoney(transaction.processingAmount) - roundMoney(row.processingAmount)
+    );
+
+    if (amountDiff === 0) {
+      score += 50;
+    } else {
+      score -= Math.min(50, Math.floor(amountDiff));
+    }
   }
 
   const startDiff = row.startDate ? Math.abs(transaction.startDate.getTime() - row.startDate.getTime()) : 0;
@@ -291,11 +320,11 @@ const findMatchingSettlementTransaction = ({ row, candidateTransactions, candida
       return false;
     }
 
-    if (row.startDate && transaction.startDate.getTime() !== row.startDate.getTime()) {
+    if (row.startDate && !isSameMoment(transaction.startDate, row.startDate)) {
       return false;
     }
 
-    if (row.endDate && transaction.endDate.getTime() !== row.endDate.getTime()) {
+    if (row.endDate && !isSameMoment(transaction.endDate, row.endDate)) {
       return false;
     }
 
@@ -310,33 +339,7 @@ const findMatchingSettlementTransaction = ({ row, candidateTransactions, candida
     exactMatches.sort((left, right) => scoreTransactionMatch(right, row) - scoreTransactionMatch(left, row));
     return exactMatches[0];
   }
-
-  const overlapMatches = candidateTransactions.filter((transaction) => {
-    if (!candidateAccountIds.includes(transaction.merchantAccountId)) {
-      return false;
-    }
-
-    if (row.processingCurrency && transaction.processingCurrency !== row.processingCurrency) {
-      return false;
-    }
-
-    if (row.startDate && transaction.endDate.getTime() < startOfDay(row.startDate).getTime()) {
-      return false;
-    }
-
-    if (row.endDate && transaction.startDate.getTime() > endOfDay(row.endDate).getTime()) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!overlapMatches.length) {
-    return null;
-  }
-
-  overlapMatches.sort((left, right) => scoreTransactionMatch(right, row) - scoreTransactionMatch(left, row));
-  return overlapMatches[0];
+  return null;
 };
 
 export const processPaymentUpload = async ({

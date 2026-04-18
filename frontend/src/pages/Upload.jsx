@@ -686,58 +686,102 @@ export default function Upload() {
     }
   };
 
-  const handleFileSelect = async (file, tab) => {
-    if (!file) return;
+  const handleFileSelect = async (files, tab) => {
+    const selectedFiles = Array.from(files || []).filter(Boolean);
+    if (selectedFiles.length === 0) return;
 
-    if (isDuplicateFile(tabState[tab].files, file)) {
-      alert("This file has already been uploaded.");
-      return;
+    const existingFileIds = new Set(
+      tabState[tab].files.map((fileItem) => fileItem.fileId),
+    );
+    const seenFileIds = new Set(existingFileIds);
+    const newFiles = [];
+    const skippedDuplicates = [];
+    const failedFiles = [];
+
+    for (const file of selectedFiles) {
+      const fileId = getFileIdentity(file);
+
+      if (seenFileIds.has(fileId)) {
+        skippedDuplicates.push(file.name);
+        continue;
+      }
+
+      seenFileIds.add(fileId);
+
+      try {
+        const parsedData =
+          tab === "wire"
+            ? await readWireSheetByHeaders(file)
+            : await readPaymentSheetByHeaders(file);
+
+        const analysis = buildAnalysis(parsedData, tab);
+
+        newFiles.push({
+          id: `${Date.now()}-${Math.random()}`,
+          fileId,
+          file,
+          name: file.name,
+          size: file.size,
+          sheetName: parsedData.sheetName,
+          acquirer: parsedData.acquirer,
+          currencies: parsedData.currencies,
+          merchants: parsedData.merchants,
+          acquirers: parsedData.acquirers,
+          rates: parsedData.rates,
+          rows: parsedData.rows,
+          paymentSheets: parsedData.paymentSheets || null,
+          activePaymentSheet: parsedData.activePaymentSheet || null,
+          analysis,
+          uploadedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Excel read failed:", error);
+        failedFiles.push({
+          name: file.name,
+          message: error?.message || "Unable to read the uploaded Excel file.",
+        });
+      }
     }
 
-    try {
-      const parsedData =
-        tab === "wire"
-          ? await readWireSheetByHeaders(file)
-          : await readPaymentSheetByHeaders(file);
+    if (newFiles.length > 0) {
+      setTabState((prev) => {
+        const nextFiles = [...prev[tab].files, ...newFiles];
 
-      const analysis = buildAnalysis(parsedData, tab);
+        return {
+          ...prev,
+          [tab]: {
+            ...prev[tab],
+            files: nextFiles,
+            activeFileIndex: nextFiles.length - 1,
+          },
+        };
+      });
+    }
 
-      const newFile = {
-        id: `${Date.now()}-${Math.random()}`,
-        fileId: getFileIdentity(file),
-        file,
-        name: file.name,
-        size: file.size,
-        sheetName: parsedData.sheetName,
-        acquirer: parsedData.acquirer,
-        currencies: parsedData.currencies,
-        merchants: parsedData.merchants,
-        acquirers: parsedData.acquirers,
-        rates: parsedData.rates,
-        rows: parsedData.rows,
-        paymentSheets: parsedData.paymentSheets || null,
-        activePaymentSheet: parsedData.activePaymentSheet || null,
-        analysis,
-        uploadedAt: new Date().toISOString(),
-      };
+    if (skippedDuplicates.length > 0 || failedFiles.length > 0) {
+      const notices = [];
 
-      setTabState((prev) => ({
-        ...prev,
-        [tab]: {
-          ...prev[tab],
-          files: [...prev[tab].files, newFile],
-          activeFileIndex: prev[tab].files.length,
-        },
-      }));
-    } catch (error) {
-      console.error("Excel read failed:", error);
-      alert(error?.message || "Unable to read the uploaded Excel file.");
+      if (skippedDuplicates.length > 0) {
+        notices.push(
+          `Skipped duplicate files: ${skippedDuplicates.join(", ")}`,
+        );
+      }
+
+      if (failedFiles.length > 0) {
+        notices.push(
+          failedFiles
+            .map((item) => `${item.name}: ${item.message}`)
+            .join("\n"),
+        );
+      }
+
+      alert(notices.join("\n\n"));
     }
   };
 
   const handleInputChange = (e, tab) => {
-    const file = e.target.files?.[0];
-    handleFileSelect(file, tab);
+    const files = e.target.files;
+    handleFileSelect(files, tab);
 
     if (tab === "wire" && wireInputRef.current) {
       wireInputRef.current.value = "";
@@ -762,8 +806,7 @@ export default function Upload() {
     e.preventDefault();
     updateTabState(tab, { isDragging: false });
 
-    const file = e.dataTransfer.files?.[0];
-    handleFileSelect(file, tab);
+    handleFileSelect(e.dataTransfer.files, tab);
   };
 
   const handleRemoveFile = (tab, index) => {
@@ -854,6 +897,7 @@ export default function Upload() {
         ref={wireInputRef}
         type="file"
         accept=".xlsx,.csv"
+        multiple
         className="hidden"
         onChange={(e) => handleInputChange(e, "wire")}
       />
@@ -862,6 +906,7 @@ export default function Upload() {
         ref={paymentInputRef}
         type="file"
         accept=".xlsx,.csv"
+        multiple
         className="hidden"
         onChange={(e) => handleInputChange(e, "payment")}
       />
