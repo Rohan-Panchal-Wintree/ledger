@@ -26,17 +26,10 @@ export default function EntityFormModal({
             <h3 className="text-2xl font-extrabold tracking-tight text-on-surface">
               {title}
             </h3>
-            <p className="mt-2 text-sm text-on-surface-variant">{description}</p>
+            <p className="mt-2 text-sm text-on-surface-variant">
+              {description}
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="rounded-full p-2 text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface"
-          >
-            <X size={18} />
-          </button>
         </div>
 
         {isLoading ? (

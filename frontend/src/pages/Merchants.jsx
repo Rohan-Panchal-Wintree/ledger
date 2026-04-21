@@ -10,6 +10,7 @@ import PaginationControls from "../component/dashboard/PaginationControls";
 import StatCard from "../component/dashboard/StatCard";
 import useCrudManager from "../hooks/useCrudManager";
 import merchantService from "../services/merchantService";
+import Spinner from "../component/UI/Spinner";
 
 const merchantFields = [
   {
@@ -197,6 +198,13 @@ export default function Merchants() {
     },
   ];
 
+  if (merchantManager.isLoading)
+    return (
+      <div className="p-8 flex justify-center items-center min-h-[80vh] text-on-surface">
+        <Spinner type="xl" />
+      </div>
+    );
+
   return (
     <div className="space-y-6 text-on-background">
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -217,7 +225,7 @@ export default function Merchants() {
         />
       </section>
 
-      <section className="overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest shadow-sm">
+      <section className="overflow-hidden rounded-[2rem] bg-surface-container-lowest">
         <ManagementToolbar
           title="Merchant Management"
           description="Create, search, edit, and delete merchant records from the sidebar page."

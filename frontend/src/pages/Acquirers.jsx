@@ -10,6 +10,7 @@ import PaginationControls from "../component/dashboard/PaginationControls";
 import StatCard from "../component/dashboard/StatCard";
 import useCrudManager from "../hooks/useCrudManager";
 import acquirerService from "../services/acquirerService";
+import Spinner from "../component/UI/Spinner";
 
 const acquirerFields = [
   {
@@ -79,7 +80,10 @@ export default function Acquirers() {
     return !deferredSearch || searchBlob.includes(deferredSearch);
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredAcquirers.length / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAcquirers.length / pageSize),
+  );
   const safePage = Math.min(page, totalPages);
   const paginatedAcquirers = filteredAcquirers.slice(
     (safePage - 1) * pageSize,
@@ -115,6 +119,13 @@ export default function Acquirers() {
       render: (acquirer) => formatDate(acquirer.updatedAt),
     },
   ];
+
+  if (acquirerManager.isLoading)
+    return (
+      <div className="p-8 flex justify-center items-center min-h-[80vh] text-on-surface">
+        <Spinner type="xl" />
+      </div>
+    );
 
   return (
     <div className="space-y-6 text-on-background">
