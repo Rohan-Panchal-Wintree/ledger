@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { Acquirer } from "../modules/acquirers/acquirer.model.js";
 import { MerchantAccount } from "../modules/merchantAccounts/merchant-account.model.js";
 import { Payment } from "../modules/payments/payment.model.js";
+import { UnmatchedPayment } from "../modules/payments/unmatched-payment.model.js";
 import { SettlementTransaction } from "../modules/settlements/settlement-transaction.model.js";
 import { SettlementBatch } from "../modules/batches/batch.model.js";
 import { derivePaymentMethod, deriveSettlementStatus, roundMoney } from "../utils/currencyUtils.js";
@@ -162,6 +163,46 @@ const buildPaymentIdentityKey = ({
     String(sourceProcessingCurrency || "").trim().toUpperCase(),
     String(paymentCurrency || "").trim().toUpperCase()
   ].join("|");
+
+const buildUnmatchedPaymentIdentityKey = ({
+  paymentBank,
+  merchantName,
+  paidToMerchantDate,
+  sourceMid,
+  sourceStartDate,
+  sourceEndDate,
+  sourceProcessingCurrency,
+  paymentCurrency,
+  amountPaid,
+  settlementAmount
+}) =>
+  [
+    normalizeLabel(paymentBank),
+    normalizeMerchantKey(merchantName),
+    String(sourceMid || "").trim(),
+    normalizeDateTime(paidToMerchantDate),
+    normalizeDateTime(sourceStartDate),
+    normalizeDateTime(sourceEndDate),
+    String(sourceProcessingCurrency || "").trim().toUpperCase(),
+    String(paymentCurrency || "").trim().toUpperCase(),
+    roundMoney(amountPaid),
+    roundMoney(settlementAmount)
+  ].join("|");
+
+const getRowIdentityKey = (row) =>
+  row.rowIdentityKey ||
+  buildUnmatchedPaymentIdentityKey({
+    paymentBank: row.bank,
+    merchantName: row.merchantName,
+    paidToMerchantDate: row.paymentDate,
+    sourceMid: row.mid,
+    sourceStartDate: row.startDate,
+    sourceEndDate: row.endDate,
+    sourceProcessingCurrency: row.processingCurrency,
+    paymentCurrency: row.settlementCurrency,
+    amountPaid: row.amountPaid,
+    settlementAmount: row.settlementAmount
+  });
 
 const scoreTransactionMatch = (transaction, row) => {
   let score = 0;
@@ -342,15 +383,23 @@ const findMatchingSettlementTransaction = ({ row, candidateTransactions, candida
   return null;
 };
 
-export const processPaymentUpload = async ({
-  fileBuffer,
-  batchId,
-  userId,
-  paymentDate,
-  originalFilename
-}) => {
+const toSkippedRowPayload = ({ row, reason }) => ({
+  reason,
+  sheetName: row.sheetName,
+  bank: row.bank,
+  merchantName: row.merchantName,
+  mid: row.mid,
+  processingCurrency: row.processingCurrency,
+  settlementCurrency: row.settlementCurrency,
+  startDate: row.startDate,
+  endDate: row.endDate,
+  amountPaid: roundMoney(row.amountPaid),
+  settlementAmount: roundMoney(row.settlementAmount)
+});
+
+const normalizePaymentUploadRows = ({ fileBuffer, paymentDate, originalFilename }) => {
   const workbookSheets = parseWorkbookSheets(fileBuffer);
-  const rows = workbookSheets.flatMap(({ sheetName, rows: sheetRows }) => {
+  return workbookSheets.flatMap(({ sheetName, rows: sheetRows }) => {
     const inferredPaymentDate = inferPaymentDate({
       explicitPaymentDate: paymentDate,
       originalFilename,
@@ -368,11 +417,9 @@ export const processPaymentUpload = async ({
           row.endDate
       );
   });
+};
 
-  if (!rows.length) {
-    throw new ApiError(400, "No valid payment rows found");
-  }
-
+const matchRowsToTransactions = async ({ rows, batchId }) => {
   const bankAcquirerMap = await buildBankAcquirerMap(rows);
   const { accountIdsByRowKey, allAccountIds } = await buildMerchantAccountLookup({
     rows,
@@ -399,16 +446,7 @@ export const processPaymentUpload = async ({
     if (!transaction) {
       skippedRows.push({
         reason: "settlement_transaction_not_found",
-        sheetName: row.sheetName,
-        bank: row.bank,
-        merchantName: row.merchantName,
-        mid: row.mid,
-        processingCurrency: row.processingCurrency,
-        settlementCurrency: row.settlementCurrency,
-        startDate: row.startDate,
-        endDate: row.endDate,
-        amountPaid: roundMoney(row.amountPaid),
-        settlementAmount: roundMoney(row.settlementAmount)
+        row
       });
       continue;
     }
@@ -416,16 +454,76 @@ export const processPaymentUpload = async ({
     matchedRows.push({ row, transaction });
   }
 
-  const touchedTransactionIds = [...new Set(matchedRows.map(({ transaction }) => transaction._id))];
-  const existingPayments = touchedTransactionIds.length
-    ? await Payment.find(
-        {
-          settlementTransactionId: {
-            $in: touchedTransactionIds.map((id) => new mongoose.Types.ObjectId(id))
+  return { matchedRows, skippedRows };
+};
+
+const updateTouchedBatches = async (transactionUpdates) => {
+  const touchedBatchIds = [...new Set(transactionUpdates.map((transaction) => transaction.batchId))];
+
+  if (!touchedBatchIds.length) {
+    return 0;
+  }
+
+  const batchTotals = await SettlementTransaction.aggregate([
+    {
+      $match: {
+        batchId: { $in: touchedBatchIds.map((batch) => new mongoose.Types.ObjectId(batch)) }
+      }
+    },
+    {
+      $group: {
+        _id: "$batchId",
+        totalPayable: { $sum: "$payable" },
+        totalPaid: { $sum: "$paid" },
+        totalBalance: { $sum: "$balance" }
+      }
+    }
+  ]);
+
+  if (batchTotals.length) {
+    await SettlementBatch.bulkWrite(
+      batchTotals.map((batch) => {
+        const totalPayable = roundMoney(batch.totalPayable);
+        const totalPaid = roundMoney(batch.totalPaid);
+        const totalBalance = roundMoney(batch.totalBalance);
+
+        return {
+          updateOne: {
+            filter: { _id: batch._id },
+            update: {
+              $set: {
+                totalPayable,
+                totalPaid,
+                totalBalance,
+                status: deriveBatchStatus({ totalPaid, totalBalance })
+              }
+            }
           }
-        }
-      ).lean()
-    : [];
+        };
+      })
+    );
+  }
+
+  return touchedBatchIds.length;
+};
+
+const persistMatchedRows = async ({ matchedRows, userId }) => {
+  if (!matchedRows.length) {
+    return {
+      createdPayments: 0,
+      updatedBatches: 0,
+      reconciledCount: 0
+    };
+  }
+
+  const touchedTransactionIds = [...new Set(matchedRows.map(({ transaction }) => transaction._id))];
+  const existingPayments = await Payment.find(
+    {
+      settlementTransactionId: {
+        $in: touchedTransactionIds.map((id) => new mongoose.Types.ObjectId(id))
+      }
+    }
+  ).lean();
 
   const existingPaymentMap = new Map();
   for (const payment of existingPayments) {
@@ -450,6 +548,8 @@ export const processPaymentUpload = async ({
   const paymentDocs = [];
   const paymentUpdates = [];
   const transactionStateMap = new Map();
+  const unmatchedResolutionUpdates = [];
+  const now = new Date();
 
   for (const { row, transaction } of matchedRows) {
     const paymentDateValue = row.paymentDate || new Date();
@@ -517,6 +617,26 @@ export const processPaymentUpload = async ({
     } else {
       paymentDocs.push(paymentDoc);
     }
+
+    unmatchedResolutionUpdates.push({
+      updateOne: {
+        filter: row.unmatchedPaymentId
+          ? { _id: row.unmatchedPaymentId }
+          : { rowIdentityKey: getRowIdentityKey(row) },
+        update: {
+          $set: {
+            status: "reconciled",
+            failureReason: "",
+            settlementTransactionId: new mongoose.Types.ObjectId(transaction._id),
+            merchantAccountId: new mongoose.Types.ObjectId(transaction.merchantAccountId),
+            reconciledAt: now,
+            lastReconciledAt: now,
+            reconciledBy: userId
+          },
+          ...(row.unmatchedPaymentId ? { $inc: { retryCount: 1 } } : {})
+        }
+      }
+    });
   }
 
   if (paymentDocs.length) {
@@ -545,55 +665,216 @@ export const processPaymentUpload = async ({
     );
   }
 
-  const touchedBatchIds = [...new Set(transactionUpdates.map((transaction) => transaction.batchId))];
-
-  if (touchedBatchIds.length) {
-    const batchTotals = await SettlementTransaction.aggregate([
-      {
-        $match: {
-          batchId: { $in: touchedBatchIds.map((batch) => new mongoose.Types.ObjectId(batch)) }
-        }
-      },
-      {
-        $group: {
-          _id: "$batchId",
-          totalPayable: { $sum: "$payable" },
-          totalPaid: { $sum: "$paid" },
-          totalBalance: { $sum: "$balance" }
-        }
-      }
-    ]);
-
-    if (batchTotals.length) {
-      await SettlementBatch.bulkWrite(
-        batchTotals.map((batch) => {
-          const totalPayable = roundMoney(batch.totalPayable);
-          const totalPaid = roundMoney(batch.totalPaid);
-          const totalBalance = roundMoney(batch.totalBalance);
-
-          return {
-            updateOne: {
-              filter: { _id: batch._id },
-              update: {
-                $set: {
-                  totalPayable,
-                  totalPaid,
-                  totalBalance,
-                  status: deriveBatchStatus({ totalPaid, totalBalance })
-                }
-              }
-            }
-          };
-        })
-      );
-    }
+  if (unmatchedResolutionUpdates.length) {
+    await UnmatchedPayment.bulkWrite(unmatchedResolutionUpdates);
   }
+
+  const updatedBatches = await updateTouchedBatches(transactionUpdates);
 
   return {
     createdPayments: paymentDocs.length + paymentUpdates.length,
-    updatedBatches: touchedBatchIds.length,
+    updatedBatches,
+    reconciledCount: matchedRows.length
+  };
+};
+
+const storeUnmatchedRows = async ({ skippedRows, userId, originalFilename }) => {
+  if (!skippedRows.length) {
+    return {
+      storedCount: 0,
+      pendingCount: await UnmatchedPayment.countDocuments({
+        status: "pending_reconciliation"
+      })
+    };
+  }
+
+  const operations = skippedRows.map(({ row, reason }) => ({
+    updateOne: {
+      filter: { rowIdentityKey: getRowIdentityKey(row) },
+      update: {
+        $set: {
+          status: "pending_reconciliation",
+          failureReason: reason,
+          paymentBank: row.bank,
+          merchantName: row.merchantName,
+          sourceMid: row.mid,
+          sourceStartDate: row.startDate,
+          sourceEndDate: row.endDate,
+          sourceProcessingCurrency: row.processingCurrency,
+          amountPaid: roundMoney(row.amountPaid),
+          settlementAmount: roundMoney(row.settlementAmount),
+          paymentCurrency: row.settlementCurrency,
+          paymentMethod: row.paymentMethod,
+          paymentDate: row.paymentDate,
+          paidToMerchantDate: row.paymentDate,
+          paymentRate: roundMoney(row.rate),
+          sheetName: row.sheetName,
+          originalFilename,
+          reference: row.reference,
+          settlementTransactionId: null,
+          merchantAccountId: null,
+          reconciledAt: null,
+          reconciledBy: null
+        },
+        $setOnInsert: {
+          createdBy: userId
+        }
+      },
+      upsert: true
+    }
+  }));
+
+  await UnmatchedPayment.bulkWrite(operations);
+
+  return {
+    storedCount: skippedRows.length,
+    pendingCount: await UnmatchedPayment.countDocuments({
+      status: "pending_reconciliation"
+    })
+  };
+};
+
+const buildUnmatchedSummary = async () => {
+  const [pendingCount, manualReviewCount, recentRows] = await Promise.all([
+    UnmatchedPayment.countDocuments({ status: "pending_reconciliation" }),
+    UnmatchedPayment.countDocuments({ status: "manual_review" }),
+    UnmatchedPayment.find({ status: "pending_reconciliation" })
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean()
+  ]);
+
+  return {
+    pendingCount,
+    manualReviewCount,
+    recentRows: recentRows.map((row) => ({
+      id: row._id,
+      paymentBank: row.paymentBank,
+      merchantName: row.merchantName,
+      sourceMid: row.sourceMid,
+      sourceStartDate: row.sourceStartDate,
+      sourceEndDate: row.sourceEndDate,
+      sourceProcessingCurrency: row.sourceProcessingCurrency,
+      amountPaid: row.amountPaid,
+      settlementAmount: row.settlementAmount,
+      paymentCurrency: row.paymentCurrency,
+      originalFilename: row.originalFilename,
+      failureReason: row.failureReason,
+      retryCount: row.retryCount,
+      createdAt: row.createdAt
+    }))
+  };
+};
+
+export const processPaymentUpload = async ({
+  fileBuffer,
+  batchId,
+  userId,
+  paymentDate,
+  originalFilename
+}) => {
+  const rows = normalizePaymentUploadRows({
+    fileBuffer,
+    paymentDate,
+    originalFilename
+  });
+
+  if (!rows.length) {
+    throw new ApiError(400, "No valid payment rows found");
+  }
+
+  const { matchedRows, skippedRows } = await matchRowsToTransactions({ rows, batchId });
+  const matchedResult = await persistMatchedRows({ matchedRows, userId });
+  const unmatchedResult = await storeUnmatchedRows({
+    skippedRows,
+    userId,
+    originalFilename
+  });
+
+  return {
+    createdPayments: matchedResult.createdPayments,
+    updatedBatches: matchedResult.updatedBatches,
     skippedCount: skippedRows.length,
-    skippedRows
+    skippedRows: skippedRows.map(toSkippedRowPayload),
+    storedUnmatchedCount: unmatchedResult.storedCount,
+    pendingUnmatchedCount: unmatchedResult.pendingCount
+  };
+};
+
+export const getUnmatchedPaymentSummary = async () => buildUnmatchedSummary();
+
+export const reconcileUnmatchedPayments = async ({ userId, batchId }) => {
+  const pendingRows = await UnmatchedPayment.find({
+    status: "pending_reconciliation"
+  })
+    .sort({ createdAt: 1, _id: 1 })
+    .lean();
+
+  if (!pendingRows.length) {
+    return {
+      processedCount: 0,
+      reconciledCount: 0,
+      remainingCount: 0,
+      updatedBatches: 0,
+      skippedRows: [],
+      summary: await buildUnmatchedSummary()
+    };
+  }
+
+  const rows = pendingRows.map((row) => ({
+    unmatchedPaymentId: row._id,
+    rowIdentityKey: row.rowIdentityKey,
+    bank: row.paymentBank,
+    merchantName: row.merchantName,
+    mid: row.sourceMid,
+    startDate: row.sourceStartDate,
+    endDate: row.sourceEndDate,
+    processingCurrency: row.sourceProcessingCurrency,
+    processingAmount: row.amountPaid,
+    rate: row.paymentRate,
+    settlementCurrency: row.paymentCurrency,
+    amountPaid: row.amountPaid,
+    settlementAmount: row.settlementAmount,
+    paymentDate: row.paymentDate || row.paidToMerchantDate,
+    paymentMethod: row.paymentMethod,
+    reference: row.reference,
+    sheetName: row.sheetName
+  }));
+
+  const { matchedRows, skippedRows } = await matchRowsToTransactions({ rows, batchId });
+  const matchedResult = await persistMatchedRows({ matchedRows, userId });
+  const now = new Date();
+
+  const stillPendingUpdates = skippedRows
+    .filter(({ row }) => row.unmatchedPaymentId)
+    .map(({ row, reason }) => ({
+      updateOne: {
+        filter: { _id: row.unmatchedPaymentId },
+        update: {
+          $set: {
+            status: "pending_reconciliation",
+            failureReason: reason,
+            lastReconciledAt: now
+          },
+          $inc: { retryCount: 1 }
+        }
+      }
+    }));
+
+  if (stillPendingUpdates.length) {
+    await UnmatchedPayment.bulkWrite(stillPendingUpdates);
+  }
+
+  const summary = await buildUnmatchedSummary();
+
+  return {
+    processedCount: pendingRows.length,
+    reconciledCount: matchedResult.reconciledCount,
+    remainingCount: summary.pendingCount,
+    updatedBatches: matchedResult.updatedBatches,
+    skippedCount: skippedRows.length,
+    skippedRows: skippedRows.map(toSkippedRowPayload),
+    summary
   };
 };
 

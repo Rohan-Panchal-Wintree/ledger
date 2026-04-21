@@ -1,10 +1,12 @@
 import React from "react";
 import * as XLSX from "xlsx";
-import { FileUp, FileSpreadsheet, Download, X } from "lucide-react";
+import { FileUp, FileSpreadsheet, Download, X, ArrowRightLeft } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { unstable_usePrompt, useBeforeUnload } from "react-router-dom";
 import UploadFile from "../component/UploadFile";
 import {
+  fetchUnmatchedPaymentSummary,
+  reconcileUnmatchedPaymentRows,
   selectPaymentsFullState,
   uploadFiles,
 } from "../store/slices/Payments.slice";
@@ -147,6 +149,13 @@ function formatAmountCell(value) {
   }
 
   return numericValue.toFixed(2);
+}
+
+function formatPreviewDate(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function getFileIdentity(file) {
@@ -618,7 +627,11 @@ export default function Upload() {
     wire: { ...initialTabState },
     payment: { ...initialTabState },
   });
-  const { loading: isUploading } = useSelector(selectPaymentsFullState);
+  const {
+    loading: isUploading,
+    unmatchedSummary,
+    unmatchedSummaryLoading,
+  } = useSelector(selectPaymentsFullState);
 
   const wireInputRef = React.useRef(null);
   const paymentInputRef = React.useRef(null);
@@ -648,6 +661,10 @@ export default function Upload() {
     event.preventDefault();
     event.returnValue = "";
   });
+
+  React.useEffect(() => {
+    dispatch(fetchUnmatchedPaymentSummary());
+  }, [dispatch]);
 
   const updateTabState = (tab, updates) => {
     setTabState((prev) => ({
@@ -860,7 +877,7 @@ export default function Upload() {
     }
 
     try {
-      await dispatch(
+      const result = await dispatch(
         uploadFiles({
           wireFiles,
           paymentFiles,
@@ -868,9 +885,25 @@ export default function Upload() {
       ).unwrap();
 
       resetUploadState();
-      alert("Files uploaded successfully.");
+      const pendingCount = result?.unmatchedSummary?.pendingCount || 0;
+      const uploadMessage =
+        pendingCount > 0
+          ? `Files uploaded successfully. ${pendingCount} unmatched payment row(s) are waiting for reconciliation.`
+          : "Files uploaded successfully.";
+      alert(uploadMessage);
     } catch (error) {
       alert(error || "Unable to upload the selected files.");
+    }
+  };
+
+  const handleReconcileUnmatched = async () => {
+    try {
+      const result = await dispatch(reconcileUnmatchedPaymentRows()).unwrap();
+      alert(
+        `Reconciliation complete.\nProcessed: ${result.processedCount}\nReconciled: ${result.reconciledCount}\nStill pending: ${result.remainingCount}`,
+      );
+    } catch (error) {
+      alert(error || "Unable to reconcile pending unmatched payments.");
     }
   };
 
@@ -938,6 +971,78 @@ export default function Upload() {
           Payment Sheet
         </button>
       </div>
+
+      {(unmatchedSummaryLoading || unmatchedSummary?.pendingCount > 0) && (
+        <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-700">
+                Pending Reconciliation Queue
+              </p>
+              <h2 className="mt-2 text-xl font-bold text-amber-950">
+                {unmatchedSummaryLoading
+                  ? "Checking unmatched payment rows..."
+                  : `${unmatchedSummary?.pendingCount || 0} payment row(s) waiting for missing wiresheet match`}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900/80">
+                When a payment row was uploaded before its matching wiresheet existed, we now keep it here. Upload the missing wiresheet, then click reconcile to auto-match the saved row without uploading the payment sheet again.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleReconcileUnmatched}
+              disabled={isUploading || unmatchedSummaryLoading || !unmatchedSummary?.pendingCount}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              Reconcile Unmatched
+            </button>
+          </div>
+
+          {!unmatchedSummaryLoading && unmatchedSummary?.recentRows?.length > 0 && (
+            <div className="mt-5 grid gap-3 xl:grid-cols-2">
+              {unmatchedSummary.recentRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-2xl border border-amber-200/70 bg-white/70 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        {row.merchantName || "-"}
+                      </p>
+                      <p className="mt-1 text-xs uppercase tracking-widest text-slate-500">
+                        {row.paymentBank || "Unknown Bank"} • MID {row.sourceMid || "-"}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700 ring-1 ring-red-200">
+                      {row.amountPaid}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      {formatPreviewDate(row.sourceStartDate)} to {formatPreviewDate(row.sourceEndDate)}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      {row.sourceProcessingCurrency || "-"} to {row.paymentCurrency || "-"}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      Retry {row.retryCount || 0}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-600">
+                    {row.failureReason || "Settlement transaction not found"} • Source file:{" "}
+                    <span className="font-semibold text-slate-800">
+                      {row.originalFilename || "-"}
+                    </span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {currentTab.files.length > 0 && (
         <div className="mb-6 flex gap-2 overflow-x-auto scrollbar-hide">

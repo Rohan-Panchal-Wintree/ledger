@@ -41,6 +41,70 @@ export const fetchPayments = createAsyncThunk(
   },
 );
 
+export const fetchUnmatchedPaymentSummary = createAsyncThunk(
+  "payments/fetchUnmatchedPaymentSummary",
+  async (_, { dispatch, getState, rejectWithValue }) => {
+    try {
+      const accessToken = await resolveAccessToken({ dispatch, getState });
+      const response = await paymentApi.get("/unmatched-summary", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      return (
+        response.data?.data || {
+          pendingCount: 0,
+          manualReviewCount: 0,
+          recentRows: [],
+        }
+      );
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch unmatched payment summary",
+      );
+    }
+  },
+);
+
+export const reconcileUnmatchedPaymentRows = createAsyncThunk(
+  "payments/reconcileUnmatchedPaymentRows",
+  async ({ batchId } = {}, { dispatch, getState, rejectWithValue }) => {
+    try {
+      const accessToken = await resolveAccessToken({ dispatch, getState });
+      const response = await paymentApi.post(
+        "/reconcile-unmatched",
+        batchId ? { batchId } : {},
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      const result = response.data?.data || response.data;
+
+      try {
+        await dispatch(fetchUnmatchedPaymentSummary()).unwrap();
+      } catch (_error) {}
+
+      try {
+        await dispatch(fetchPayments()).unwrap();
+      } catch (_error) {}
+
+      return result;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to reconcile unmatched payment rows",
+      );
+    }
+  },
+);
+
 export const uploadFiles = createAsyncThunk(
   "payments/uploadFiles",
   async (
@@ -134,6 +198,14 @@ export const uploadFiles = createAsyncThunk(
         result.payments = uploadedPayments;
       }
 
+      try {
+        result.unmatchedSummary = await dispatch(
+          fetchUnmatchedPaymentSummary(),
+        ).unwrap();
+      } catch (_error) {
+        result.unmatchedSummary = null;
+      }
+
       return result;
     } catch (error) {
       return rejectWithValue(
@@ -152,6 +224,14 @@ const paymentSlice = createSlice({
     loading: false,
     error: null,
     uploadResult: null,
+    unmatchedSummary: {
+      pendingCount: 0,
+      manualReviewCount: 0,
+      recentRows: [],
+    },
+    unmatchedSummaryLoading: false,
+    unmatchedSummaryError: null,
+    reconcileResult: null,
   },
 
   reducers: {
@@ -174,16 +254,53 @@ const paymentSlice = createSlice({
         state.loading = false;
         state.error = action.payload || action.error.message;
       })
+      .addCase(fetchUnmatchedPaymentSummary.pending, (state) => {
+        state.unmatchedSummaryLoading = true;
+        state.unmatchedSummaryError = null;
+      })
+      .addCase(fetchUnmatchedPaymentSummary.fulfilled, (state, action) => {
+        state.unmatchedSummaryLoading = false;
+        state.unmatchedSummary = action.payload || {
+          pendingCount: 0,
+          manualReviewCount: 0,
+          recentRows: [],
+        };
+      })
+      .addCase(fetchUnmatchedPaymentSummary.rejected, (state, action) => {
+        state.unmatchedSummaryLoading = false;
+        state.unmatchedSummaryError =
+          action.payload || action.error.message;
+      })
       .addCase(uploadFiles.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.reconcileResult = null;
       })
       .addCase(uploadFiles.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
         state.uploadResult = action.payload;
+        if (action.payload?.unmatchedSummary) {
+          state.unmatchedSummary = action.payload.unmatchedSummary;
+        }
       })
       .addCase(uploadFiles.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || action.error.message;
+      })
+      .addCase(reconcileUnmatchedPaymentRows.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(reconcileUnmatchedPaymentRows.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        state.reconcileResult = action.payload;
+        if (action.payload?.summary) {
+          state.unmatchedSummary = action.payload.summary;
+        }
+      })
+      .addCase(reconcileUnmatchedPaymentRows.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || action.error.message;
       });
