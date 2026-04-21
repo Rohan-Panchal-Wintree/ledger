@@ -8,6 +8,10 @@ import { getLedger } from "./ledger.controller.js";
 const router = Router();
 
 router.use(authMiddleware);
-router.get("/", validateRequest(ledgerQuerySchema, "query"), asyncHandler(getLedger));
+router.get(
+	"/",
+	validateRequest(ledgerQuerySchema, "query"),
+	asyncHandler(getLedger),
+);
 
 export default router;

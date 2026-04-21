@@ -55,19 +55,23 @@ const inferPaymentDate = ({ explicitPaymentDate, originalFilename, sheetName }) 
   }
 
   const source = `${sheetName} ${originalFilename || ""}`;
+  const currentYear = new Date().getUTCFullYear();
   const compactDateMatch = source.match(/(?:^|\s)(\d{2})(\d{2})(?:\s|$)/);
   if (compactDateMatch) {
     const [, day, month] = compactDateMatch;
-    return new Date(new Date().getFullYear(), Number(month) - 1, Number(day));
+    return parseSheetDate(`${day}/${month}/${currentYear}`);
   }
 
   const dottedDateMatch = source.match(/(\d{2})\.(\d{2})/);
   if (dottedDateMatch) {
     const [, day, month] = dottedDateMatch;
-    return new Date(new Date().getFullYear(), Number(month) - 1, Number(day));
+    return parseSheetDate(`${day}/${month}/${currentYear}`);
   }
 
-  return new Date();
+  const today = new Date();
+  return parseSheetDate(
+    `${String(today.getUTCDate()).padStart(2, "0")}/${String(today.getUTCMonth() + 1).padStart(2, "0")}/${today.getUTCFullYear()}`
+  );
 };
 
 const normalizePaymentRow = (row, sheetName, paymentDate) => {
@@ -82,12 +86,17 @@ const normalizePaymentRow = (row, sheetName, paymentDate) => {
     .trim()
     .toUpperCase();
 
-  const amountPaid = parseSheetNumber(
-    row.USDT ||
+  const processingAmount = parseSheetNumber(
+    row.Amount || row["Amount"] || row["AMOUNT"] || row[" AMOUNT"] || row["PAID AMOUNT"] || 0
+  );
+
+  const settlementAmount = parseSheetNumber(
+    (isCryptoSheet ? row.USDT : 0) ||
+      (isWireSheet ? row["AMOUNT IN EURO"] || row["AMOUNT IN EUR"] || row["AMOUNT IN EURO "] : 0) ||
+      row.USDT ||
       row["AMOUNT IN EURO"] ||
       row["AMOUNT IN EUR"] ||
       row["AMOUNT IN EURO "] ||
-      row["PAID AMOUNT"] ||
       0
   );
 
@@ -98,10 +107,11 @@ const normalizePaymentRow = (row, sheetName, paymentDate) => {
     startDate: parseSheetDate(row["START DATE"] || row["First Date"] || row["FIRST DATE"]),
     endDate: parseSheetDate(row["END DATE"] || row["End Date"]),
     processingCurrency: String(row.Currency || row["PROCESSING CURRENCY"] || "").trim().toUpperCase(),
-    processingAmount: parseSheetNumber(row.Amount || row["Amount"] || row["AMOUNT"] || row[" AMOUNT"] || 0),
+    processingAmount,
     rate: parseSheetNumber(row.RATE || row["RATE"] || row[" RATE"] || 0),
     settlementCurrency,
-    amountPaid,
+    amountPaid: processingAmount,
+    settlementAmount,
     paymentDate,
     paymentMethod:
       settlementCurrency ? derivePaymentMethod(settlementCurrency) : isCryptoSheet ? "CRYPTO" : isWireSheet ? "WIRE" : "UNKNOWN",
@@ -394,7 +404,8 @@ export const processPaymentUpload = async ({
         settlementCurrency: row.settlementCurrency,
         startDate: row.startDate,
         endDate: row.endDate,
-        amountPaid: roundMoney(row.amountPaid)
+        amountPaid: roundMoney(row.amountPaid),
+        settlementAmount: roundMoney(row.settlementAmount)
       });
       continue;
     }
@@ -440,10 +451,12 @@ export const processPaymentUpload = async ({
   for (const { row, transaction } of matchedRows) {
     const paymentDateValue = row.paymentDate || new Date();
     const normalizedAmountPaid = roundMoney(row.amountPaid);
+    const normalizedSettlementAmount = roundMoney(row.settlementAmount);
     const paymentDoc = {
       settlementTransactionId: transaction._id,
       merchantAccountId: transaction.merchantAccountId,
       amountPaid: normalizedAmountPaid,
+      settlementAmount: normalizedSettlementAmount,
       paymentCurrency: row.settlementCurrency,
       paymentMethod: row.paymentMethod,
       paymentDate: paymentDateValue,
@@ -580,3 +593,4 @@ export const processPaymentUpload = async ({
     skippedRows
   };
 };
+

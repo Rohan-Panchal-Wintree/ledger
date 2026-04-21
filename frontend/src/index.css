@@ -1,0 +1,205 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap");
+@import "tailwindcss";
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "mytheme";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  /* DaisyUI base mapped to previous UI */
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f4f6;
+  --color-base-300: #edeef0;
+  --color-base-content: #191c1e;
+
+  /* Main theme colors from previous UI */
+  --color-primary: #1234bc;
+  --color-primary-content: #ffffff;
+
+  --color-secondary: #525b90;
+  --color-secondary-content: #ffffff;
+
+  --color-accent: #3550d4;
+  --color-accent-content: #ffffff;
+
+  --color-neutral: #444654;
+  --color-neutral-content: #ffffff;
+
+  /* Status colors */
+  --color-info: #3550d4;
+  --color-info-content: #ffffff;
+
+  --color-success: #16a34a;
+  --color-success-content: #ffffff;
+
+  --color-warning: #f59e0b;
+  --color-warning-content: #1f2937;
+
+  --color-error: #dc2626;
+  --color-error-content: #ffffff;
+
+  /* Radius aligned to previous UI */
+  --radius-selector: 0.5rem;
+  --radius-field: 1rem;
+  --radius-box: 1rem;
+
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --font-sans: "Manrope", sans-serif;
+
+  /* Brand colors */
+  --color-brand-50: #f0efff;
+  --color-brand-100: #dee0ff;
+  --color-brand-200: #bac3ff;
+  --color-brand-300: #96a5ff;
+  --color-brand-400: #7187ff;
+  --color-brand-500: #516bee;
+  --color-brand-600: #3550d4;
+  --color-brand-700: #1234bc;
+  --color-brand-800: #00208f;
+  --color-brand-900: #00105a;
+
+  /* Exact dashboard semantic colors from previous UI */
+  --color-background: #f8f9fb;
+  --color-surface: #f8f9fb;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #edeef0;
+  --color-surface-container-high: #e7e8ea;
+  --color-surface-container-highest: #e1e2e4;
+
+  --color-primary: #1234bc;
+  --color-primary-container: #3550d4;
+
+  --color-on-background: #191c1e;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #444654;
+
+  --color-outline: #757686;
+  --color-outline-variant: #c5c5d7;
+
+  --color-secondary: #525b90;
+
+  /* Keep aliases for old components */
+  --color-app-bg: #f8f9fb;
+  --color-app-surface: #ffffff;
+  --color-app-surfaceAlt: #f2f4f6;
+  --color-app-text: #191c1e;
+  --color-app-muted: #444654;
+  --color-app-border: #c5c5d7;
+
+  /* Exact radii from previous UI */
+  --radius-sm: 0.5rem;
+  --radius-default: 1rem;
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+  --radius-full: 9999px;
+
+  /* Keep existing utility names too */
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+
+  /* Backward-compatible aliases for current design */
+  --color-surface-lowest: var(--color-surface-container-lowest);
+  --color-surface-low: var(--color-surface-container-low);
+  --color-surface-high: var(--color-surface-container-high);
+  --color-surface-highest: var(--color-surface-container-highest);
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-on-background);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    color: var(--color-on-surface);
+  }
+}
+
+@layer utilities {
+  .bg-brand {
+    background-color: var(--color-primary);
+  }
+
+  .text-brand {
+    color: var(--color-primary);
+  }
+
+  .border-brand {
+    border-color: var(--color-primary);
+  }
+
+  .bg-surface {
+    background-color: var(--color-surface);
+  }
+
+  .bg-surface-lowest {
+    background-color: var(--color-surface-container-lowest);
+  }
+
+  .bg-surface-low {
+    background-color: var(--color-surface-container-low);
+  }
+
+  .bg-surface-container {
+    background-color: var(--color-surface-container);
+  }
+
+  .bg-surface-high {
+    background-color: var(--color-surface-container-high);
+  }
+
+  .bg-surface-highest {
+    background-color: var(--color-surface-container-highest);
+  }
+
+  .text-surface-variant {
+    color: var(--color-on-surface-variant);
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-300);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
