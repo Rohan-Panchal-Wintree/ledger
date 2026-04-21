@@ -224,7 +224,6 @@ export default function EntityTable({
                     Edit
                   </button>
                 ) : null}
-
                 {canDelete ? (
                   <button
                     type="button"

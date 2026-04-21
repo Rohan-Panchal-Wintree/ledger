@@ -98,7 +98,6 @@ export default function useCrudManager({
   }
 
   async function openEditForm(id) {
-    console.log("id", id);
     setFormMode("edit");
     setEditingId(id);
     setFormErrors({});

@@ -56,7 +56,7 @@ export default function UploadFile({
 
             <div className="space-y-1">
               <p className="font-semibold text-on-surface">
-                Drop your XLSX file here
+                Drop one or more XLSX files here
               </p>
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Max file size: 25MB
@@ -283,7 +283,7 @@ export default function UploadFile({
           </div>
 
           <p className="mb-2 text-lg font-semibold text-on-surface">
-            Drag and drop files here
+            Drag and drop one or more files here
           </p>
 
           <p className="mb-8 text-sm text-on-surface-variant">
