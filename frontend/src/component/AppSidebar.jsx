@@ -1,15 +1,15 @@
 import {
   LayoutDashboard,
+  Building2,
+  Landmark,
   Upload,
   Users,
   LogOut,
   FileBarChart,
   User,
   Shield,
-  Badge,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -23,9 +23,13 @@ import {
   SidebarHeader,
   useSidebar,
 } from "./UI/Sidebar";
+import { useDispatch, useSelector } from "react-redux";
+import { logoutUser, selectCurrentUser } from "../store/slices/Auth.slice";
 
 export function AppSidebar() {
-  const { user, logout } = useAuth();
+  const dispatch = useDispatch();
+  const currentUser = useSelector(selectCurrentUser);
+
   const { open } = useSidebar();
 
   const sidebarItems = [
@@ -36,22 +40,34 @@ export function AppSidebar() {
       show: true,
     },
     {
+      name: "Merchants",
+      icon: Building2,
+      path: "/merchants",
+      show: true,
+    },
+    {
+      name: "Acquirers",
+      icon: Landmark,
+      path: "/acquirers",
+      show: true,
+    },
+    {
       name: "Reports",
       icon: FileBarChart,
       path: "/reports",
-      show: true,
+      show: currentUser?.role === "admin",
     },
     {
       name: "Upload",
       icon: Upload,
       path: "/upload",
-      show: user?.role === "admin",
+      show: currentUser?.role === "admin",
     },
     {
       name: "Manage Emails",
       icon: Users,
       path: "/manage-emails",
-      show: user?.role === "admin",
+      show: currentUser?.role === "admin",
     },
     {
       name: "Profile",
@@ -65,23 +81,25 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r-0">
-      <SidebarHeader className="border-b border-[#1f2937]">
+      <SidebarHeader className="border-b border-outline-variant/20">
         <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#627BFF]">
-            <Shield className="h-3.5 w-3.5 text-white" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-white">
+            <Shield className="h-4 w-4" />
           </div>
 
           {open && (
-            <span className="text-md font-semibold text-white">PayGate</span>
+            <div className="min-w-0">
+              <p className="text-md font-semibold tracking-tight text-on-surface">
+                PayGate
+              </p>
+            </div>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="pt-6">
+      <SidebarContent className="pt-5">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[#64748b]">
-            Navigation
-          </SidebarGroupLabel>
+          {/* <SidebarGroupLabel>Navigation</SidebarGroupLabel> */}
 
           <SidebarGroupContent>
             <SidebarMenu>
@@ -93,8 +111,10 @@ export function AppSidebar() {
                     <NavLink to={item.path}>
                       {({ isActive }) => (
                         <SidebarMenuButton isActive={isActive}>
-                          <Icon className="h-4 w-4" />
-                          {open && <span>{item.name}</span>}
+                          <Icon className="h-4 w-4 shrink-0" />
+                          {open && (
+                            <span className="truncate">{item.name}</span>
+                          )}
                         </SidebarMenuButton>
                       )}
                     </NavLink>
@@ -106,28 +126,30 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-[#1f2937] p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1e293b] text-xs font-semibold text-white">
-            {user?.email?.[0]?.toUpperCase() || "U"}
+      <SidebarFooter className="border-t border-outline-variant/20 p-3">
+        <div className="flex items-center gap-3 rounded-lg bg-surface-container-low p-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
+            {currentUser?.email?.[0]?.toUpperCase() || "U"}
           </div>
 
           {open && (
             <>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-white">
-                  {user?.email}
+                <p
+                  className="truncate text-xs font-medium text-on-surface"
+                  title={currentUser?.email}
+                >
+                  {currentUser?.email}
                 </p>
-                <p className="text-sm capitalize text-[#94a3b8]">
-                  {user?.role}
+                <p className="text-xs capitalize text-on-surface-variant">
+                  {currentUser?.role}
                 </p>
               </div>
 
               <button
-                onClick={logout}
-                className="text-[#94a3b8] transition-colors hover:text-white"
+                onClick={() => dispatch(logoutUser())}
+                className="rounded-full p-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
                 title="Logout"
-                type="button"
               >
                 <LogOut className="h-4 w-4" />
               </button>

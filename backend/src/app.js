@@ -30,7 +30,7 @@ app.use(
 app.use(helmet());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(pinoHttp({ logger }));
+//app.use(pinoHttp({ logger }));
 
 app.get("/health", (_req, res) => {
 	res.json({ success: true, message: "Backend healthy" });

@@ -3,9 +3,14 @@ import mongoose from "mongoose";
 import { Acquirer } from "../modules/acquirers/acquirer.model.js";
 import { MerchantAccount } from "../modules/merchantAccounts/merchant-account.model.js";
 import { Payment } from "../modules/payments/payment.model.js";
+import { UnmatchedPayment } from "../modules/payments/unmatched-payment.model.js";
 import { SettlementTransaction } from "../modules/settlements/settlement-transaction.model.js";
 import { SettlementBatch } from "../modules/batches/batch.model.js";
-import { derivePaymentMethod, deriveSettlementStatus, roundMoney } from "../utils/currencyUtils.js";
+import {
+  derivePaymentMethod,
+  deriveSettlementStatus,
+  roundMoney,
+} from "../utils/currencyUtils.js";
 import { endOfDay, parseSheetDate, startOfDay } from "../utils/dateUtils.js";
 import { ApiError } from "../utils/ApiError.js";
 
@@ -17,7 +22,12 @@ const parseSheetNumber = (value) => {
     .replace(/[^0-9.-]/g, "")
     .trim();
 
-  if (!normalized || normalized === "-" || normalized === "." || normalized === "-.") {
+  if (
+    !normalized ||
+    normalized === "-" ||
+    normalized === "." ||
+    normalized === "-."
+  ) {
     return 0;
   }
 
@@ -30,8 +40,11 @@ const normalizeSheetRows = (sheet) =>
     .sheet_to_json(sheet, { defval: "", raw: false })
     .map((row) =>
       Object.fromEntries(
-        Object.entries(row).map(([key, value]) => [String(key).replace(/\s+/g, " ").trim(), value])
-      )
+        Object.entries(row).map(([key, value]) => [
+          String(key).replace(/\s+/g, " ").trim(),
+          value,
+        ]),
+      ),
     );
 
 const parseWorkbookSheets = (buffer) => {
@@ -39,7 +52,7 @@ const parseWorkbookSheets = (buffer) => {
 
   return workbook.SheetNames.map((sheetName) => ({
     sheetName,
-    rows: normalizeSheetRows(workbook.Sheets[sheetName])
+    rows: normalizeSheetRows(workbook.Sheets[sheetName]),
   }));
 };
 
@@ -49,7 +62,27 @@ const normalizeLabel = (value) =>
     .trim()
     .toUpperCase();
 
-const inferPaymentDate = ({ explicitPaymentDate, originalFilename, sheetName }) => {
+const normalizeMerchantKey = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+const MATCH_TIME_TOLERANCE_MS = 60 * 1000;
+
+const isSameMoment = (left, right, toleranceMs = MATCH_TIME_TOLERANCE_MS) => {
+  if (!left || !right) return false;
+  return (
+    Math.abs(new Date(left).getTime() - new Date(right).getTime()) <=
+    toleranceMs
+  );
+};
+
+const inferPaymentDate = ({
+  explicitPaymentDate,
+  originalFilename,
+  sheetName,
+}) => {
   if (explicitPaymentDate) {
     return parseSheetDate(explicitPaymentDate);
   }
@@ -70,7 +103,7 @@ const inferPaymentDate = ({ explicitPaymentDate, originalFilename, sheetName }) 
 
   const today = new Date();
   return parseSheetDate(
-    `${String(today.getUTCDate()).padStart(2, "0")}/${String(today.getUTCMonth() + 1).padStart(2, "0")}/${today.getUTCFullYear()}`
+    `${String(today.getUTCDate()).padStart(2, "0")}/${String(today.getUTCMonth() + 1).padStart(2, "0")}/${today.getUTCFullYear()}`,
   );
 };
 
@@ -81,42 +114,67 @@ const normalizePaymentRow = (row, sheetName, paymentDate) => {
 
   const mid = String(row["MID"] || row["MID NO"] || row.mid || "").trim();
   const settlementCurrency = String(
-    row["Settlement Currency"] || row["SETTLEMENT CURRENCY"] || row["Settlement Currency "] || ""
+    row["Settlement Currency"] ||
+      row["SETTLEMENT CURRENCY"] ||
+      row["Settlement Currency "] ||
+      "",
   )
     .trim()
     .toUpperCase();
 
   const processingAmount = parseSheetNumber(
-    row.Amount || row["Amount"] || row["AMOUNT"] || row[" AMOUNT"] || row["PAID AMOUNT"] || 0
+    row.Amount ||
+      row["Amount"] ||
+      row["AMOUNT"] ||
+      row[" AMOUNT"] ||
+      row["PAID AMOUNT"] ||
+      0,
   );
 
   const settlementAmount = parseSheetNumber(
     (isCryptoSheet ? row.USDT : 0) ||
-      (isWireSheet ? row["AMOUNT IN EURO"] || row["AMOUNT IN EUR"] || row["AMOUNT IN EURO "] : 0) ||
+      (isWireSheet
+        ? row["AMOUNT IN EURO"] ||
+          row["AMOUNT IN EUR"] ||
+          row["AMOUNT IN EURO "]
+        : 0) ||
       row.USDT ||
       row["AMOUNT IN EURO"] ||
       row["AMOUNT IN EUR"] ||
       row["AMOUNT IN EURO "] ||
-      0
+      0,
   );
 
   return {
     bank: String(row.Bank || row.BANK || "").trim(),
     merchantName: String(row["MERCHANT NAME"] || "").trim(),
     mid,
-    startDate: parseSheetDate(row["START DATE"] || row["First Date"] || row["FIRST DATE"]),
+    startDate: parseSheetDate(
+      row["START DATE"] || row["First Date"] || row["FIRST DATE"],
+    ),
     endDate: parseSheetDate(row["END DATE"] || row["End Date"]),
-    processingCurrency: String(row.Currency || row["PROCESSING CURRENCY"] || "").trim().toUpperCase(),
+    processingCurrency: String(row.Currency || row["PROCESSING CURRENCY"] || "")
+      .trim()
+      .toUpperCase(),
     processingAmount,
     rate: parseSheetNumber(row.RATE || row["RATE"] || row[" RATE"] || 0),
     settlementCurrency,
     amountPaid: processingAmount,
     settlementAmount,
     paymentDate,
-    paymentMethod:
-      settlementCurrency ? derivePaymentMethod(settlementCurrency) : isCryptoSheet ? "CRYPTO" : isWireSheet ? "WIRE" : "UNKNOWN",
-    reference: String(row["Hash Payment / Wire Reference"] || row["HASH PAYMENT / WIRE REFERENCE"] || "").trim(),
-    sheetName
+    paymentMethod: settlementCurrency
+      ? derivePaymentMethod(settlementCurrency)
+      : isCryptoSheet
+        ? "CRYPTO"
+        : isWireSheet
+          ? "WIRE"
+          : "UNKNOWN",
+    reference: String(
+      row["Hash Payment / Wire Reference"] ||
+        row["HASH PAYMENT / WIRE REFERENCE"] ||
+        "",
+    ).trim(),
+    sheetName,
   };
 };
 
@@ -138,7 +196,7 @@ const buildPaymentIdentityKey = ({
   sourceStartDate,
   sourceEndDate,
   sourceProcessingCurrency,
-  paymentCurrency
+  paymentCurrency,
 }) =>
   [
     settlementTransactionId,
@@ -146,23 +204,96 @@ const buildPaymentIdentityKey = ({
     normalizeDateTime(paidToMerchantDate),
     normalizeDateTime(sourceStartDate),
     normalizeDateTime(sourceEndDate),
-    String(sourceProcessingCurrency || "").trim().toUpperCase(),
-    String(paymentCurrency || "").trim().toUpperCase()
+    String(sourceProcessingCurrency || "")
+      .trim()
+      .toUpperCase(),
+    String(paymentCurrency || "")
+      .trim()
+      .toUpperCase(),
   ].join("|");
+
+const buildUnmatchedPaymentIdentityKey = ({
+  paymentBank,
+  merchantName,
+  paidToMerchantDate,
+  sourceMid,
+  sourceStartDate,
+  sourceEndDate,
+  sourceProcessingCurrency,
+  paymentCurrency,
+  amountPaid,
+  settlementAmount,
+}) =>
+  [
+    normalizeLabel(paymentBank),
+    normalizeMerchantKey(merchantName),
+    String(sourceMid || "").trim(),
+    normalizeDateTime(paidToMerchantDate),
+    normalizeDateTime(sourceStartDate),
+    normalizeDateTime(sourceEndDate),
+    String(sourceProcessingCurrency || "")
+      .trim()
+      .toUpperCase(),
+    String(paymentCurrency || "")
+      .trim()
+      .toUpperCase(),
+    roundMoney(amountPaid),
+    roundMoney(settlementAmount),
+  ].join("|");
+
+const getRowIdentityKey = (row) =>
+  row.rowIdentityKey ||
+  buildUnmatchedPaymentIdentityKey({
+    paymentBank: row.bank,
+    merchantName: row.merchantName,
+    paidToMerchantDate: row.paymentDate,
+    sourceMid: row.mid,
+    sourceStartDate: row.startDate,
+    sourceEndDate: row.endDate,
+    sourceProcessingCurrency: row.processingCurrency,
+    paymentCurrency: row.settlementCurrency,
+    amountPaid: row.amountPaid,
+    settlementAmount: row.settlementAmount,
+  });
 
 const scoreTransactionMatch = (transaction, row) => {
   let score = 0;
 
-  if (row.processingCurrency && transaction.processingCurrency === row.processingCurrency) {
+  if (
+    row.processingCurrency &&
+    transaction.processingCurrency === row.processingCurrency
+  ) {
     score += 100;
   }
 
-  if (row.settlementCurrency && transaction.settlementCurrency === row.settlementCurrency) {
-    score += 10;
+  if (
+    row.merchantName &&
+    transaction.sourceMerchantName &&
+    normalizeMerchantKey(transaction.sourceMerchantName) ===
+      normalizeMerchantKey(row.merchantName)
+  ) {
+    score += 75;
   }
 
-  const startDiff = row.startDate ? Math.abs(transaction.startDate.getTime() - row.startDate.getTime()) : 0;
-  const endDiff = row.endDate ? Math.abs(transaction.endDate.getTime() - row.endDate.getTime()) : 0;
+  if (row.processingAmount) {
+    const amountDiff = Math.abs(
+      roundMoney(transaction.processingAmount) -
+        roundMoney(row.processingAmount),
+    );
+
+    if (amountDiff === 0) {
+      score += 50;
+    } else {
+      score -= Math.min(50, Math.floor(amountDiff));
+    }
+  }
+
+  const startDiff = row.startDate
+    ? Math.abs(transaction.startDate.getTime() - row.startDate.getTime())
+    : 0;
+  const endDiff = row.endDate
+    ? Math.abs(transaction.endDate.getTime() - row.endDate.getTime())
+    : 0;
 
   score -= Math.floor(startDiff / (1000 * 60 * 60));
   score -= Math.floor(endDiff / (1000 * 60 * 60));
@@ -171,7 +302,9 @@ const scoreTransactionMatch = (transaction, row) => {
 };
 
 const buildBankAcquirerMap = async (rows) => {
-  const normalizedBanks = [...new Set(rows.map((row) => normalizeLabel(row.bank)).filter(Boolean))];
+  const normalizedBanks = [
+    ...new Set(rows.map((row) => normalizeLabel(row.bank)).filter(Boolean)),
+  ];
 
   if (!normalizedBanks.length) {
     return new Map();
@@ -185,7 +318,7 @@ const buildBankAcquirerMap = async (rows) => {
       normalizedBank,
       acquirers
         .filter((acquirer) => normalizeLabel(acquirer.name) === normalizedBank)
-        .map((acquirer) => acquirer._id.toString())
+        .map((acquirer) => acquirer._id.toString()),
     );
   }
 
@@ -199,40 +332,45 @@ const buildMerchantAccountLookup = async ({ rows, bankAcquirerMap }) => {
   if (!mids.length || !acquirerIds.length) {
     return {
       accountIdsByRowKey: new Map(),
-      allAccountIds: []
+      allAccountIds: [],
     };
   }
 
   const merchantAccounts = await MerchantAccount.find(
     {
       mid: { $in: mids },
-      acquirerId: { $in: acquirerIds }
+      acquirerId: { $in: acquirerIds },
     },
-    { _id: 1, mid: 1, acquirerId: 1 }
+    { _id: 1, mid: 1, acquirerId: 1 },
   ).lean();
 
   const accountsByMidAcquirer = new Map(
     merchantAccounts.map((account) => [
       `${account.mid}:${account.acquirerId.toString()}`,
-      account._id.toString()
-    ])
+      account._id.toString(),
+    ]),
   );
 
   const accountIdsByRowKey = new Map();
 
   for (const row of rows) {
-    const acquirerIdsForBank = bankAcquirerMap.get(normalizeLabel(row.bank)) || [];
+    const acquirerIdsForBank =
+      bankAcquirerMap.get(normalizeLabel(row.bank)) || [];
     accountIdsByRowKey.set(
       `${normalizeLabel(row.bank)}:${row.mid}`,
       acquirerIdsForBank
-        .map((acquirerId) => accountsByMidAcquirer.get(`${row.mid}:${acquirerId}`))
-        .filter(Boolean)
+        .map((acquirerId) =>
+          accountsByMidAcquirer.get(`${row.mid}:${acquirerId}`),
+        )
+        .filter(Boolean),
     );
   }
 
   return {
     accountIdsByRowKey,
-    allAccountIds: [...new Set(merchantAccounts.map((account) => account._id.toString()))]
+    allAccountIds: [
+      ...new Set(merchantAccounts.map((account) => account._id.toString())),
+    ],
   };
 };
 
@@ -247,7 +385,7 @@ const buildTransactionIndex = async ({ rows, batchId, allAccountIds }) => {
 
   const transactionQuery = {
     merchantAccountId: { $in: allAccountIds },
-    mid: { $in: mids }
+    mid: { $in: mids },
   };
 
   if (batchId) {
@@ -255,13 +393,18 @@ const buildTransactionIndex = async ({ rows, batchId, allAccountIds }) => {
   }
 
   if (parsedStartDates.length && parsedEndDates.length) {
-    const minStartDate = new Date(Math.min(...parsedStartDates.map((date) => date.getTime())));
-    const maxEndDate = new Date(Math.max(...parsedEndDates.map((date) => date.getTime())));
+    const minStartDate = new Date(
+      Math.min(...parsedStartDates.map((date) => date.getTime())),
+    );
+    const maxEndDate = new Date(
+      Math.max(...parsedEndDates.map((date) => date.getTime())),
+    );
     transactionQuery.startDate = { $lte: endOfDay(maxEndDate) };
     transactionQuery.endDate = { $gte: startOfDay(minStartDate) };
   }
 
-  const transactions = await SettlementTransaction.find(transactionQuery).lean();
+  const transactions =
+    await SettlementTransaction.find(transactionQuery).lean();
   const transactionsByMid = new Map();
 
   for (const transaction of transactions) {
@@ -274,14 +417,18 @@ const buildTransactionIndex = async ({ rows, batchId, allAccountIds }) => {
       ...transaction,
       _id: transaction._id.toString(),
       merchantAccountId: transaction.merchantAccountId.toString(),
-      batchId: transaction.batchId.toString()
+      batchId: transaction.batchId.toString(),
     });
   }
 
   return transactionsByMid;
 };
 
-const findMatchingSettlementTransaction = ({ row, candidateTransactions, candidateAccountIds }) => {
+const findMatchingSettlementTransaction = ({
+  row,
+  candidateTransactions,
+  candidateAccountIds,
+}) => {
   if (!candidateTransactions?.length || !candidateAccountIds?.length) {
     return null;
   }
@@ -291,15 +438,18 @@ const findMatchingSettlementTransaction = ({ row, candidateTransactions, candida
       return false;
     }
 
-    if (row.startDate && transaction.startDate.getTime() !== row.startDate.getTime()) {
+    if (row.startDate && !isSameMoment(transaction.startDate, row.startDate)) {
       return false;
     }
 
-    if (row.endDate && transaction.endDate.getTime() !== row.endDate.getTime()) {
+    if (row.endDate && !isSameMoment(transaction.endDate, row.endDate)) {
       return false;
     }
 
-    if (row.processingCurrency && transaction.processingCurrency !== row.processingCurrency) {
+    if (
+      row.processingCurrency &&
+      transaction.processingCurrency !== row.processingCurrency
+    ) {
       return false;
     }
 
@@ -307,51 +457,40 @@ const findMatchingSettlementTransaction = ({ row, candidateTransactions, candida
   });
 
   if (exactMatches.length) {
-    exactMatches.sort((left, right) => scoreTransactionMatch(right, row) - scoreTransactionMatch(left, row));
+    exactMatches.sort(
+      (left, right) =>
+        scoreTransactionMatch(right, row) - scoreTransactionMatch(left, row),
+    );
     return exactMatches[0];
   }
-
-  const overlapMatches = candidateTransactions.filter((transaction) => {
-    if (!candidateAccountIds.includes(transaction.merchantAccountId)) {
-      return false;
-    }
-
-    if (row.processingCurrency && transaction.processingCurrency !== row.processingCurrency) {
-      return false;
-    }
-
-    if (row.startDate && transaction.endDate.getTime() < startOfDay(row.startDate).getTime()) {
-      return false;
-    }
-
-    if (row.endDate && transaction.startDate.getTime() > endOfDay(row.endDate).getTime()) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!overlapMatches.length) {
-    return null;
-  }
-
-  overlapMatches.sort((left, right) => scoreTransactionMatch(right, row) - scoreTransactionMatch(left, row));
-  return overlapMatches[0];
+  return null;
 };
 
-export const processPaymentUpload = async ({
+const toSkippedRowPayload = ({ row, reason }) => ({
+  reason,
+  sheetName: row.sheetName,
+  bank: row.bank,
+  merchantName: row.merchantName,
+  mid: row.mid,
+  processingCurrency: row.processingCurrency,
+  settlementCurrency: row.settlementCurrency,
+  startDate: row.startDate,
+  endDate: row.endDate,
+  amountPaid: roundMoney(row.amountPaid),
+  settlementAmount: roundMoney(row.settlementAmount),
+});
+
+const normalizePaymentUploadRows = ({
   fileBuffer,
-  batchId,
-  userId,
   paymentDate,
-  originalFilename
+  originalFilename,
 }) => {
   const workbookSheets = parseWorkbookSheets(fileBuffer);
-  const rows = workbookSheets.flatMap(({ sheetName, rows: sheetRows }) => {
+  return workbookSheets.flatMap(({ sheetName, rows: sheetRows }) => {
     const inferredPaymentDate = inferPaymentDate({
       explicitPaymentDate: paymentDate,
       originalFilename,
-      sheetName
+      sheetName,
     });
 
     return sheetRows
@@ -362,23 +501,22 @@ export const processPaymentUpload = async ({
           row.settlementCurrency &&
           row.amountPaid !== 0 &&
           row.startDate &&
-          row.endDate
+          row.endDate,
       );
   });
+};
 
-  if (!rows.length) {
-    throw new ApiError(400, "No valid payment rows found");
-  }
-
+const matchRowsToTransactions = async ({ rows, batchId }) => {
   const bankAcquirerMap = await buildBankAcquirerMap(rows);
-  const { accountIdsByRowKey, allAccountIds } = await buildMerchantAccountLookup({
-    rows,
-    bankAcquirerMap
-  });
+  const { accountIdsByRowKey, allAccountIds } =
+    await buildMerchantAccountLookup({
+      rows,
+      bankAcquirerMap,
+    });
   const transactionsByMid = await buildTransactionIndex({
     rows,
     batchId,
-    allAccountIds
+    allAccountIds,
   });
 
   const skippedRows = [];
@@ -390,22 +528,13 @@ export const processPaymentUpload = async ({
     const transaction = findMatchingSettlementTransaction({
       row,
       candidateTransactions: transactionsByMid.get(row.mid) || [],
-      candidateAccountIds
+      candidateAccountIds,
     });
 
     if (!transaction) {
       skippedRows.push({
         reason: "settlement_transaction_not_found",
-        sheetName: row.sheetName,
-        bank: row.bank,
-        merchantName: row.merchantName,
-        mid: row.mid,
-        processingCurrency: row.processingCurrency,
-        settlementCurrency: row.settlementCurrency,
-        startDate: row.startDate,
-        endDate: row.endDate,
-        amountPaid: roundMoney(row.amountPaid),
-        settlementAmount: roundMoney(row.settlementAmount)
+        row,
       });
       continue;
     }
@@ -413,16 +542,82 @@ export const processPaymentUpload = async ({
     matchedRows.push({ row, transaction });
   }
 
-  const touchedTransactionIds = [...new Set(matchedRows.map(({ transaction }) => transaction._id))];
-  const existingPayments = touchedTransactionIds.length
-    ? await Payment.find(
-        {
-          settlementTransactionId: {
-            $in: touchedTransactionIds.map((id) => new mongoose.Types.ObjectId(id))
-          }
-        }
-      ).lean()
-    : [];
+  return { matchedRows, skippedRows };
+};
+
+const updateTouchedBatches = async (transactionUpdates) => {
+  const touchedBatchIds = [
+    ...new Set(transactionUpdates.map((transaction) => transaction.batchId)),
+  ];
+
+  if (!touchedBatchIds.length) {
+    return 0;
+  }
+
+  const batchTotals = await SettlementTransaction.aggregate([
+    {
+      $match: {
+        batchId: {
+          $in: touchedBatchIds.map(
+            (batch) => new mongoose.Types.ObjectId(batch),
+          ),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$batchId",
+        totalPayable: { $sum: "$payable" },
+        totalPaid: { $sum: "$paid" },
+        totalBalance: { $sum: "$balance" },
+      },
+    },
+  ]);
+
+  if (batchTotals.length) {
+    await SettlementBatch.bulkWrite(
+      batchTotals.map((batch) => {
+        const totalPayable = roundMoney(batch.totalPayable);
+        const totalPaid = roundMoney(batch.totalPaid);
+        const totalBalance = roundMoney(batch.totalBalance);
+
+        return {
+          updateOne: {
+            filter: { _id: batch._id },
+            update: {
+              $set: {
+                totalPayable,
+                totalPaid,
+                totalBalance,
+                status: deriveBatchStatus({ totalPaid, totalBalance }),
+              },
+            },
+          },
+        };
+      }),
+    );
+  }
+
+  return touchedBatchIds.length;
+};
+
+const persistMatchedRows = async ({ matchedRows, userId }) => {
+  if (!matchedRows.length) {
+    return {
+      createdPayments: 0,
+      updatedBatches: 0,
+      reconciledCount: 0,
+    };
+  }
+
+  const touchedTransactionIds = [
+    ...new Set(matchedRows.map(({ transaction }) => transaction._id)),
+  ];
+  const existingPayments = await Payment.find({
+    settlementTransactionId: {
+      $in: touchedTransactionIds.map((id) => new mongoose.Types.ObjectId(id)),
+    },
+  }).lean();
 
   const existingPaymentMap = new Map();
   for (const payment of existingPayments) {
@@ -434,28 +629,31 @@ export const processPaymentUpload = async ({
         sourceStartDate: payment.sourceStartDate,
         sourceEndDate: payment.sourceEndDate,
         sourceProcessingCurrency: payment.sourceProcessingCurrency,
-        paymentCurrency: payment.paymentCurrency
+        paymentCurrency: payment.paymentCurrency,
       }),
       {
         ...payment,
         _id: payment._id.toString(),
-        settlementTransactionId: payment.settlementTransactionId.toString()
-      }
+        settlementTransactionId: payment.settlementTransactionId.toString(),
+      },
     );
   }
 
   const paymentDocs = [];
   const paymentUpdates = [];
   const transactionStateMap = new Map();
+  const unmatchedResolutionUpdates = [];
+  const now = new Date();
 
   for (const { row, transaction } of matchedRows) {
     const paymentDateValue = row.paymentDate || new Date();
     const normalizedAmountPaid = roundMoney(row.amountPaid);
+    const normalizedSettlementAmount = roundMoney(row.settlementAmount);
     const paymentDoc = {
       settlementTransactionId: transaction._id,
       merchantAccountId: transaction.merchantAccountId,
       amountPaid: normalizedAmountPaid,
-      settlementAmount: roundMoney(row.settlementAmount),
+      settlementAmount: normalizedSettlementAmount,
       paymentCurrency: row.settlementCurrency,
       paymentMethod: row.paymentMethod,
       paymentDate: paymentDateValue,
@@ -468,7 +666,7 @@ export const processPaymentUpload = async ({
       sourceProcessingCurrency: row.processingCurrency,
       hashPayment: row.paymentMethod === "CRYPTO" ? row.reference : "",
       referenceNo: row.paymentMethod === "WIRE" ? row.reference : "",
-      createdBy: userId
+      createdBy: userId,
     };
 
     const paymentIdentityKey = buildPaymentIdentityKey({
@@ -478,10 +676,12 @@ export const processPaymentUpload = async ({
       sourceStartDate: row.startDate,
       sourceEndDate: row.endDate,
       sourceProcessingCurrency: row.processingCurrency,
-      paymentCurrency: row.settlementCurrency
+      paymentCurrency: row.settlementCurrency,
     });
     const existingPayment = existingPaymentMap.get(paymentIdentityKey);
-    const previousAmount = existingPayment ? roundMoney(existingPayment.amountPaid) : 0;
+    const previousAmount = existingPayment
+      ? roundMoney(existingPayment.amountPaid)
+      : 0;
     const paymentDelta = roundMoney(normalizedAmountPaid - previousAmount);
 
     const transactionId = transaction._id;
@@ -491,14 +691,16 @@ export const processPaymentUpload = async ({
       merchantAccountId: transaction.merchantAccountId,
       payable: transaction.payable,
       paid: roundMoney(transaction.paid),
-      balance: roundMoney(transaction.balance)
+      balance: roundMoney(transaction.balance),
     };
 
     transactionState.paid = roundMoney(transactionState.paid + paymentDelta);
-    transactionState.balance = roundMoney(transactionState.payable - transactionState.paid);
+    transactionState.balance = roundMoney(
+      transactionState.payable - transactionState.paid,
+    );
     transactionState.status = deriveSettlementStatus({
       payable: transactionState.payable,
-      paid: transactionState.paid
+      paid: transactionState.paid,
     });
 
     transactionStateMap.set(transactionId, transactionState);
@@ -507,12 +709,36 @@ export const processPaymentUpload = async ({
       paymentUpdates.push({
         updateOne: {
           filter: { _id: existingPayment._id },
-          update: { $set: paymentDoc }
-        }
+          update: { $set: paymentDoc },
+        },
       });
     } else {
       paymentDocs.push(paymentDoc);
     }
+
+    unmatchedResolutionUpdates.push({
+      updateOne: {
+        filter: row.unmatchedPaymentId
+          ? { _id: row.unmatchedPaymentId }
+          : { rowIdentityKey: getRowIdentityKey(row) },
+        update: {
+          $set: {
+            status: "reconciled",
+            failureReason: "",
+            settlementTransactionId: new mongoose.Types.ObjectId(
+              transaction._id,
+            ),
+            merchantAccountId: new mongoose.Types.ObjectId(
+              transaction.merchantAccountId,
+            ),
+            reconciledAt: now,
+            lastReconciledAt: now,
+            reconciledBy: userId,
+          },
+          ...(row.unmatchedPaymentId ? { $inc: { retryCount: 1 } } : {}),
+        },
+      },
+    });
   }
 
   if (paymentDocs.length) {
@@ -533,62 +759,233 @@ export const processPaymentUpload = async ({
             $set: {
               paid: transaction.paid,
               balance: transaction.balance,
-              status: transaction.status
-            }
-          }
-        }
-      }))
+              status: transaction.status,
+            },
+          },
+        },
+      })),
     );
   }
 
-  const touchedBatchIds = [...new Set(transactionUpdates.map((transaction) => transaction.batchId))];
-
-  if (touchedBatchIds.length) {
-    const batchTotals = await SettlementTransaction.aggregate([
-      {
-        $match: {
-          batchId: { $in: touchedBatchIds.map((batch) => new mongoose.Types.ObjectId(batch)) }
-        }
-      },
-      {
-        $group: {
-          _id: "$batchId",
-          totalPayable: { $sum: "$payable" },
-          totalPaid: { $sum: "$paid" },
-          totalBalance: { $sum: "$balance" }
-        }
-      }
-    ]);
-
-    if (batchTotals.length) {
-      await SettlementBatch.bulkWrite(
-        batchTotals.map((batch) => {
-          const totalPayable = roundMoney(batch.totalPayable);
-          const totalPaid = roundMoney(batch.totalPaid);
-          const totalBalance = roundMoney(batch.totalBalance);
-
-          return {
-            updateOne: {
-              filter: { _id: batch._id },
-              update: {
-                $set: {
-                  totalPayable,
-                  totalPaid,
-                  totalBalance,
-                  status: deriveBatchStatus({ totalPaid, totalBalance })
-                }
-              }
-            }
-          };
-        })
-      );
-    }
+  if (unmatchedResolutionUpdates.length) {
+    await UnmatchedPayment.bulkWrite(unmatchedResolutionUpdates);
   }
+
+  const updatedBatches = await updateTouchedBatches(transactionUpdates);
 
   return {
     createdPayments: paymentDocs.length + paymentUpdates.length,
-    updatedBatches: touchedBatchIds.length,
+    updatedBatches,
+    reconciledCount: matchedRows.length,
+  };
+};
+
+const storeUnmatchedRows = async ({
+  skippedRows,
+  userId,
+  originalFilename,
+}) => {
+  if (!skippedRows.length) {
+    return {
+      storedCount: 0,
+      pendingCount: await UnmatchedPayment.countDocuments({
+        status: "pending_reconciliation",
+      }),
+    };
+  }
+
+  const operations = skippedRows.map(({ row, reason }) => ({
+    updateOne: {
+      filter: { rowIdentityKey: getRowIdentityKey(row) },
+      update: {
+        $set: {
+          status: "pending_reconciliation",
+          failureReason: reason,
+          paymentBank: row.bank,
+          merchantName: row.merchantName,
+          sourceMid: row.mid,
+          sourceStartDate: row.startDate,
+          sourceEndDate: row.endDate,
+          sourceProcessingCurrency: row.processingCurrency,
+          amountPaid: roundMoney(row.amountPaid),
+          settlementAmount: roundMoney(row.settlementAmount),
+          paymentCurrency: row.settlementCurrency,
+          paymentMethod: row.paymentMethod,
+          paymentDate: row.paymentDate,
+          paidToMerchantDate: row.paymentDate,
+          paymentRate: roundMoney(row.rate),
+          sheetName: row.sheetName,
+          originalFilename,
+          reference: row.reference,
+          settlementTransactionId: null,
+          merchantAccountId: null,
+          reconciledAt: null,
+          reconciledBy: null,
+        },
+        $setOnInsert: {
+          createdBy: userId,
+        },
+      },
+      upsert: true,
+    },
+  }));
+
+  await UnmatchedPayment.bulkWrite(operations);
+
+  return {
+    storedCount: skippedRows.length,
+    pendingCount: await UnmatchedPayment.countDocuments({
+      status: "pending_reconciliation",
+    }),
+  };
+};
+
+const buildUnmatchedSummary = async () => {
+  const [pendingCount, manualReviewCount, recentRows] = await Promise.all([
+    UnmatchedPayment.countDocuments({ status: "pending_reconciliation" }),
+    UnmatchedPayment.countDocuments({ status: "manual_review" }),
+    UnmatchedPayment.find({ status: "pending_reconciliation" })
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean(),
+  ]);
+
+  return {
+    pendingCount,
+    manualReviewCount,
+    recentRows: recentRows.map((row) => ({
+      id: row._id,
+      paymentBank: row.paymentBank,
+      merchantName: row.merchantName,
+      sourceMid: row.sourceMid,
+      sourceStartDate: row.sourceStartDate,
+      sourceEndDate: row.sourceEndDate,
+      sourceProcessingCurrency: row.sourceProcessingCurrency,
+      amountPaid: row.amountPaid,
+      settlementAmount: row.settlementAmount,
+      paymentCurrency: row.paymentCurrency,
+      originalFilename: row.originalFilename,
+      failureReason: row.failureReason,
+      retryCount: row.retryCount,
+      createdAt: row.createdAt,
+    })),
+  };
+};
+
+export const processPaymentUpload = async ({
+  fileBuffer,
+  batchId,
+  userId,
+  paymentDate,
+  originalFilename,
+}) => {
+  const rows = normalizePaymentUploadRows({
+    fileBuffer,
+    paymentDate,
+    originalFilename,
+  });
+
+  if (!rows.length) {
+    throw new ApiError(400, "No valid payment rows found");
+  }
+
+  const { matchedRows, skippedRows } = await matchRowsToTransactions({
+    rows,
+    batchId,
+  });
+  const matchedResult = await persistMatchedRows({ matchedRows, userId });
+  const unmatchedResult = await storeUnmatchedRows({
+    skippedRows,
+    userId,
+    originalFilename,
+  });
+
+  return {
+    createdPayments: matchedResult.createdPayments,
+    updatedBatches: matchedResult.updatedBatches,
     skippedCount: skippedRows.length,
-    skippedRows
+    skippedRows: skippedRows.map(toSkippedRowPayload),
+    storedUnmatchedCount: unmatchedResult.storedCount,
+    pendingUnmatchedCount: unmatchedResult.pendingCount,
+  };
+};
+
+export const getUnmatchedPaymentSummary = async () => buildUnmatchedSummary();
+
+export const reconcileUnmatchedPayments = async ({ userId, batchId }) => {
+  const pendingRows = await UnmatchedPayment.find({
+    status: "pending_reconciliation",
+  })
+    .sort({ createdAt: 1, _id: 1 })
+    .lean();
+
+  if (!pendingRows.length) {
+    return {
+      processedCount: 0,
+      reconciledCount: 0,
+      remainingCount: 0,
+      updatedBatches: 0,
+      skippedRows: [],
+      summary: await buildUnmatchedSummary(),
+    };
+  }
+
+  const rows = pendingRows.map((row) => ({
+    unmatchedPaymentId: row._id,
+    rowIdentityKey: row.rowIdentityKey,
+    bank: row.paymentBank,
+    merchantName: row.merchantName,
+    mid: row.sourceMid,
+    startDate: row.sourceStartDate,
+    endDate: row.sourceEndDate,
+    processingCurrency: row.sourceProcessingCurrency,
+    processingAmount: row.amountPaid,
+    rate: row.paymentRate,
+    settlementCurrency: row.paymentCurrency,
+    amountPaid: row.amountPaid,
+    settlementAmount: row.settlementAmount,
+    paymentDate: row.paymentDate || row.paidToMerchantDate,
+    paymentMethod: row.paymentMethod,
+    reference: row.reference,
+    sheetName: row.sheetName,
+  }));
+
+  const { matchedRows, skippedRows } = await matchRowsToTransactions({
+    rows,
+    batchId,
+  });
+  const matchedResult = await persistMatchedRows({ matchedRows, userId });
+  const now = new Date();
+
+  const stillPendingUpdates = skippedRows
+    .filter(({ row }) => row.unmatchedPaymentId)
+    .map(({ row, reason }) => ({
+      updateOne: {
+        filter: { _id: row.unmatchedPaymentId },
+        update: {
+          $set: {
+            status: "pending_reconciliation",
+            failureReason: reason,
+            lastReconciledAt: now,
+          },
+          $inc: { retryCount: 1 },
+        },
+      },
+    }));
+
+  if (stillPendingUpdates.length) {
+    await UnmatchedPayment.bulkWrite(stillPendingUpdates);
+  }
+
+  const summary = await buildUnmatchedSummary();
+
+  return {
+    processedCount: pendingRows.length,
+    reconciledCount: matchedResult.reconciledCount,
+    remainingCount: summary.pendingCount,
+    updatedBatches: matchedResult.updatedBatches,
+    skippedCount: skippedRows.length,
+    skippedRows: skippedRows.map(toSkippedRowPayload),
+    summary,
   };
 };

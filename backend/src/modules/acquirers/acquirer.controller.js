@@ -11,6 +11,13 @@ export const createAcquirer = async (req, res) => {
   res.status(201).json({ success: true, data: acquirer });
 };
 
+export const getAcquirer = async (req, res) => {
+  const acquirer = await Acquirer.findById(req.params.id).lean();
+  if (!acquirer) throw new ApiError(404, "Acquirer not found");
+
+  res.json({ success: true, data: acquirer });
+};
+
 export const updateAcquirer = async (req, res) => {
   const acquirer = await Acquirer.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
@@ -18,4 +25,14 @@ export const updateAcquirer = async (req, res) => {
   });
   if (!acquirer) throw new ApiError(404, "Acquirer not found");
   res.json({ success: true, data: acquirer });
+};
+
+export const deleteAcquirer = async (req, res) => {
+  const acquirer = await Acquirer.findByIdAndDelete(req.params.id);
+  if (!acquirer) throw new ApiError(404, "Acquirer not found");
+
+  res.json({
+    success: true,
+    message: "Acquirer deleted successfully"
+  });
 };
