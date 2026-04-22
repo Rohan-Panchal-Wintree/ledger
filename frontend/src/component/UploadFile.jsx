@@ -1,5 +1,6 @@
 import React from "react";
 import { UploadCloud, FileText, X, Bolt, Activity, Upload } from "lucide-react";
+import Spinner from "./UI/Spinner.jsx";
 
 export default function UploadFile({
   mode = "empty",
@@ -59,7 +60,7 @@ export default function UploadFile({
                 Drop one or more XLSX files here
               </p>
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                Max file size: 25MB
+                Max file size: 50MB
               </p>
             </div>
           </div>
@@ -101,7 +102,11 @@ export default function UploadFile({
               className="flex items-center gap-2 rounded-full bg-linear-to-br from-primary to-primary-container px-8 py-4 text-sm font-bold tracking-wide text-white transition"
             >
               <Upload className="h-4 w-4" />
-              {isProcessing ? "UPLOADING..." : "UPLOAD DATA"}
+              {isProcessing ? (
+                <Spinner type="md" color="white" />
+              ) : (
+                "UPLOAD DATA"
+              )}
             </button>
 
             <button
@@ -247,10 +252,6 @@ export default function UploadFile({
                     )}
                   </span>
                 </div>
-              </div>
-
-              <div className="absolute -bottom-4 -right-4 opacity-10">
-                <Activity className="h-24 w-24 text-white" />
               </div>
             </div>
           </div>

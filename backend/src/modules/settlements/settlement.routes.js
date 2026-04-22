@@ -16,11 +16,11 @@ router.post(
   roleMiddleware(["admin", "settlement"]),
   uploadMiddleware.fields([
     { name: "file", maxCount: 1 },
-    { name: "files", maxCount: 30 }
+    { name: "files", maxCount: 50 },
   ]),
   validateRequest(uploadWiresheetSchema),
   auditLogMiddleware("SETTLEMENT_WIRESHEET_UPLOAD"),
-  asyncHandler(uploadWiresheet)
+  asyncHandler(uploadWiresheet),
 );
 
 export default router;

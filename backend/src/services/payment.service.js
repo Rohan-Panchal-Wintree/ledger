@@ -846,7 +846,6 @@ const buildUnmatchedSummary = async () => {
     UnmatchedPayment.countDocuments({ status: "manual_review" }),
     UnmatchedPayment.find({ status: "pending_reconciliation" })
       .sort({ createdAt: -1 })
-      .limit(8)
       .lean(),
   ]);
 

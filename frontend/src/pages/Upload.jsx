@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import {
   FileUp,
@@ -6,6 +6,8 @@ import {
   Download,
   X,
   ArrowRightLeft,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { unstable_usePrompt, useBeforeUnload } from "react-router-dom";
@@ -16,6 +18,7 @@ import {
   selectPaymentsFullState,
   uploadFiles,
 } from "../store/slices/Payments.slice";
+import toast from "react-hot-toast";
 
 const wireSheetRows = [
   {
@@ -628,11 +631,14 @@ function getActivePaymentSheet(fileItem) {
 
 export default function Upload() {
   const dispatch = useDispatch();
-  const [activeTab, setActiveTab] = React.useState("wire");
-  const [tabState, setTabState] = React.useState({
+  const [activeTab, setActiveTab] = useState("wire");
+  const [tabState, setTabState] = useState({
     wire: { ...initialTabState },
     payment: { ...initialTabState },
   });
+  const [isReconciliationExpanded, setIsReconciliationExpanded] =
+    useState(false);
+
   const {
     loading: isUploading,
     unmatchedSummary,
@@ -894,9 +900,12 @@ export default function Upload() {
         pendingCount > 0
           ? `Files uploaded successfully. ${pendingCount} unmatched payment row(s) are waiting for reconciliation.`
           : "Files uploaded successfully.";
-      alert(uploadMessage);
+      // alert(uploadMessage);
+      toast.success(uploadMessage);
     } catch (error) {
-      alert(error || "Unable to upload the selected files.");
+      // alert(error || "Unable to upload the selected files.");
+      console.error(error);
+      toast.error("Unable to upload the selected files.");
     }
   };
 
@@ -976,85 +985,211 @@ export default function Upload() {
         </button>
       </div>
 
+      {/* Reconciliation */}
       {(unmatchedSummaryLoading || unmatchedSummary?.pendingCount > 0) && (
-        <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-700">
-                Pending Reconciliation Queue
-              </p>
-              <h2 className="mt-2 text-xl font-bold text-amber-950">
-                {unmatchedSummaryLoading
-                  ? "Checking unmatched payment rows..."
-                  : `${unmatchedSummary?.pendingCount || 0} payment row(s) waiting for missing wiresheet match`}
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900/80">
-                When a payment row was uploaded before its matching wiresheet
-                existed, we now keep it here. Upload the missing wiresheet, then
-                click reconcile to auto-match the saved row without uploading
-                the payment sheet again.
-              </p>
-            </div>
+        <section className="mb-6 overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest">
+          <div className="px-6 py-6 md:px-8">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary/8 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  Reconciliation Queue
+                </div>
 
-            <button
-              type="button"
-              onClick={handleReconcileUnmatched}
-              disabled={
-                isUploading ||
-                unmatchedSummaryLoading ||
-                !unmatchedSummary?.pendingCount
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <ArrowRightLeft className="h-4 w-4" />
-              Reconcile Unmatched
-            </button>
+                <h2 className="mt-4 text-xl font-bold tracking-tight text-on-surface">
+                  {unmatchedSummaryLoading
+                    ? "Checking unmatched payment rows..."
+                    : `${unmatchedSummary?.pendingCount || 0} pending row(s) need reconciliation`}
+                </h2>
+
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
+                  Some payment rows were uploaded before their matching
+                  wiresheet records existed. Upload the missing wiresheet, then
+                  reconcile the pending rows from here.
+                </p>
+
+                {!unmatchedSummaryLoading &&
+                  unmatchedSummary?.recentRows?.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {unmatchedSummary.recentRows.slice(0, 3).map((row) => (
+                        <div
+                          key={row.id}
+                          className="rounded-full bg-surface-container-low px-3 py-2 text-xs font-medium text-on-surface"
+                        >
+                          <span className="font-bold">
+                            {row.merchantName || "-"}
+                          </span>
+                          <span className="text-on-surface-variant">
+                            {" "}
+                            · {row.paymentBank || "Unknown Bank"}
+                          </span>
+                        </div>
+                      ))}
+
+                      {unmatchedSummary.recentRows.length > 3 && (
+                        <div className="rounded-full bg-surface-container-low px-3 py-2 text-xs font-medium text-on-surface-variant">
+                          +{unmatchedSummary.recentRows.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  )}
+              </div>
+
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-65">
+                <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                    Pending Rows
+                  </p>
+                  <p className="mt-1 text-3xl font-extrabold tracking-tight text-on-surface">
+                    {unmatchedSummaryLoading
+                      ? "..."
+                      : unmatchedSummary?.pendingCount || 0}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setIsReconciliationExpanded((prev) => !prev)}
+                    disabled={
+                      unmatchedSummaryLoading || !unmatchedSummary?.pendingCount
+                    }
+                    className="btn flex-1 rounded-full border border-outline-variant/15 bg-surface-container-low text-on-surface hover:bg-surface-container disabled:bg-surface-container disabled:text-on-surface-variant"
+                  >
+                    {isReconciliationExpanded ? (
+                      <span className="flex items-center gap-x-1.5">
+                        <ChevronUp /> Hide
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-x-1.5">
+                        <ChevronDown /> Expand
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleReconcileUnmatched}
+                    disabled={
+                      isUploading ||
+                      unmatchedSummaryLoading ||
+                      !unmatchedSummary?.pendingCount
+                    }
+                    className="btn flex-1 rounded-full border-none bg-primary text-primary-content hover:bg-primary disabled:bg-surface-container disabled:text-on-surface-variant"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Reconcile
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {!unmatchedSummaryLoading &&
+          {isReconciliationExpanded &&
+            !unmatchedSummaryLoading &&
             unmatchedSummary?.recentRows?.length > 0 && (
-              <div className="mt-5 grid gap-3 xl:grid-cols-2">
-                {unmatchedSummary.recentRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="rounded-2xl border border-amber-200/70 bg-white/70 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">
-                          {row.merchantName || "-"}
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-widest text-slate-500">
-                          {row.paymentBank || "Unknown Bank"} • MID{" "}
-                          {row.sourceMid || "-"}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700 ring-1 ring-red-200">
-                        {row.amountPaid}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                      <span className="rounded-full bg-slate-100 px-3 py-1">
-                        {formatPreviewDate(row.sourceStartDate)} to{" "}
-                        {formatPreviewDate(row.sourceEndDate)}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1">
-                        {row.sourceProcessingCurrency || "-"} to{" "}
-                        {row.paymentCurrency || "-"}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1">
-                        Retry {row.retryCount || 0}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-xs leading-5 text-slate-600">
-                      {row.failureReason || "Settlement transaction not found"}{" "}
-                      • Source file:{" "}
-                      <span className="font-semibold text-slate-800">
-                        {row.originalFilename || "-"}
-                      </span>
-                    </p>
+              <div className="border-t border-outline-variant/10 px-6 py-6 md:px-8">
+                <div className="mb-4">
+                  <h3 className="text-base font-bold text-on-surface">
+                    Pending reconciliation rows
+                  </h3>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    Review all pending rows below and reconcile them once the
+                    matching wiresheet data is available.
+                  </p>
+                </div>
+
+                <div className="overflow-hidden rounded-3xl border border-outline-variant/10 bg-surface-container-low">
+                  <div className="max-h-105 overflow-auto scrollbar-hide">
+                    <table className="min-w-full border-collapse text-left">
+                      <thead className="sticky top-0 z-10 bg-surface-container">
+                        <tr>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Merchant
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Bank
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            MID
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Start Date
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            End Date
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Source Currency
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Payment Currency
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Amount Paid
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Retry
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Source File
+                          </th>
+                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                            Reason
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-outline-variant/10">
+                        {unmatchedSummary.recentRows.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="transition-colors hover:bg-surface-container-lowest"
+                          >
+                            <td className="whitespace-nowrap px-6 py-4 font-semibold text-on-surface">
+                              {row.merchantName || "-"}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
+                              {row.paymentBank || "Unknown Bank"}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
+                              {row.sourceMid || "-"}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
+                              {formatPreviewDate(row.sourceStartDate)}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
+                              {formatPreviewDate(row.sourceEndDate)}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
+                                {row.sourceProcessingCurrency || "-"}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-[11px] font-bold text-on-surface">
+                                {row.paymentCurrency || "-"}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 font-bold text-error">
+                              {row.amountPaid || "-"}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-on-surface">
+                              {row.retryCount || 0}
+                            </td>
+                            <td className="max-w-55 truncate px-6 py-4 text-on-surface-variant">
+                              {row.originalFilename || "-"}
+                            </td>
+                            <td className="min-w-65 px-6 py-4 text-on-surface-variant">
+                              {row.failureReason ||
+                                "Settlement transaction not found"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
+                </div>
               </div>
             )}
         </section>
@@ -1168,7 +1303,7 @@ export default function Upload() {
             )}
           </div>
 
-          <button
+          {/* <button
             type="button"
             className={`flex items-center gap-2 ${
               currentTab.files.length > 0
@@ -1180,7 +1315,7 @@ export default function Upload() {
             {currentTab.files.length > 0
               ? "DOWNLOAD TEMPLATE"
               : "Sample Template"}
-          </button>
+          </button> */}
         </div>
 
         <div className="overflow-hidden rounded-lg   border border-outline-variant/10 bg-surface-container-lowest">

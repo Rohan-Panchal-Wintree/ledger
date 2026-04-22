@@ -38,7 +38,7 @@ function Sidebar({ children, className = "", ...props }) {
     <aside
       className={cn(
         "h-full shrink-0 border-r border-outline-variant/20 bg-surface-container-lowest text-on-surface transition-all duration-300 ease-in-out",
-        open ? "w-56 md:w-64" : "w-[72px]",
+        open ? "w-56 md:w-64" : "w-18",
         className,
       )}
       {...props}
