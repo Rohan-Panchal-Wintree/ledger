@@ -31,7 +31,7 @@ router.post(
 	middlewares.roleMiddleware(["admin", "finance"]),
 	middlewares.uploadMiddleware.fields([
 		{ name: "file", maxCount: 1 },
-		{ name: "files", maxCount: 30 },
+		{ name: "files", maxCount: 10 },
 	]),
 	validateRequest(uploadPaymentSchema),
 	asyncHandler(uploadPayments),

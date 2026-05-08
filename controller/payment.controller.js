@@ -14,14 +14,18 @@ import {
 	roundMoney,
 } from "../utils/currencyUtils.js";
 
-import { parseSheetDate, startOfDay, endOfDay } from "../utils/dateUtils.js";
+import {
+	parseSheetDate,
+	startOfDay,
+	endOfDay,
+	parseFlexibleSheetDate,
+} from "../utils/dateUtils.js";
 import {
 	canonicalizeBankName,
 	isSameBankName,
 } from "../utils/bankNameUtils.js";
 
-const MATCH_TIME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
-
+// converts excel amount to numbers
 const parseSheetNumber = (value) => {
 	if (value === null || value === undefined) return 0;
 
@@ -43,17 +47,47 @@ const parseSheetNumber = (value) => {
 	return Number.isFinite(parsed) ? parsed : 0;
 };
 
+// Missing field checker from payment rows if date not present then
+const getMissingFields = (row) => {
+	const missing = [];
+
+	if (!row.bank) missing.push("BANK");
+	if (!row.merchantName) missing.push("MERCHANT NAME");
+	if (!row.mid) missing.push("MID / MID NO");
+	if (!row.startDate) missing.push("START DATE / FIRST DATE");
+	if (!row.endDate) missing.push("END DATE");
+	if (!row.processingCurrency) missing.push("PROCESSING CURRENCY / CURRENCY");
+	if (row.amountPaid === 0) missing.push("AMOUNT");
+
+	return missing;
+};
+
+// //This cleans text.
+
+// Example:
+
+// " merchant   name " → "MERCHANT NAME"
 const normalizeText = (value) =>
 	String(value || "")
 		.replace(/\s+/g, " ")
 		.trim()
 		.toUpperCase();
 
+// Example:
+
+// " merchant   name " → "MERCHANT NAME"
 const normalizeMerchantName = (value) =>
 	String(value || "")
 		.replace(/\s+/g, " ")
 		.trim()
 		.toUpperCase();
+
+// This currently requires exact merchant match after cleaning.
+
+// Example:
+
+// Cyberpay2 == cyberpay2 ✅
+// Cyberpay2 != Cyberpay 2 ❌
 
 const isMerchantMatch = (left, right) => {
 	const a = normalizeMerchantName(left);
@@ -62,23 +96,40 @@ const isMerchantMatch = (left, right) => {
 	return a === b;
 };
 
+// This normalizes Excel column names.
+
+// Example:
+
+// " merchant name " → "MERCHANT NAME"
+// " Start Date " → "START DATE"
 const normalizeHeader = (key) =>
 	String(key || "")
 		.replace(/\s+/g, " ")
 		.trim()
 		.toUpperCase();
 
+//This turns dates into stable strings for duplicate keys.
 const normalizeDateTime = (date) => {
 	if (!date) return "";
 	return new Date(date).toISOString();
 };
 
+// This checks exact date/time equality.
+
+// Important: this is strict. Your wiresheet date like:
+
+// 2026-04-03T03:30:00
+
+// must exactly equal payment date. That may cause unmatched rows.
 const isSameMoment = (left, right) => {
 	if (!left || !right) return false;
 
 	return new Date(left).getTime() === new Date(right).getTime();
 };
 
+// This tries to read date from filename.
+// Example:
+// 02.04 Payments.xlsx → 02.04
 const extractPaymentDateFromFileName = (fileName = "") => {
 	const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
 
@@ -103,6 +154,12 @@ const extractPaymentDateFromFileName = (fileName = "") => {
 	return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 };
 
+// This makes label like:
+
+// 02.04
+// 14.04
+
+// Used for reporting/display.
 const formatPaymentSheetDateLabel = (date) => {
 	if (!date) return "";
 
@@ -115,6 +172,14 @@ const formatPaymentSheetDateLabel = (date) => {
 	).padStart(2, "0")}`;
 };
 
+// Example:
+
+// getValue(row, ["MID", "MID NO"])
+
+// Means:
+
+// Use MID if exists, otherwise MID NO
+
 const getValue = (row, keys) => {
 	for (const key of keys) {
 		if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
@@ -125,6 +190,7 @@ const getValue = (row, keys) => {
 	return "";
 };
 
+// Excel parsing
 const parseWorkbookSheets = (buffer) => {
 	const workbook = xlsx.read(buffer, {
 		type: "buffer",
@@ -139,12 +205,14 @@ const parseWorkbookSheets = (buffer) => {
 
 		return {
 			sheetName,
-			rows: rows.map((row) => {
+			rows: rows.map((row, index) => {
 				const normalizedRow = {};
 
 				for (const [key, value] of Object.entries(row)) {
 					normalizedRow[normalizeHeader(key)] = value;
 				}
+
+				normalizedRow.__excelRowNumber = index + 2;
 
 				return normalizedRow;
 			}),
@@ -152,6 +220,7 @@ const parseWorkbookSheets = (buffer) => {
 	});
 };
 
+//This converts raw Excel row into your internal standard row.
 const normalizePaymentRow = ({
 	row,
 	sheetName,
@@ -164,29 +233,28 @@ const normalizePaymentRow = ({
 	const isCryptoSheet = lowerSheetName.includes("crypto");
 	const isWireSheet = lowerSheetName.includes("wire");
 
-	const bank = String(getValue(row, ["BANK"])).trim();
+	const bank = normalizeText(getValue(row, ["BANK"]));
 
-	const merchantName = String(getValue(row, ["MERCHANT NAME"])).trim();
+	const merchantName = normalizeText(getValue(row, ["MERCHANT NAME"]));
 
 	const mid = String(getValue(row, ["MID", "MID NO"])).trim();
 
-	const startDate = parseSheetDate(getValue(row, ["START DATE", "FIRST DATE"]));
+	const startDate = parseFlexibleSheetDate(
+		getValue(row, ["START DATE", "FIRST DATE"]),
+	);
 
-	const endDate = parseSheetDate(getValue(row, ["END DATE"]));
-
-	const processingCurrency = String(
+	const endDate = parseFlexibleSheetDate(getValue(row, ["END DATE"]));
+	const processingCurrency = normalizeText(
 		getValue(row, ["PROCESSING CURRENCY", "CURRENCY"]),
-	)
-		.trim()
-		.toUpperCase();
+	);
 
 	const amountPaid = parseSheetNumber(getValue(row, ["AMOUNT", "PAID AMOUNT"]));
 
 	const paymentRate = parseSheetNumber(getValue(row, ["RATE"]));
 
-	const settlementCurrency = String(getValue(row, ["SETTLEMENT CURRENCY"]))
-		.trim()
-		.toUpperCase();
+	const settlementCurrency = normalizeText(
+		getValue(row, ["SETTLEMENT CURRENCY"]),
+	);
 
 	const wireSettlementAmount = parseSheetNumber(
 		getValue(row, ["AMOUNT IN EURO", "AMOUNT IN EUR"]),
@@ -219,6 +287,7 @@ const normalizePaymentRow = ({
 				: "UNKNOWN";
 
 	return {
+		excelRowNumber: row.__excelRowNumber,
 		bank,
 		merchantName,
 		mid,
@@ -241,6 +310,39 @@ const normalizePaymentRow = ({
 	};
 };
 
+const isBlankOrTotalRow = (rawRow) => {
+	const values = Object.values(rawRow || {}).map((value) =>
+		String(value || "").trim(),
+	);
+
+	const nonEmptyValues = values.filter(Boolean);
+
+	if (!nonEmptyValues.length) return true;
+
+	const joined = nonEmptyValues.join(" ").toUpperCase();
+
+	if (
+		joined.includes("TOTAL") ||
+		joined.includes("SUM") ||
+		joined.includes("GRAND TOTAL")
+	) {
+		return true;
+	}
+
+	const hasBank = Boolean(getValue(rawRow, ["BANK"]));
+	const hasMerchant = Boolean(getValue(rawRow, ["MERCHANT NAME"]));
+	const hasMid = Boolean(getValue(rawRow, ["MID", "MID NO"]));
+	const hasStartDate = Boolean(getValue(rawRow, ["START DATE", "FIRST DATE"]));
+	const hasEndDate = Boolean(getValue(rawRow, ["END DATE"]));
+
+	if (!hasBank && !hasMerchant && !hasMid && !hasStartDate && !hasEndDate) {
+		return true;
+	}
+
+	return false;
+};
+
+//Normalize all rows from one file
 const normalizePaymentUploadRows = ({
 	fileBuffer,
 	paymentDate,
@@ -248,7 +350,10 @@ const normalizePaymentUploadRows = ({
 }) => {
 	const sheets = parseWorkbookSheets(fileBuffer);
 
-	return sheets.flatMap(({ sheetName, rows }) => {
+	const allValidRows = [];
+	const allInvalidRows = [];
+
+	for (const { sheetName, rows } of sheets) {
 		const finalPaymentDate =
 			paymentDate ||
 			extractPaymentDateFromFileName(originalFilename) ||
@@ -256,52 +361,42 @@ const normalizePaymentUploadRows = ({
 
 		const paymentSheetDateLabel = formatPaymentSheetDateLabel(finalPaymentDate);
 
-		return rows
-			.map((row) =>
-				normalizePaymentRow({
-					row,
-					sheetName,
-					paymentDate: parseSheetDate(finalPaymentDate),
-					paymentSheetDateLabel,
-					originalFilename,
-				}),
-			)
-			.filter(
-				(row) =>
-					row.bank &&
-					row.merchantName &&
-					row.mid &&
-					row.startDate &&
-					row.endDate &&
-					row.processingCurrency &&
-					row.amountPaid !== 0,
-			);
-	});
+		for (const rawRow of rows) {
+			if (isBlankOrTotalRow(rawRow)) {
+				continue;
+			}
+
+			const row = normalizePaymentRow({
+				row: rawRow,
+				sheetName,
+				paymentDate: parseSheetDate(finalPaymentDate),
+				paymentSheetDateLabel,
+				originalFilename,
+			});
+
+			const missingFields = getMissingFields(row);
+
+			if (missingFields.length) {
+				allInvalidRows.push({
+					sheetName: row.sheetName,
+					excelRowNumber: row.excelRowNumber,
+					missingFields,
+					message: `${row.sheetName} row ${row.excelRowNumber} is missing: ${missingFields.join(", ")}`,
+				});
+				continue;
+			}
+
+			allValidRows.push(row);
+		}
+	}
+
+	return {
+		validRows: allValidRows,
+		invalidRows: allInvalidRows,
+	};
 };
 
-const buildPaymentIdentityKey = ({
-	wiresheetTransactionId,
-	paymentBank,
-	paidToMerchantDate,
-	sourceStartDate,
-	sourceEndDate,
-	sourceProcessingCurrency,
-	paymentCurrency,
-}) =>
-	[
-		wiresheetTransactionId,
-		canonicalizeBankName(paymentBank),
-		normalizeDateTime(paidToMerchantDate),
-		normalizeDateTime(sourceStartDate),
-		normalizeDateTime(sourceEndDate),
-		String(sourceProcessingCurrency || "")
-			.trim()
-			.toUpperCase(),
-		String(paymentCurrency || "")
-			.trim()
-			.toUpperCase(),
-	].join("|");
-
+//This creates a unique key for unmatched rows, so the same unmatched row is not inserted again.
 const buildUnmatchedPaymentIdentityKey = ({
 	paymentBank,
 	merchantName,
@@ -368,6 +463,15 @@ const buildBankAcquirerMap = async (rows) => {
 	return bankAcquirerMap;
 };
 
+// This finds MerchantAccount records using:
+
+// MID + acquirerId
+
+// Because WiresheetTransaction stores:
+
+// merchantMappingId
+
+// So code needs to know which mapping IDs can match each payment row.
 const buildMerchantAccountLookup = async ({ rows, bankAcquirerMap }) => {
 	const mids = [...new Set(rows.map((row) => row.mid).filter(Boolean))];
 
@@ -486,11 +590,6 @@ const scoreTransactionMatch = (transaction, row) => {
 		return -1000;
 	}
 
-	console.log({
-		dbMerchant: transaction.merchantName,
-		rowMerchant: row.merchantName,
-	});
-
 	const amountDiff = Math.abs(
 		roundMoney(transaction.processingAmount) - roundMoney(row.amountPaid),
 	);
@@ -529,43 +628,28 @@ const findMatchingWiresheetTransaction = ({
 			return false;
 		}
 
-		// if (transaction.mid !== row.mid) {
-		// 	return false;
-		// }
+		if (transaction.mid !== row.mid) {
+			return false;
+		}
 
-		// if (!isMerchantMatch(transaction.merchantName, row.merchantName)) {
-		// 	return false;
-		// }
-
-		// if (transaction.processingCurrency !== row.processingCurrency) {
-		// 	return false;
-		// }
-
-		// if (row.startDate && !isSameMoment(transaction.startDate, row.startDate)) {
-		// 	return false;
-		// }
-
-		// if (row.endDate && !isSameMoment(transaction.endDate, row.endDate)) {
-		// 	return false;
-		// }
-
-		if (transaction.mid !== row.mid) return false;
 		if (
 			normalizeMerchantName(transaction.merchantName) !==
 			normalizeMerchantName(row.merchantName)
-		)
+		) {
 			return false;
-		if (transaction.processingCurrency !== row.processingCurrency) return false;
-		if (
-			new Date(transaction.startDate).getTime() !==
-			new Date(row.startDate).getTime()
-		)
+		}
+
+		if (transaction.processingCurrency !== row.processingCurrency) {
 			return false;
-		if (
-			new Date(transaction.endDate).getTime() !==
-			new Date(row.endDate).getTime()
-		)
+		}
+
+		if (!isSameMoment(transaction.startDate, row.startDate)) {
 			return false;
+		}
+
+		if (!isSameMoment(transaction.endDate, row.endDate)) {
+			return false;
+		}
 
 		return true;
 	});
@@ -629,14 +713,68 @@ const matchRowsToTransactions = async ({ rows }) => {
 	};
 };
 
-const updateWiresheetTotals = async (transactionUpdates) => {
+//recalculateTransactionAndWiresheetTotals
+
+const recalculateTransactionAndWiresheetTotals = async (transactionIds) => {
+	const cleanTransactionIds = [
+		...new Set(transactionIds.map((id) => id.toString())),
+	].map((id) => new mongoose.Types.ObjectId(id));
+
+	if (!cleanTransactionIds.length) return 0;
+
+	const paymentTotals = await Payment.aggregate([
+		{
+			$match: {
+				wiresheetTransactionId: { $in: cleanTransactionIds },
+			},
+		},
+		{
+			$group: {
+				_id: "$wiresheetTransactionId",
+				totalPaid: { $sum: "$amountPaid" },
+			},
+		},
+	]);
+
+	const totalMap = new Map(
+		paymentTotals.map((item) => [
+			item._id.toString(),
+			roundMoney(item.totalPaid),
+		]),
+	);
+
+	const transactions = await WiresheetTransaction.find({
+		_id: { $in: cleanTransactionIds },
+	}).lean();
+
+	const bulkUpdates = transactions.map((transaction) => {
+		const paid = totalMap.get(transaction._id.toString()) || 0;
+		const payable = roundMoney(transaction.payable || 0);
+		const balance = roundMoney(payable - paid);
+
+		return {
+			updateOne: {
+				filter: { _id: transaction._id },
+				update: {
+					$set: {
+						paid,
+						balance,
+						status: deriveSettlementStatus({ payable, paid }),
+					},
+				},
+			},
+		};
+	});
+
+	if (bulkUpdates.length) {
+		await WiresheetTransaction.bulkWrite(bulkUpdates);
+	}
+
 	const wiresheetIds = [
-		...new Set(transactionUpdates.map((item) => item.wiresheetId)),
+		...new Set(transactions.map((item) => item.wiresheetId.toString())),
 	];
 
-	if (!wiresheetIds.length) return 0;
-
-	const totals = await WiresheetTransaction.aggregate([
+	const wiresheetTotals = await WiresheetTransaction.aggregate([
 		{
 			$match: {
 				wiresheetId: {
@@ -654,9 +792,9 @@ const updateWiresheetTotals = async (transactionUpdates) => {
 		},
 	]);
 
-	if (totals.length) {
+	if (wiresheetTotals.length) {
 		await Wiresheet.bulkWrite(
-			totals.map((item) => {
+			wiresheetTotals.map((item) => {
 				const totalPayable = roundMoney(item.totalPayable);
 				const totalPaid = roundMoney(item.totalPaid);
 				const totalBalance = roundMoney(item.totalBalance);
@@ -686,17 +824,50 @@ const updateWiresheetTotals = async (transactionUpdates) => {
 	return wiresheetIds.length;
 };
 
+// buildmatch
+const buildSafePaymentKey = ({
+	bank,
+	merchantName,
+	mid,
+	startDate,
+	endDate,
+	processingCurrency,
+	settlementCurrency,
+	paymentDate,
+	amountPaid,
+	settlementAmount,
+}) =>
+	[
+		canonicalizeBankName(bank),
+		normalizeMerchantName(merchantName),
+		String(mid || "").trim(),
+		normalizeDateTime(startDate),
+		normalizeDateTime(endDate),
+		normalizeText(processingCurrency),
+		normalizeText(settlementCurrency),
+		normalizeDateTime(paymentDate),
+		roundMoney(amountPaid),
+		roundMoney(settlementAmount),
+	].join("|");
+
+// Doing Match + Duplicate
 const persistMatchedRows = async ({ matchedRows, userId }) => {
+	const duplicateRows = [];
+
 	if (!matchedRows.length) {
 		return {
 			createdPayments: 0,
 			updatedWiresheets: 0,
 			reconciledCount: 0,
+			duplicateCount: 0,
+			duplicateRows: [],
 		};
 	}
 
 	const transactionIds = [
-		...new Set(matchedRows.map(({ transaction }) => transaction._id)),
+		...new Set(
+			matchedRows.map(({ transaction }) => transaction._id.toString()),
+		),
 	];
 
 	const existingPayments = await Payment.find({
@@ -708,119 +879,112 @@ const persistMatchedRows = async ({ matchedRows, userId }) => {
 	const existingPaymentMap = new Map();
 
 	for (const payment of existingPayments) {
-		existingPaymentMap.set(
-			buildPaymentIdentityKey({
-				wiresheetTransactionId: payment.wiresheetTransactionId.toString(),
-				paymentBank: payment.paymentBank,
-				paidToMerchantDate: payment.paidToMerchantDate,
-				sourceStartDate: payment.sourceStartDate,
-				sourceEndDate: payment.sourceEndDate,
-				sourceProcessingCurrency: payment.sourceProcessingCurrency,
-				paymentCurrency: payment.paymentCurrency,
-			}),
-			{
-				...payment,
-				_id: payment._id.toString(),
-				wiresheetTransactionId: payment.wiresheetTransactionId.toString(),
-			},
-		);
+		const key = buildSafePaymentKey({
+			bank: payment.paymentBank,
+			merchantName: payment.merchantName,
+			mid: payment.sourceMid,
+			startDate: payment.sourceStartDate,
+			endDate: payment.sourceEndDate,
+			processingCurrency: payment.sourceProcessingCurrency,
+			settlementCurrency: payment.settlementCurrency,
+			paymentDate: payment.paymentDate,
+			amountPaid: payment.amountPaid,
+			settlementAmount: payment.settlementAmount,
+		});
+
+		existingPaymentMap.set(key, payment);
 	}
 
 	const paymentDocs = [];
-	const paymentUpdates = [];
-	const transactionStateMap = new Map();
 	const unmatchedUpdates = [];
+	const processedKeys = new Set();
 	const now = new Date();
 
 	for (const { row, transaction } of matchedRows) {
 		const paymentDateValue = row.paymentDate || new Date();
 
-		const normalizedAmountPaid = roundMoney(row.amountPaid);
-		const normalizedSettlementAmount = roundMoney(row.settlementAmount);
+		const paymentIdentityKey = buildSafePaymentKey({
+			bank: row.bank,
+			merchantName: row.merchantName,
+			mid: row.mid,
+			startDate: row.startDate,
+			endDate: row.endDate,
+			processingCurrency: row.processingCurrency,
+			settlementCurrency: row.settlementCurrency,
+			paymentDate: paymentDateValue,
+			amountPaid: row.amountPaid,
+			settlementAmount: row.settlementAmount,
+		});
 
-		const paymentDoc = {
+		if (processedKeys.has(paymentIdentityKey)) {
+			duplicateRows.push({
+				reason: "duplicate_in_file",
+				sheetName: row.sheetName,
+				excelRowNumber: row.excelRowNumber,
+				bank: row.bank,
+				merchantName: row.merchantName,
+				mid: row.mid,
+				startDate: row.startDate,
+				endDate: row.endDate,
+				processingCurrency: row.processingCurrency,
+				settlementCurrency: row.settlementCurrency,
+				amountPaid: row.amountPaid,
+				settlementAmount: row.settlementAmount,
+			});
+			continue;
+		}
+
+		processedKeys.add(paymentIdentityKey);
+
+		const existingPayment = existingPaymentMap.get(paymentIdentityKey);
+
+		if (existingPayment) {
+			duplicateRows.push({
+				reason: "duplicate_payment_db",
+				sheetName: row.sheetName,
+				excelRowNumber: row.excelRowNumber,
+				bank: row.bank,
+				merchantName: row.merchantName,
+				mid: row.mid,
+				startDate: row.startDate,
+				endDate: row.endDate,
+				processingCurrency: row.processingCurrency,
+				settlementCurrency: row.settlementCurrency,
+				amountPaid: row.amountPaid,
+				settlementAmount: row.settlementAmount,
+			});
+
+			continue;
+		}
+
+		paymentDocs.push({
 			wiresheetTransactionId: transaction._id,
 			merchantMappingId: transaction.merchantMappingId,
 
-			amountPaid: normalizedAmountPaid,
-			settlementAmount: normalizedSettlementAmount,
-
-			paymentCurrency: row.settlementCurrency,
-			settlementCurrency: row.settlementCurrency,
-
-			paymentMethod: row.paymentMethod,
-			paymentDate: paymentDateValue,
-			paidToMerchantDate: paymentDateValue,
-			paymentRate: row.paymentRate,
-
 			paymentBank: row.bank,
 			merchantName: row.merchantName,
-
 			sourceMid: row.mid,
 			sourceStartDate: row.startDate,
 			sourceEndDate: row.endDate,
 			sourceProcessingCurrency: row.processingCurrency,
-			sourceSheetName: row.sheetName,
-			sourceOriginalFilename: row.originalFilename,
-			paymentSheetDateLabel: row.paymentSheetDateLabel,
+
+			amountPaid: roundMoney(row.amountPaid),
+			paymentRate: roundMoney(row.paymentRate),
+			settlementCurrency: normalizeText(row.settlementCurrency),
+			settlementAmount: roundMoney(row.settlementAmount),
+
+			paymentMethod: row.paymentMethod,
+			paymentDate: paymentDateValue,
+			paidToMerchantDate: paymentDateValue,
 
 			hashPayment: row.hashPayment,
 			referenceNo: row.referenceNo,
 
+			sourceSheetName: row.sheetName,
+			sourceOriginalFilename: row.originalFilename,
+
 			createdBy: userId,
-		};
-
-		const paymentIdentityKey = buildPaymentIdentityKey({
-			wiresheetTransactionId: transaction._id,
-			paymentBank: row.bank,
-			paidToMerchantDate: paymentDateValue,
-			sourceStartDate: row.startDate,
-			sourceEndDate: row.endDate,
-			sourceProcessingCurrency: row.processingCurrency,
-			paymentCurrency: row.settlementCurrency,
 		});
-
-		const existingPayment = existingPaymentMap.get(paymentIdentityKey);
-
-		const previousAmount = existingPayment
-			? roundMoney(existingPayment.amountPaid)
-			: 0;
-
-		const paymentDelta = roundMoney(normalizedAmountPaid - previousAmount);
-
-		const transactionId = transaction._id;
-
-		const transactionState = transactionStateMap.get(transactionId) || {
-			_id: transactionId,
-			wiresheetId: transaction.wiresheetId,
-			payable: roundMoney(transaction.payable),
-			paid: roundMoney(transaction.paid || 0),
-			balance: roundMoney(transaction.balance || transaction.payable),
-		};
-
-		transactionState.paid = roundMoney(transactionState.paid + paymentDelta);
-
-		transactionState.balance = roundMoney(
-			transactionState.payable - transactionState.paid,
-		);
-
-		transactionState.status = deriveSettlementStatus({
-			payable: transactionState.payable,
-			paid: transactionState.paid,
-		});
-
-		transactionStateMap.set(transactionId, transactionState);
-
-		if (existingPayment) {
-			paymentUpdates.push({
-				updateOne: {
-					filter: { _id: existingPayment._id },
-					update: { $set: paymentDoc },
-				},
-			});
-		} else {
-			paymentDocs.push(paymentDoc);
-		}
 
 		unmatchedUpdates.push({
 			updateOne: {
@@ -844,42 +1008,22 @@ const persistMatchedRows = async ({ matchedRows, userId }) => {
 	}
 
 	if (paymentDocs.length) {
-		await Payment.insertMany(paymentDocs);
-	}
-
-	if (paymentUpdates.length) {
-		await Payment.bulkWrite(paymentUpdates);
-	}
-
-	const transactionUpdates = [...transactionStateMap.values()];
-
-	if (transactionUpdates.length) {
-		await WiresheetTransaction.bulkWrite(
-			transactionUpdates.map((transaction) => ({
-				updateOne: {
-					filter: { _id: transaction._id },
-					update: {
-						$set: {
-							paid: transaction.paid,
-							balance: transaction.balance,
-							status: transaction.status,
-						},
-					},
-				},
-			})),
-		);
+		await Payment.insertMany(paymentDocs, { ordered: false });
 	}
 
 	if (unmatchedUpdates.length) {
 		await UnmatchedPayment.bulkWrite(unmatchedUpdates);
 	}
 
-	const updatedWiresheets = await updateWiresheetTotals(transactionUpdates);
+	const updatedWiresheets =
+		await recalculateTransactionAndWiresheetTotals(transactionIds);
 
 	return {
-		createdPayments: paymentDocs.length + paymentUpdates.length,
+		createdPayments: paymentDocs.length,
 		updatedWiresheets,
-		reconciledCount: matchedRows.length,
+		reconciledCount: paymentDocs.length,
+		duplicateCount: duplicateRows.length,
+		duplicateRows,
 	};
 };
 
@@ -915,8 +1059,7 @@ const storeUnmatchedRows = async ({
 					amountPaid: roundMoney(row.amountPaid),
 					settlementAmount: roundMoney(row.settlementAmount),
 
-					paymentCurrency: row.settlementCurrency,
-					settlementCurrency: row.settlementCurrency,
+					settlementCurrency: normalizeText(row.settlementCurrency),
 					paymentMethod: row.paymentMethod,
 
 					paymentDate: row.paymentDate,
@@ -995,23 +1138,24 @@ export const uploadPayments = async (req, res) => {
 
 	for (const file of files) {
 		try {
-			const rows = normalizePaymentUploadRows({
+			const { validRows, invalidRows } = normalizePaymentUploadRows({
 				fileBuffer: file.buffer,
 				paymentDate: req.body?.paymentDate,
 				originalFilename: file.originalname,
 			});
 
-			if (!rows.length) {
+			if (!validRows.length) {
 				results.push({
 					fileName: file.originalname,
 					success: false,
 					message: "No valid payment rows found",
+					invalidRows,
 				});
 				continue;
 			}
 
 			const { matchedRows, skippedRows } = await matchRowsToTransactions({
-				rows,
+				rows: validRows,
 			});
 
 			const matchedResult = await persistMatchedRows({
@@ -1028,10 +1172,15 @@ export const uploadPayments = async (req, res) => {
 			results.push({
 				fileName: file.originalname,
 				success: true,
-				totalRows: rows.length,
+				totalRows: validRows.length + invalidRows.length,
+				validRowsCount: validRows.length,
+				invalidRowsCount: invalidRows.length,
+				invalidRows,
 				matchedCount: matchedRows.length,
 				unmatchedCount: skippedRows.length,
 				createdPayments: matchedResult.createdPayments,
+				duplicateCount: matchedResult.duplicateCount,
+				duplicateRows: matchedResult.duplicateRows,
 				updatedWiresheets: matchedResult.updatedWiresheets,
 				storedUnmatchedCount: unmatchedResult.storedCount,
 				pendingUnmatchedCount: unmatchedResult.pendingCount,
@@ -1127,7 +1276,7 @@ export const reconcilePendingPayments = async (req, res) => {
 		processingCurrency: row.sourceProcessingCurrency,
 		amountPaid: row.amountPaid,
 		paymentRate: row.paymentRate,
-		settlementCurrency: row.settlementCurrency || row.paymentCurrency,
+		settlementCurrency: row.settlementCurrency,
 		settlementAmount: row.settlementAmount,
 		paymentMethod: row.paymentMethod,
 		paymentDate: row.paymentDate || row.paidToMerchantDate,

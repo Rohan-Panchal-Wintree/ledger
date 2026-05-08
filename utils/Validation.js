@@ -124,7 +124,8 @@ const miscellaneousBaseSchema = z.object({
 
 	bankLabel: z.string().trim().min(1, "Bank label is required"),
 
-	merchantId: objectIdString,
+	merchantId: optionalObjectIdString,
+	merchantName: z.string().trim().min(1, "Merchant name is required"),
 
 	merchantMappingId: optionalObjectIdString,
 
@@ -155,3 +156,18 @@ export const updateMiscellaneousPaymentSchema = miscellaneousBaseSchema
 	.refine((payload) => Object.keys(payload).length > 0, {
 		message: "At least one field is required",
 	});
+
+export const dashboardPeriodSchema = z.object({
+	paymentDate: z.string().optional(),
+	acquirer: z.string().optional(),
+	merchantName: z.string().optional(),
+	mid: z.string().optional(),
+	status: z.enum(["pending", "partially_paid", "settled"]).optional(),
+	paymentMethod: z.enum(["CRYPTO", "WIRE", "UNKNOWN"]).optional(),
+	settlementCurrency: z.string().optional(),
+});
+
+export const reportBankSchema = z.object({
+	paymentDate: z.string().optional(),
+	acquirer: z.string().optional(),
+});

@@ -98,3 +98,120 @@ export const endOfDay = (date) => {
 	value.setUTCHours(23, 59, 59, 999);
 	return value;
 };
+
+// export const parseFlexibleSheetDate = (value) => {
+// 	if (!value) return null;
+
+// 	if (typeof value === "number") {
+// 		const excelEpoch = Date.UTC(1899, 11, 30);
+// 		const milliseconds = value * 24 * 60 * 60 * 1000;
+// 		const date = new Date(excelEpoch + milliseconds);
+
+// 		return Number.isNaN(date.getTime()) ? null : date;
+// 	}
+
+// 	if (value instanceof Date && !Number.isNaN(value.getTime())) {
+// 		return buildUtcDate(
+// 			value.getFullYear(),
+// 			value.getMonth() + 1,
+// 			value.getDate(),
+// 			value.getHours(),
+// 			value.getMinutes(),
+// 			value.getSeconds(),
+// 		);
+// 	}
+
+// 	const normalized = String(value)
+// 		.trim()
+// 		.replace(/\s+/g, " ")
+// 		.replace(/\(([^)]*)\)/g, " $1")
+// 		.trim();
+
+// 	const patterns = [
+// 		/^(\d{1,2})-(\d{1,2})-(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?::?(\d{1,2}))?)?$/,
+// 		/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?::?(\d{1,2}))?)?$/,
+// 		/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?::?(\d{1,2}))?)?$/,
+// 	];
+
+// 	for (const pattern of patterns) {
+// 		const match = normalized.match(pattern);
+// 		if (!match) continue;
+
+// 		const [, day, month, year, hours = "0", minutes = "0", seconds = "0"] =
+// 			match;
+
+// 		const fullYear = year.length === 2 ? 2000 + Number(year) : Number(year);
+
+// 		const parsedDate = buildUtcDate(
+// 			fullYear,
+// 			Number(month),
+// 			Number(day),
+// 			Number(hours),
+// 			Number(minutes),
+// 			Number(seconds),
+// 		);
+
+// 		return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+// 	}
+
+// 	return null;
+// };
+
+export const parseFlexibleSheetDate = (value) => {
+	if (!value) return null;
+
+	if (typeof value === "number") {
+		const excelEpoch = Date.UTC(1899, 11, 30);
+		const milliseconds = value * 24 * 60 * 60 * 1000;
+		const date = new Date(excelEpoch + milliseconds);
+
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	if (value instanceof Date && !Number.isNaN(value.getTime())) {
+		return buildUtcDate(
+			value.getFullYear(),
+			value.getMonth() + 1,
+			value.getDate(),
+			value.getHours(),
+			value.getMinutes(),
+			value.getSeconds(),
+		);
+	}
+
+	const normalized = String(value)
+		.trim()
+		.replace(/\s+/g, " ")
+		.replace(/\(([^)]*)\)/g, " $1")
+		.trim();
+
+	const patterns = [
+		/^(\d{1,2})-(\d{1,2})-(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?:[:.](\d{1,2}))?)?$/,
+		/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?:[:.](\d{1,2}))?)?$/,
+		/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2})[:.](\d{1,2})(?:[:.](\d{1,2}))?)?$/,
+	];
+
+	for (const pattern of patterns) {
+		const match = normalized.match(pattern);
+
+		if (!match) continue;
+
+		const [, day, month, year, hours = "0", minutes = "0", seconds = "0"] =
+			match;
+
+		const fullYear = year.length === 2 ? 2000 + Number(year) : Number(year);
+
+		const parsedDate = buildUtcDate(
+			fullYear,
+			Number(month),
+			Number(day),
+			Number(hours),
+			Number(minutes),
+			Number(seconds),
+		);
+
+		return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+	}
+
+	return null;
+};

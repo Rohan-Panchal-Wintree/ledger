@@ -6,7 +6,6 @@ const merchantSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 			trim: true,
-			index: true,
 		},
 		merchantTag: {
 			type: String,

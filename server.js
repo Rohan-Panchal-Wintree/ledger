@@ -1,5 +1,5 @@
 import express from "express";
-import dotenv from "dotenv";
+import "dotenv/config";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dbconnect from "./dbConnection/dbconnection.js";
@@ -10,8 +10,6 @@ import {
 	notFoundHandler,
 } from "./middlewares/error.middleware.js";
 import routes from "./routes/index.js";
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8990;

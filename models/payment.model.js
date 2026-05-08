@@ -50,14 +50,17 @@ const paymentSchema = new mongoose.Schema(
 	{ timestamps: true },
 );
 
-paymentSchema.index({
-	wiresheetTransactionId: 1,
-	paymentBank: 1,
-	sourceMid: 1,
-	sourceStartDate: 1,
-	sourceEndDate: 1,
-	sourceProcessingCurrency: 1,
-	settlementCurrency: 1,
-});
+paymentSchema.index(
+	{
+		wiresheetTransactionId: 1,
+		paymentBank: 1,
+		sourceMid: 1,
+		sourceStartDate: 1,
+		sourceEndDate: 1,
+		sourceProcessingCurrency: 1,
+		settlementCurrency: 1,
+	},
+	{ unique: true },
+);
 
 export const Payment = mongoose.model("Payment", paymentSchema);

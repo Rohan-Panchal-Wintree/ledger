@@ -1,8 +1,9 @@
 import xlsx from "xlsx";
+
 export const parseExcelFile = (buffer) => {
 	const workbook = xlsx.read(buffer, {
 		type: "buffer",
-		cellDates: true,
+		cellDates: false,
 	});
 
 	const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -27,23 +28,28 @@ export const parseExcelFile = (buffer) => {
 	const data = xlsx.utils.sheet_to_json(sheet, {
 		range: headerRowIndex,
 		defval: "",
-		raw: false,
+		raw: true, // IMPORTANT
 	});
 
 	return data.map((row) => {
 		const normalizedRow = {};
+
 		for (const key in row) {
 			normalizedRow[String(key).replace(/\s+/g, " ").trim().toUpperCase()] =
 				row[key];
 		}
+
 		return normalizedRow;
 	});
 };
 
 export const extractWorkbookBankName = (buffer) => {
-	const workbook = xlsx.read(buffer, { type: "buffer", cellDates: true });
-	const firstSheet = workbook.SheetNames[0];
-	const sheet = workbook.Sheets[firstSheet];
+	const workbook = xlsx.read(buffer, {
+		type: "buffer",
+		cellDates: false,
+	});
+
+	const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
 	const rawRows = xlsx.utils.sheet_to_json(sheet, {
 		header: 1,

@@ -16,7 +16,7 @@ router.post(
 	middlewares.roleMiddleware(["admin", "settlement"]),
 	middlewares.uploadMiddleware.fields([
 		{ name: "file", maxCount: 1 },
-		{ name: "files", maxCount: 30 },
+		{ name: "files", maxCount: 100 },
 	]),
 	validateRequest(uploadWiresheetSchema),
 	asyncHandler(uploadWiresheet),

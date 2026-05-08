@@ -10,7 +10,7 @@ import {
 	parseExcelFile,
 	extractWorkbookBankName,
 } from "../utils/excelParser.js";
-import { parseSheetDate } from "../utils/dateUtils.js";
+import { parseFlexibleSheetDate } from "../utils/dateUtils.js";
 
 // CURRENCY
 import {
@@ -54,8 +54,8 @@ const parseSheetNumber = (value) => {
 const normalizeRow = (row) => ({
 	merchantName: String(row["MERCHANT NAME"] || row.merchantName || "").trim(),
 	mid: String(row.MID || row.mid || "").trim(),
-	startDate: parseSheetDate(row["START DATE"] || row.startDate),
-	endDate: parseSheetDate(row["END DATE"] || row.endDate),
+	startDate: parseFlexibleSheetDate(row["START DATE"] || row.startDate),
+	endDate: parseFlexibleSheetDate(row["END DATE"] || row.endDate),
 	processingCurrency: String(
 		row["PROCESSING CURRENCY"] || row.processingCurrency || "",
 	)

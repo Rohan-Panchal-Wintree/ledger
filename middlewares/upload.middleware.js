@@ -1,8 +1,6 @@
 import multer from "multer";
 const storage = multer.memoryStorage();
-import dotenv from "dotenv";
-dotenv.config();
-
+import "dotenv/config";
 const fileFilter = (_req, file, cb) => {
 	const allowed =
 		file.mimetype.includes("sheet") ||

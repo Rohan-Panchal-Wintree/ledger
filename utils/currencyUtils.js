@@ -5,17 +5,19 @@ export const roundMoney = (value) => {
 };
 
 export const derivePaymentMethod = (currency = "") => {
-	const c = currency.toUpperCase();
+	const c = String(currency || "")
+		.trim()
+		.toUpperCase();
 
-	if (c === "USD") return "CRYPTO";
+	if (c === "USD" || c === "USDT") return "CRYPTO";
 	if (c === "EUR") return "WIRE";
 
-	throw new Error(`Unsupported currency: ${currency}`);
+	return "UNKNOWN";
 };
 
 export const deriveSettlementStatus = ({ payable, paid }) => {
-	const normalizedPayable = Number(payable) || 0;
-	const normalizedPaid = Number(paid) || 0;
+	const normalizedPayable = roundMoney(payable);
+	const normalizedPaid = roundMoney(paid);
 
 	if (normalizedPaid === 0) return "pending";
 

@@ -8,6 +8,8 @@ import merchantAccountRoutes from "./merchantAccount.routes.js";
 import wiresheetRoutes from "./wiresheet.route.js";
 import paymentRoutes from "./payment.routes.js";
 import miscellaneousPaymentRoutes from "./miscellaneous-payment.routes.js";
+import dashboardRoutes from "./dashboard.routes.js";
+import reportsRoutes from "./reports.routes.js";
 
 const router = Router();
 
@@ -19,5 +21,7 @@ router.use("/merchant-accounts", merchantAccountRoutes);
 router.use("/wiresheets", wiresheetRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/miscellaneous-payments", miscellaneousPaymentRoutes);
+router.use("/dashboard", dashboardRoutes);
+router.use("/reports", reportsRoutes);
 
 export default router;

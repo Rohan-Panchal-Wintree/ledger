@@ -33,6 +33,13 @@ const normalizeOptionalDate = (value) => {
 	return Number.isNaN(date.getTime()) ? undefined : date;
 };
 
+const resolveMerchantTag = (merchantName) =>
+	String(merchantName || "")
+		.toUpperCase()
+		.includes("(DP)")
+		? "Dreamzpay Merchant"
+		: "Transactworld Merchant";
+
 const normalizeNumber = (value) => {
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : 0;
@@ -181,35 +188,88 @@ export const getMiscellaneousPayment = async (req, res) => {
 };
 
 export const createMiscellaneousPayment = async (req, res) => {
-	const normalized = await normalizePayload(req.body);
+	const payload = { ...req.body };
 
-	if (normalized.error) {
-		return res.status(normalized.error.status).json({
-			success: false,
-			message: normalized.error.message,
-		});
+	let merchant = null;
+
+	if (payload.merchantId) {
+		merchant = await Merchant.findById(payload.merchantId);
+
+		if (!merchant) {
+			return res.status(404).json({
+				success: false,
+				message: "Merchant not found",
+			});
+		}
+	} else {
+		const merchantName = payload.merchantName.trim();
+
+		merchant = await Merchant.findOne({ merchantName }).lean();
+
+		if (!merchant) {
+			try {
+				merchant = await Merchant.create({
+					merchantName,
+					merchantTag: resolveMerchantTag(merchantName),
+					status: "active",
+				});
+			} catch (error) {
+				if (error.code === 11000) {
+					merchant = await Merchant.findOne({ merchantName }).lean();
+				} else {
+					throw error;
+				}
+			}
+		}
 	}
 
-	const entry = await MiscellaneousPayment.create({
-		...normalized.data,
+	let merchantMappingId = payload.merchantMappingId || null;
+
+	if (!merchantMappingId && payload.mid) {
+		const mapping = await MerchantAccount.findOne({
+			merchantId: merchant._id,
+			mid: String(payload.mid).trim(),
+		}).lean();
+
+		if (mapping) {
+			merchantMappingId = mapping._id;
+		}
+	}
+
+	const paymentSheetDate = new Date(payload.paymentSheetDate);
+
+	const data = await MiscellaneousPayment.create({
+		entryType: payload.entryType,
+		paymentSheetDate,
+		paymentSheetDateLabel:
+			payload.paymentSheetDateLabel ||
+			`${String(paymentSheetDate.getUTCDate()).padStart(2, "0")}.${String(
+				paymentSheetDate.getUTCMonth() + 1,
+			).padStart(2, "0")}`,
+
+		bankLabel: payload.bankLabel,
+
+		merchantId: merchant._id,
+		merchantName: merchant.merchantName,
+		merchantMappingId,
+
+		mid: payload.mid,
+		startDate: payload.startDate ? new Date(payload.startDate) : undefined,
+		endDate: payload.endDate ? new Date(payload.endDate) : undefined,
+
+		processingCurrency: payload.processingCurrency,
+		amountPaid: payload.amountPaid,
+		rate: payload.rate || 0,
+		settlementCurrency: payload.settlementCurrency,
+		settlementAmount: payload.settlementAmount,
+
+		notes: payload.notes,
 		createdBy: req.user._id,
 	});
 
-	const savedEntry = await MiscellaneousPayment.findById(entry._id)
-		.populate("merchantId", "merchantName")
-		.populate({
-			path: "merchantMappingId",
-			select: "mid processingCurrency settlementCurrency acquirerId",
-			populate: {
-				path: "acquirerId",
-				select: "name",
-			},
-		})
-		.lean();
-
 	return res.status(201).json({
 		success: true,
-		data: withDisplayFields(savedEntry),
+		data,
 	});
 };
 

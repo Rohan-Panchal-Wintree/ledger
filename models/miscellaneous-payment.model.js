@@ -116,9 +116,8 @@ miscellaneousPaymentSchema.index({
 	entryType: 1,
 });
 
-miscellaneousPaymentSchema.pre("validate", function (next) {
+miscellaneousPaymentSchema.pre("validate", function () {
 	this.paymentMethod = derivePaymentMethod(this.settlementCurrency);
-	next();
 });
 
 export const MiscellaneousPayment = mongoose.model(
