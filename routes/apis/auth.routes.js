@@ -1,5 +1,4 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import { asyncHandler, validateRequest } from "../../utils/ManagedVariables.js";
 
 import {
@@ -17,14 +16,14 @@ import {
 	refreshSchema,
 } from "../../utils/Validation.js";
 
-const router = Router();
+import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
+import {
+	otpRequestLimiter,
+	otpVerifyLimiter,
+	refreshLimiter,
+} from "../../utils/rateLimiters.js";
 
-const otpLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: process.env.NODE_ENV === "test" ? 100 : 10,
-	standardHeaders: true,
-	legacyHeaders: false,
-});
+const router = Router();
 
 // ROUTES - START
 
@@ -36,25 +35,32 @@ router.post(
 
 router.post(
 	"/request-otp",
-	otpLimiter,
+	otpRequestLimiter,
 	validateRequest(requestOtpSchema),
 	asyncHandler(requestOtp),
 );
 
 router.post(
 	"/verify-otp",
-	otpLimiter,
+	otpVerifyLimiter,
 	validateRequest(verifyOtpSchema),
 	asyncHandler(verifyOtpLogin),
 );
 
 router.post(
 	"/refresh",
-	validateRequest(refreshSchema),
+	refreshLimiter,
+	csrfMiddleware,
+	validateRequest(refreshSchema, "cookies"),
 	asyncHandler(refreshToken),
 );
 
-router.post("/logout", validateRequest(refreshSchema), asyncHandler(logout));
+router.post(
+	"/logout",
+	csrfMiddleware,
+	validateRequest(refreshSchema, "cookies"),
+	asyncHandler(logout),
+);
 
 // ROUTES - END
 

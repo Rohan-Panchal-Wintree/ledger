@@ -1,20 +1,43 @@
-import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
+import { getSession, touchSession, validateSession } from "../utils/session.js";
+import { verifyAccessToken } from "../utils/token.js";
 
 export const authMiddleware = async (req, res, next) => {
 	try {
-		const header = req.headers.authorization;
+		const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+			? req.headers.authorization.split(" ")[1]
+			: null;
 
-		if (!header?.startsWith("Bearer ")) {
+		const token = req.cookies?.accessToken || bearerToken;
+
+		if (!token) {
 			return res.status(401).json({
 				success: false,
 				message: "Authentication required",
 			});
 		}
 
-		const token = header.split(" ")[1];
+		const payload = verifyAccessToken(token);
 
-		const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+		if (payload.type !== "access") {
+			return res.status(401).json({
+				success: false,
+				message: "Invalid access token type",
+			});
+		}
+
+		const session = await getSession(payload.sid);
+
+		if (
+			!session ||
+			session.userId !== payload.sub ||
+			!validateSession(session, req)
+		) {
+			return res.status(401).json({
+				success: false,
+				message: "Session expired or invalid",
+			});
+		}
 
 		const user = await User.findById(payload.sub).lean();
 
@@ -25,7 +48,12 @@ export const authMiddleware = async (req, res, next) => {
 			});
 		}
 
+		await touchSession(payload.sid);
+
 		req.user = user;
+		req.session = session;
+		req.tokenPayload = payload;
+
 		next();
 	} catch (error) {
 		return res.status(401).json({

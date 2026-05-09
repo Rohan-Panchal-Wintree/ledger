@@ -1,10 +1,12 @@
 import jwt from "jsonwebtoken";
 
-export const createAccessToken = (user) =>
+export const createAccessToken = ({ user, sessionId }) =>
 	jwt.sign(
 		{
 			role: user.role,
 			email: user.email,
+			sid: sessionId,
+			type: "access",
 		},
 		process.env.JWT_ACCESS_SECRET,
 		{
@@ -13,9 +15,10 @@ export const createAccessToken = (user) =>
 		},
 	);
 
-export const createRefreshToken = (user) =>
+export const createRefreshToken = ({ user, sessionId }) =>
 	jwt.sign(
 		{
+			sid: sessionId,
 			type: "refresh",
 		},
 		process.env.JWT_REFRESH_SECRET,
@@ -25,9 +28,8 @@ export const createRefreshToken = (user) =>
 		},
 	);
 
-export const rotateRefreshToken = async (refreshToken) => {
-	const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-	return payload.sub;
-};
+export const verifyAccessToken = (token) =>
+	jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-export const revokeRefreshToken = async () => {};
+export const verifyRefreshToken = (token) =>
+	jwt.verify(token, process.env.JWT_REFRESH_SECRET);

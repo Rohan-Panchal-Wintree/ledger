@@ -3,9 +3,36 @@ import { createOtp, verifyOtp } from "../utils/otp.js";
 import {
 	createAccessToken,
 	createRefreshToken,
-	revokeRefreshToken,
-	rotateRefreshToken,
+	verifyRefreshToken,
 } from "../utils/token.js";
+import {
+	createSession,
+	getSession,
+	touchSession,
+	deleteSession,
+	validateSession,
+	attachSessionToUser,
+	removeSessionFromUser,
+} from "../utils/session.js";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+const cookieBase = {
+	httpOnly: true,
+	secure: process.env.COOKIE_SECURE === "true" || isProduction,
+	sameSite: process.env.COOKIE_SAME_SITE || (isProduction ? "none" : "lax"),
+	path: "/",
+};
+
+const accessCookieOptions = {
+	...cookieBase,
+	maxAge: 15 * 60 * 1000,
+};
+
+const refreshCookieOptions = {
+	...cookieBase,
+	maxAge: 7 * 24 * 60 * 60 * 1000,
+};
 
 const getUserByEmail = async (email) => {
 	const user = await User.findOne({ email: email.toLowerCase() });
@@ -17,21 +44,22 @@ const getUserByEmail = async (email) => {
 	return user;
 };
 
-const buildAuthResponse = async (user) => {
-	user.lastLoginAt = new Date();
-	await user.save();
+const serializeUser = (user) => ({
+	id: user._id,
+	name: user.name,
+	email: user.email,
+	role: user.role,
+	isActive: user.isActive,
+});
 
-	return {
-		accessToken: createAccessToken(user),
-		refreshToken: await createRefreshToken(user),
-		user: {
-			id: user._id,
-			name: user.name,
-			email: user.email,
-			role: user.role,
-			isActive: user.isActive,
-		},
-	};
+const setAuthCookies = (res, accessToken, refreshToken) => {
+	res.cookie("accessToken", accessToken, accessCookieOptions);
+	res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+};
+
+const clearAuthCookies = (res) => {
+	res.clearCookie("accessToken", cookieBase);
+	res.clearCookie("refreshToken", cookieBase);
 };
 
 export const registerUser = async (req, res) => {
@@ -56,13 +84,7 @@ export const registerUser = async (req, res) => {
 	return res.status(201).json({
 		success: true,
 		message: "User registered successfully",
-		data: {
-			id: user._id,
-			name: user.name,
-			email: user.email,
-			role: user.role,
-			isActive: user.isActive,
-		},
+		data: serializeUser(user),
 	});
 };
 
@@ -78,14 +100,16 @@ export const requestOtp = async (req, res) => {
 
 	const otp = await createOtp(user.email);
 
-	// TODO: send email later
-	// await sendOtpEmail(user.email, otp);
-
-	return res.json({
+	const response = {
 		success: true,
 		message: "OTP sent successfully",
-		otp, // remove this in production
-	});
+	};
+
+	if (!isProduction) {
+		response.otp = otp;
+	}
+
+	return res.json(response);
 };
 
 export const verifyOtpLogin = async (req, res) => {
@@ -107,36 +131,104 @@ export const verifyOtpLogin = async (req, res) => {
 		});
 	}
 
-	const auth = await buildAuthResponse(user);
+	const session = await createSession(user, req);
+	await attachSessionToUser(user._id.toString(), session.sessionId);
+
+	const accessToken = createAccessToken({
+		user,
+		sessionId: session.sessionId,
+	});
+
+	const refreshToken = createRefreshToken({
+		user,
+		sessionId: session.sessionId,
+	});
+
+	setAuthCookies(res, accessToken, refreshToken);
 
 	return res.json({
 		success: true,
-		...auth,
+		user: serializeUser(user),
+		csrfToken: session.csrfToken,
 	});
 };
 
 export const refreshToken = async (req, res) => {
-	const userId = await rotateRefreshToken(req.body.refreshToken);
+	const refreshTokenValue = req.cookies?.refreshToken;
 
-	const user = await User.findById(userId);
-
-	if (!user) {
+	if (!refreshTokenValue) {
 		return res.status(401).json({
 			success: false,
-			message: "User not found",
+			message: "Refresh token missing",
 		});
 	}
 
-	const auth = await buildAuthResponse(user);
+	const payload = verifyRefreshToken(refreshTokenValue);
+
+	if (payload.type !== "refresh") {
+		return res.status(401).json({
+			success: false,
+			message: "Invalid refresh token type",
+		});
+	}
+
+	const session = await getSession(payload.sid);
+
+	if (
+		!session ||
+		session.userId !== payload.sub ||
+		!validateSession(session, req)
+	) {
+		return res.status(401).json({
+			success: false,
+			message: "Session expired or invalid",
+		});
+	}
+
+	const user = await User.findById(payload.sub);
+
+	if (!user || !user.isActive) {
+		return res.status(401).json({
+			success: false,
+			message: "User not found or inactive",
+		});
+	}
+
+	await touchSession(payload.sid);
+
+	const nextAccessToken = createAccessToken({
+		user,
+		sessionId: payload.sid,
+	});
+
+	const nextRefreshToken = createRefreshToken({
+		user,
+		sessionId: payload.sid,
+	});
+
+	setAuthCookies(res, nextAccessToken, nextRefreshToken);
 
 	return res.json({
 		success: true,
-		...auth,
+		user: serializeUser(user),
+		csrfToken: session.csrfToken,
 	});
 };
 
 export const logout = async (req, res) => {
-	await revokeRefreshToken(req.body.refreshToken);
+	try {
+		const refreshTokenValue = req.cookies?.refreshToken;
+
+		if (refreshTokenValue) {
+			const payload = verifyRefreshToken(refreshTokenValue);
+
+			await removeSessionFromUser(payload.sub, payload.sid);
+			await deleteSession(payload.sid);
+		}
+	} catch (error) {
+	} finally {
+		clearAuthCookies(res);
+	}
 
 	return res.json({
 		success: true,

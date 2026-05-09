@@ -10,8 +10,17 @@ import paymentRoutes from "./payment.routes.js";
 import miscellaneousPaymentRoutes from "./miscellaneous-payment.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
+import { middlewares } from "../../middlewares/index.js";
+import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
 
 const router = Router();
+
+// Public auth routes
+router.use("/auth", authRoutes);
+
+// All routes below require login + CSRF protection for write methods
+router.use(middlewares.authMiddleware);
+router.use(csrfMiddleware);
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);

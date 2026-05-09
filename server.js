@@ -2,24 +2,22 @@ import express from "express";
 import "dotenv/config";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import dbconnect from "./dbConnection/dbconnection.js";
+import { connectRedis } from "./dbConnection/redis.js";
 import { allowedOrigins } from "./utils/ManagedVariables.js";
 import { loggerMiddleware } from "./middlewares/logger.middleware.js";
 import {
 	errorHandler,
 	notFoundHandler,
 } from "./middlewares/error.middleware.js";
-import routes from "./routes/index.js";
 
 const app = express();
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
 const port = process.env.PORT || 8990;
 
-// Middlewares
-app.use(express.json());
-app.use(routes);
-app.use(notFoundHandler);
-app.use(errorHandler);
-app.use(loggerMiddleware);
 app.use(
 	cors({
 		origin: function (origin, callback) {
@@ -37,9 +35,31 @@ app.use(
 		credentials: true,
 	}),
 );
-app.use(cookieParser());
 
-app.listen(port, async () => {
+app.use(
+	helmet({
+		crossOriginResourcePolicy: { policy: "cross-origin" },
+	}),
+);
+
+app.use(cookieParser());
+app.use(express.json({ limit: "200kb" }));
+app.use(express.urlencoded({ extended: true, limit: "200kb" }));
+app.use(loggerMiddleware);
+
+const startServer = async () => {
 	await dbconnect();
-	console.log(`App is Running on ${port}`);
-});
+	await connectRedis();
+
+	const { default: routes } = await import("./routes/index.js");
+
+	app.use(routes);
+	app.use(notFoundHandler);
+	app.use(errorHandler);
+
+	app.listen(port, () => {
+		console.log(`App is Running on ${port}`);
+	});
+};
+
+startServer();
