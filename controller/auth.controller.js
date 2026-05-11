@@ -14,6 +14,7 @@ import {
 	attachSessionToUser,
 	removeSessionFromUser,
 } from "../utils/session.js";
+import { sendOtpEmail } from "../utils/SendEmail.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -99,7 +100,7 @@ export const requestOtp = async (req, res) => {
 	}
 
 	const otp = await createOtp(user.email);
-
+	//await sendOtpEmail(user.email, otp);
 	const response = {
 		success: true,
 		message: "OTP sent successfully",
