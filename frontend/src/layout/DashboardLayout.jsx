@@ -1,10 +1,15 @@
-import { SidebarProvider, SidebarTrigger } from "../component/UI/Sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "../component/UI/Sidebar";
 import { AppSidebar } from "../component/AppSidebar";
 import { LogOut } from "lucide-react";
 import Badge from "../component/UI/Badge.jsx";
 import { Outlet, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { logoutUser, selectCurrentUser } from "../store/slices/Auth.slice";
+import { useEffect } from "react";
 
 export function DashboardLayout() {
   const currentUser = useSelector(selectCurrentUser);

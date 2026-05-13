@@ -9,6 +9,74 @@ import {
   CircleDollarSign,
 } from "lucide-react";
 
+// function MultiSelectField({
+//   icon,
+//   placeholder,
+//   options,
+//   selectedValues,
+//   onToggle,
+// }) {
+//   const TriggerIcon = icon;
+//   const selectedOptions = options.filter((option) =>
+//     selectedValues.includes(option.value),
+//   );
+
+//   return (
+//     <div>
+//       <details className="group relative">
+//         <summary className="flex w-full cursor-pointer list-none items-center rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2.5 text-sm text-on-surface transition hover:border-primary/40">
+//           <TriggerIcon className="mr-3 h-4 w-4 text-outline-variant" />
+//           <span className="min-w-0 flex-1 truncate">
+//             {selectedOptions.length > 0
+//               ? `${selectedOptions.length} selected`
+//               : placeholder}
+//           </span>
+//           <ChevronDown className="h-4 w-4 text-outline-variant transition group-open:rotate-180" />
+//         </summary>
+
+//         <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-lg">
+//           {options.length > 0 ? (
+//             options.map((option) => (
+//               <label
+//                 key={option.value}
+//                 className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-on-surface transition hover:bg-surface-container-low"
+//               >
+//                 <input
+//                   type="checkbox"
+//                   checked={selectedValues.includes(option.value)}
+//                   onChange={() => onToggle(option.value)}
+//                   className="h-4 w-4 rounded border-outline-variant/30 text-primary focus:ring-primary"
+//                 />
+//                 <span>{option.label}</span>
+//               </label>
+//             ))
+//           ) : (
+//             <div className="px-3 py-2 text-sm text-on-surface-variant">
+//               No options available
+//             </div>
+//           )}
+//         </div>
+//       </details>
+
+//       {selectedOptions.length > 0 && (
+//         <div className="mt-3 flex flex-wrap gap-2">
+//           {selectedOptions.map((option) => (
+//             <button
+//               key={option.value}
+//               type="button"
+//               onClick={() => onToggle(option.value)}
+//               className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
+//             >
+//               {option.label}
+//               <X className="h-3 w-3" />
+//             </button>
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
 function MultiSelectField({
   icon,
   placeholder,
@@ -17,47 +85,53 @@ function MultiSelectField({
   onToggle,
 }) {
   const TriggerIcon = icon;
-  const selectedOptions = options.filter((option) =>
-    selectedValues.includes(option.value),
+
+  const selectedOptions = options.filter((opt) =>
+    selectedValues.includes(opt.value),
   );
 
   return (
-    <div>
-      <details className="group relative">
-        <summary className="flex w-full cursor-pointer list-none items-center rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2.5 text-sm text-on-surface transition hover:border-primary/40">
-          <TriggerIcon className="mr-3 h-4 w-4 text-outline-variant" />
-          <span className="min-w-0 flex-1 truncate">
-            {selectedOptions.length > 0
-              ? `${selectedOptions.length} selected`
-              : placeholder}
-          </span>
-          <ChevronDown className="h-4 w-4 text-outline-variant transition group-open:rotate-180" />
-        </summary>
+    <div className="dropdown w-full">
+      <button
+        tabIndex={0}
+        className="flex w-full items-center rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2.5 text-sm text-on-surface transition hover:border-primary/40"
+      >
+        <TriggerIcon className="mr-3 h-4 w-4 text-outline-variant" />
 
-        <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-lg">
-          {options.length > 0 ? (
-            options.map((option) => (
-              <label
-                key={option.value}
-                className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-on-surface transition hover:bg-surface-container-low"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedValues.includes(option.value)}
-                  onChange={() => onToggle(option.value)}
-                  className="h-4 w-4 rounded border-outline-variant/30 text-primary focus:ring-primary"
-                />
-                <span>{option.label}</span>
-              </label>
-            ))
-          ) : (
-            <div className="px-3 py-2 text-sm text-on-surface-variant">
-              No options available
-            </div>
-          )}
-        </div>
-      </details>
+        <span className="flex-1 truncate text-left">
+          {selectedOptions.length > 0
+            ? `${selectedOptions.length} selected`
+            : placeholder}
+        </span>
+      </button>
 
+      <div
+        tabIndex={0}
+        className="dropdown-content z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2"
+      >
+        {options.length > 0 ? (
+          options.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-on-surface transition hover:bg-surface-container-low"
+            >
+              <input
+                type="checkbox"
+                checked={selectedValues.includes(option.value)}
+                onChange={() => onToggle(option.value)}
+                className="checkbox checkbox-sm"
+              />
+              <span>{option.label}</span>
+            </label>
+          ))
+        ) : (
+          <div className="px-3 py-2 text-sm text-on-surface-variant">
+            No options available
+          </div>
+        )}
+      </div>
+
+      {/* Selected chips */}
       {selectedOptions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {selectedOptions.map((option) => (
@@ -68,7 +142,6 @@ function MultiSelectField({
               className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
             >
               {option.label}
-              <X className="h-3 w-3" />
             </button>
           ))}
         </div>
@@ -119,8 +192,8 @@ export default function FilterModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/10 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-surface-container-lowest">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/70 p-4 backdrop-blur-xs ">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] bg-surface-container-lowest">
         <div className="border-b border-outline-variant/20 px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
@@ -131,14 +204,6 @@ export default function FilterModal({
                 Refine the dataset according to your preference.
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full p-2 transition hover:bg-surface-container"
-            >
-              <X className="h-5 w-5 text-on-surface-variant" />
-            </button>
           </div>
         </div>
 
@@ -316,13 +381,6 @@ export default function FilterModal({
                 </label>
               ))}
             </div>
-          </div>
-
-          <div className="rounded-lg border border-primary/10 bg-primary/5 p-4">
-            <p className="text-sm italic text-on-surface-variant">
-              Applying filters will refine your transaction dataset and keep
-              those preferences saved for the next visit.
-            </p>
           </div>
         </div>
 

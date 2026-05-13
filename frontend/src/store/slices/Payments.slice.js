@@ -1,35 +1,12 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { ledgerApi, paymentApi, settlementApi } from "../../api";
-import { getUserFromStorage } from "./Auth.slice";
-
-async function resolveAccessToken({ dispatch, getState }) {
-  let accessToken = getState().auth?.accessToken;
-
-  if (!accessToken) {
-    const restoredAuth = await dispatch(getUserFromStorage()).unwrap();
-    accessToken = restoredAuth?.accessToken;
-  }
-
-  if (!accessToken) {
-    throw new Error("Access token not found. Please log in again.");
-  }
-
-  return accessToken;
-}
+import { getUserFromStorage } from "./Auth.slice.js";
 
 export const fetchPayments = createAsyncThunk(
   "payments/fetchPayments",
-  async (_, { dispatch, getState, rejectWithValue }) => {
+  async (_, { rejectWithValue }) => {
     try {
-      const accessToken = await resolveAccessToken({ dispatch, getState });
-      const response = await ledgerApi.get("/", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      console.log("response", response);
-
+      const response = await ledgerApi.get("/");
       return response.data?.data || [];
     } catch (error) {
       return rejectWithValue(
@@ -43,14 +20,11 @@ export const fetchPayments = createAsyncThunk(
 
 export const fetchUnmatchedPaymentSummary = createAsyncThunk(
   "payments/fetchUnmatchedPaymentSummary",
-  async (_, { dispatch, getState, rejectWithValue }) => {
+  async (_, { rejectWithValue }) => {
     try {
-      const accessToken = await resolveAccessToken({ dispatch, getState });
-      const response = await paymentApi.get("/unmatched-summary", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await paymentApi.get("/unmatched-summary");
+
+      console.log("unmatched summary data", response?.data?.data);
 
       return (
         response.data?.data || {
@@ -71,17 +45,11 @@ export const fetchUnmatchedPaymentSummary = createAsyncThunk(
 
 export const reconcileUnmatchedPaymentRows = createAsyncThunk(
   "payments/reconcileUnmatchedPaymentRows",
-  async ({ batchId } = {}, { dispatch, getState, rejectWithValue }) => {
+  async ({ batchId } = {}, { rejectWithValue }) => {
     try {
-      const accessToken = await resolveAccessToken({ dispatch, getState });
       const response = await paymentApi.post(
         "/reconcile-unmatched",
         batchId ? { batchId } : {},
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
       );
 
       const result = response.data?.data || response.data;
@@ -115,17 +83,12 @@ export const uploadFiles = createAsyncThunk(
       paymentDate,
       acquirerId,
     } = {},
-    { dispatch, getState, rejectWithValue },
+    { rejectWithValue },
   ) => {
     try {
       if (wireFiles.length === 0 && paymentFiles.length === 0) {
         throw new Error("No files selected for upload");
       }
-
-      const accessToken = await resolveAccessToken({ dispatch, getState });
-      const authHeaders = {
-        Authorization: `Bearer ${accessToken}`,
-      };
 
       const result = {
         wire: null,
@@ -150,12 +113,6 @@ export const uploadFiles = createAsyncThunk(
         const wireResponse = await settlementApi.post(
           "/upload-wiresheet",
           wireFormData,
-          {
-            headers: {
-              ...authHeaders,
-              "Content-Type": "multipart/form-data",
-            },
-          },
         );
 
         result.wire = wireResponse.data?.data || wireResponse.data;
@@ -186,7 +143,7 @@ export const uploadFiles = createAsyncThunk(
               },
             );
 
-            console.log("response for the file uploaded", paymentResponse);
+            // console.log("response for the file uploaded", paymentResponse);
 
             return {
               fileName: file.name,

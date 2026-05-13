@@ -8,6 +8,7 @@ import {
   FileBarChart,
   User,
   Shield,
+  Cable,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -25,12 +26,27 @@ import {
 } from "./UI/Sidebar";
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser, selectCurrentUser } from "../store/slices/Auth.slice";
+import { useEffect, useLayoutEffect } from "react";
 
 export function AppSidebar() {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
 
-  const { open } = useSidebar();
+  const { open, setOpen } = useSidebar();
+
+  useEffect(() => {
+    const savedSidebarState = window.localStorage.getItem(
+      "SIDEBAR_STORAGE_KEY",
+    );
+
+    if (savedSidebarState !== null) {
+      setOpen(savedSidebarState === "true");
+    }
+  }, [setOpen]);
+
+  useEffect(() => {
+    window.localStorage.setItem("SIDEBAR_STORAGE_KEY", String(open));
+  }, [open]);
 
   const sidebarItems = [
     {
@@ -61,6 +77,18 @@ export function AppSidebar() {
       name: "Upload",
       icon: Upload,
       path: "/upload",
+      show: currentUser?.role === "admin",
+    },
+    {
+      name: "Miscellaneous",
+      icon: Cable,
+      path: "/miscellaneous",
+      show: currentUser?.role === "admin",
+    },
+    {
+      name: "Wiresheets",
+      icon: Cable,
+      path: "/wiresheets",
       show: currentUser?.role === "admin",
     },
     {

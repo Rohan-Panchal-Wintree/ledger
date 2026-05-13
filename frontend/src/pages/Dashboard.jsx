@@ -8,12 +8,14 @@ import {
   CircleUserRound,
   ArrowRightLeft,
   Banknote,
+  Calendar,
+  X,
 } from "lucide-react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import {
-  fetchPayments,
-  selectPaymentsFullState,
-} from "../store/slices/Payments.slice";
+  useDashboardByPeriod,
+  useDashboardLatest,
+} from "../queries/dashboardQueries";
 import { useEffect, useState } from "react";
 import { selectCurrentUser } from "../store/slices/Auth.slice";
 import { toast } from "react-hot-toast";
@@ -21,12 +23,15 @@ import Badge from "../component/UI/Badge";
 import FilterModal from "../component/FilterModal";
 import GroupedMerchantView from "../component/dashboard/GroupedMerchantView";
 import Spinner from "../component/UI/Spinner";
+import { useMiscellaneousPayments } from "../queries/miscellaneousQueries";
 
 const statusClasses = {
   settled: "bg-green-500/10 text-green-600",
   pending: "bg-orange-400/10 text-orange-600",
   partially_paid: "bg-yellow-400/10 text-yellow-600",
 };
+
+const today = new Date().toISOString().slice(0, 10);
 
 const DASHBOARD_FILTERS_STORAGE_KEY = "dashboard-filters";
 const DEFAULT_VISIBLE_COLUMNS = [
@@ -39,6 +44,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "paidAmount",
   "settlementPaidAmount",
   "settlementCurrency",
+  "rate",
   "balance",
   "status",
 ];
@@ -53,6 +59,7 @@ const FILTERABLE_COLUMNS = [
   { key: "paidAmount", label: "Paid In Amount" },
   { key: "settlementPaidAmount", label: "Actual Paid" },
   { key: "settlementCurrency", label: "Settle Currency" },
+  { key: "rate", label: "Rate" },
   { key: "balance", label: "Balance" },
   { key: "status", label: "Status" },
 ];
@@ -168,9 +175,16 @@ function getSearchableTransactionValues(transaction) {
     .map((value) => String(value).toLowerCase());
 }
 
+function getErrorMessage(error, fallbackMessage) {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallbackMessage
+  );
+}
+
 export default function Dashboard() {
-  const dispatch = useDispatch();
-  const { transactions, loading } = useSelector(selectPaymentsFullState);
   const currentUser = useSelector(selectCurrentUser);
   const [searchQuery, setSearchQuery] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(50);
@@ -178,6 +192,54 @@ export default function Dashboard() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState(readSavedFilters);
   const [activeView, setActiveView] = useState("table");
+
+  const [selectedReportDate, setSelectedReportDate] = useState("");
+  const [appliedReportDate, setAppliedReportDate] = useState("");
+
+  const isMiscellaneousEnabled = Boolean(appliedReportDate);
+
+  const latestDashboardQuery = useDashboardLatest({
+    enabled: !appliedReportDate,
+  });
+
+  const periodDashboardQuery = useDashboardByPeriod(
+    {
+      paymentDate: appliedReportDate,
+    },
+    {
+      enabled: Boolean(appliedReportDate),
+    },
+  );
+
+  const activeDashboardQuery = appliedReportDate
+    ? periodDashboardQuery
+    : latestDashboardQuery;
+
+  const dashboardData = activeDashboardQuery.data || {};
+
+  const miscellaneousQuery = useMiscellaneousPayments(
+    {
+      paymentSheetDate: appliedReportDate,
+    },
+    {
+      enabled: isMiscellaneousEnabled,
+    },
+  );
+
+  const miscellaneousPayments = miscellaneousQuery.data?.items || [];
+
+  const miscellaneousLoading =
+    miscellaneousQuery.isLoading || miscellaneousQuery.isFetching;
+
+  const transactions = dashboardData.transactions || [];
+  const dashboardSummary = dashboardData.summary || {};
+  const groupedData = dashboardData.groupedData || [];
+  const unmatchedPayments = dashboardData.unmatchedPayments || [];
+  const wiresheets = dashboardData.wiresheets || [];
+
+  const loading = activeDashboardQuery.isLoading;
+  const isFetching = activeDashboardQuery.isFetching;
+  const dashboardError = activeDashboardQuery.error;
 
   function formatAmount(amount, currency = "EUR") {
     const num = Number(amount);
@@ -268,8 +330,10 @@ export default function Dashboard() {
     const transactionEndDate = transaction.endDate
       ? new Date(transaction.endDate)
       : null;
+
     const payableAmount =
       Number(transaction.receivedAmount ?? transaction.payable) || 0;
+
     const merchantName = transaction.merchantName || transaction.merchant || "";
     const acquirerName = transaction.acquirer || transaction.bank || "";
     const partnerValue = getPartnerValue(transaction.merchantTag);
@@ -377,99 +441,14 @@ export default function Dashboard() {
     filteredTransactions.length,
   );
 
-  const summaryTransactions = filteredTransactions;
-
   const visibleColumnKeys =
     filters.visibleColumns.length > 0
       ? filters.visibleColumns
       : DEFAULT_VISIBLE_COLUMNS;
 
-  const visibleColumns = FILTERABLE_COLUMNS.filter((column) =>
-    visibleColumnKeys.includes(column.key),
-  );
-
-  const totalPayable = (currency) => {
-    return summaryTransactions
-      .filter((tx) => tx.settlementCurrency === currency)
-      .reduce((sum, tx) => {
-        const amount = Number(tx.receivedAmount) || 0;
-        return amount > 0 ? sum + amount : sum;
-      }, 0);
-  };
-
-  const totalPaid = (currency) => {
-    return summaryTransactions
-      .filter((tx) => tx.settlementCurrency === currency)
-      .reduce((sum, tx) => {
-        const amount = Number(tx.settlementPaidAmount) || 0;
-        return amount > 0 ? sum + amount : sum;
-      }, 0);
-  };
-
-  const receivedBreakdownByAcquirer = [
-    ...new Map(
-      summaryTransactions.reduce((map, tx) => {
-        const acquirer = tx.acquirer || "Unknown";
-        const currency =
-          tx.processingCurrency || tx.receivedCurrency || "UNKNOWN";
-        const amount = Number(tx.receivedAmount ?? tx.payable) || 0;
-
-        if (!map.has(acquirer)) {
-          map.set(acquirer, {
-            acquirer,
-            totalReceived: 0,
-            currencies: new Map(),
-          });
-        }
-
-        const entry = map.get(acquirer);
-        entry.totalReceived += amount;
-        entry.currencies.set(
-          currency,
-          (entry.currencies.get(currency) || 0) + amount,
-        );
-        return map;
-      }, new Map()),
-    ).values(),
-  ]
-    .map((entry) => ({
-      acquirer: entry.acquirer,
-      totalReceived: entry.totalReceived,
-      currencies: [...entry.currencies.entries()]
-        .sort(
-          (left, right) =>
-            right[1] - left[1] || left[0].localeCompare(right[0]),
-        )
-        .map(([currency, amount]) => ({ currency, amount })),
-    }))
-    .sort(
-      (left, right) =>
-        right.totalReceived - left.totalReceived ||
-        left.acquirer.localeCompare(right.acquirer),
-    );
-
-  const totalReceivedAllCurrencies = summaryTransactions.reduce(
-    (sum, tx) => sum + (Number(tx.receivedAmount ?? tx.payable) || 0),
-    0,
-  );
-
-  const totalPaidAmount = summaryTransactions.reduce(
-    (sum, tx) => sum + (Number(tx.paidAmount) || 0),
-    0,
-  );
-
-  const totalBalanceAmount = summaryTransactions.reduce(
-    (sum, tx) => sum + (Number(tx.balance) || 0),
-    0,
-  );
-
-  const totalPaidEuro = summaryTransactions
-    .filter((tx) => (tx.paymentMethod || "") === "WIRE")
-    .reduce((sum, tx) => sum + (Number(tx.settlementPaidAmount) || 0), 0);
-
-  const totalPaidUsdt = summaryTransactions
-    .filter((tx) => (tx.paymentMethod || "") === "CRYPTO")
-    .reduce((sum, tx) => sum + (Number(tx.settlementPaidAmount) || 0), 0);
+  const visibleColumns = FILTERABLE_COLUMNS.filter((column) => {
+    return visibleColumnKeys.includes(column.key);
+  });
 
   function getMerchantShortName(name) {
     if (!name) return "-";
@@ -480,39 +459,20 @@ export default function Dashboard() {
     return name;
   }
 
-  const completedCount = summaryTransactions.filter(
-    (tx) => tx.status === "settled",
-  ).length;
-
-  const merchantsPaidCount = new Set(
-    summaryTransactions
-      .filter((tx) => tx.status === "settled")
-      .map((tx) => tx.merchantName || tx.merchant)
-      .filter(Boolean),
-  ).size;
-
-  const partiallyPaidCount = summaryTransactions.filter(
-    (tx) => tx.status === "partially_paid",
-  ).length;
-
-  const pendingCount = summaryTransactions.filter(
-    (tx) => tx.status === "pending",
-  ).length;
-
   const statusBreakdownItems = [
     {
       label: "Completed",
-      value: completedCount,
+      value: dashboardSummary.settledCount || 0,
       dotClassName: "bg-green-500",
     },
     {
       label: "Partially Paid",
-      value: partiallyPaidCount,
+      value: dashboardSummary.partiallyPaidCount || 0,
       dotClassName: "bg-orange-400",
     },
     {
       label: "Pending",
-      value: pendingCount,
+      value: dashboardSummary.pendingCount || 0,
       dotClassName: "bg-yellow-400",
     },
   ];
@@ -534,6 +494,18 @@ export default function Dashboard() {
     setFilters(createDefaultFilters());
     setSearchQuery("");
     setCurrentPage(1);
+  };
+
+  const handleGetReport = () => {
+    setAppliedReportDate(selectedReportDate);
+    setCurrentPage(1);
+  };
+
+  const handleClearReportDate = () => {
+    setSelectedReportDate("");
+    setAppliedReportDate("");
+    setCurrentPage(1);
+    setActiveView("table");
   };
 
   const renderCellContent = (item, columnKey) => {
@@ -629,15 +601,19 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    dispatch(fetchPayments());
-  }, [dispatch]);
-
-  useEffect(() => {
     window.localStorage.setItem(
       DASHBOARD_FILTERS_STORAGE_KEY,
       JSON.stringify(filters),
     );
   }, [filters]);
+
+  useEffect(() => {
+    if (dashboardError) {
+      toast.error(
+        getErrorMessage(dashboardError, "Failed to load dashboard data."),
+      );
+    }
+  }, [dashboardError]);
 
   if (loading)
     return (
@@ -659,40 +635,67 @@ export default function Dashboard() {
             <Banknote className="text-white/50" size={20} />
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            {["USD", "EUR"].map((currency) => (
-              <div
-                key={currency}
-                className="rounded-lg border border-white/12 bg-white/8 p-5 backdrop-blur-xs"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase tracking-[0.18em] text-white/80">
-                    {currency}
-                  </span>
+            <div className="rounded-lg border border-white/12 bg-white/8 p-5 backdrop-blur-xs">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-bold uppercase tracking-[0.18em] text-white/80">
+                  Received
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Total Received
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
+                    {formatPlainNumber(dashboardSummary.totalReceived || 0)}
+                  </p>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-                      Payable
-                    </p>
-                    <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
-                      {formatAmount(totalPayable(currency), currency)}
-                    </p>
-                  </div>
+                <div className="h-px bg-white/10" />
 
-                  <div className="h-px bg-white/10" />
-
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-                      Paid
-                    </p>
-                    <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
-                      {formatAmount(totalPaid(currency), currency)}
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Total Balance
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
+                    {formatPlainNumber(dashboardSummary.totalBalance || 0)}
+                  </p>
                 </div>
               </div>
-            ))}
+            </div>
+
+            <div className="rounded-lg border border-white/12 bg-white/8 p-5 backdrop-blur-xs">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-bold uppercase tracking-[0.18em] text-white/80">
+                  Paid
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Total Paid
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
+                    {formatPlainNumber(dashboardSummary.totalPaid || 0)}
+                  </p>
+                </div>
+
+                <div className="h-px bg-white/10" />
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Settlement Amount
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">
+                    {formatPlainNumber(
+                      dashboardSummary.totalSettlementAmount || 0,
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -700,16 +703,16 @@ export default function Dashboard() {
           <div className="group flex flex-col justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-8 transition-all duration-300">
             <div className="flex items-start justify-between">
               <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                Merchants Paid
+                Unmatched Count
               </span>
               <CircleUserRound className="text-primary" size={20} />
             </div>
             <div className="mt-8">
               <div className="text-4xl font-extrabold tracking-tight text-on-surface">
-                {merchantsPaidCount}
+                {dashboardSummary.unmatchedCount || 0}
               </div>
               <p className="mt-2 text-xs font-medium text-on-surface-variant">
-                Active processing partners
+                Pending reconciliation rows
               </p>
             </div>
           </div>
@@ -723,7 +726,7 @@ export default function Dashboard() {
             </div>
             <div className="mt-8">
               <div className="text-4xl font-extrabold tracking-tight text-on-surface">
-                {summaryTransactions.length}
+                {dashboardSummary.totalTransactions || 0}
               </div>
             </div>
           </div>
@@ -778,9 +781,56 @@ export default function Dashboard() {
           >
             Group View
           </button>
+
+          {isMiscellaneousEnabled && (
+            <button
+              type="button"
+              onClick={() => setActiveView("miscellaneous")}
+              className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm transition ${
+                activeView === "miscellaneous"
+                  ? "bg-surface-container-lowest font-bold text-primary"
+                  : "font-semibold text-on-surface-variant hover:text-on-surface"
+              }`}
+            >
+              Miscellaneous
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-2">
+            <Calendar size={16} className="text-on-surface-variant" />
+
+            <input
+              type="date"
+              value={selectedReportDate}
+              max={today}
+              onChange={(e) => {
+                setSelectedReportDate(e.target.value);
+              }}
+              className="w-35 bg-transparent text-sm font-semibold text-on-surface-variant outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={handleGetReport}
+              disabled={!selectedReportDate || isFetching}
+              className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Get
+            </button>
+
+            {(selectedReportDate || appliedReportDate) && (
+              <button
+                type="button"
+                onClick={handleClearReportDate}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container hover:text-on-surface"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
           <div className="relative">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
@@ -849,9 +899,6 @@ export default function Dashboard() {
                       {column.label}
                     </th>
                   ))}
-                  {/* <th className="whitespace-nowrap px-8 py-4 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Actions
-                  </th> */}
                 </tr>
               </thead>
 
@@ -888,19 +935,6 @@ export default function Dashboard() {
                           {renderCellContent(item, column.key)}
                         </td>
                       ))}
-
-                      {/* actions */}
-                      {/* <td className="whitespace-nowrap px-8 py-4 text-right">
-                        <button
-                          type="button"
-                          className="rounded-full p-2 transition-colors hover:bg-surface-container"
-                        >
-                          <MoreVertical
-                            className="text-on-surface-variant"
-                            size={18}
-                          />
-                        </button>
-                      </td> */}
                     </tr>
                   ))
                 ) : (
@@ -970,13 +1004,114 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
-      ) : (
+      ) : activeView === "group" ? (
         <GroupedMerchantView
           transactions={filteredTransactions}
           formatAmount={formatAmount}
           formatDate={formatDate}
           formatPlainNumber={formatPlainNumber}
         />
+      ) : (
+        <section className="overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+          <div className="flex items-center justify-between border-b border-outline-variant/5 px-8 py-6">
+            <div>
+              <h3 className="text-xl font-bold tracking-tight text-on-surface">
+                Miscellaneous Payments
+              </h3>
+
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Showing miscellaneous entries for {appliedReportDate}
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto scrollbar-hide">
+            <table className="w-full border-collapse text-left">
+              <thead className="bg-surface-container-low/50">
+                <tr>
+                  {[
+                    "Type",
+                    "Merchant",
+                    "Bank",
+                    "MID",
+                    "Currency",
+                    "Amount Paid",
+                    "Settlement",
+                    "Notes",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-outline-variant/5">
+                {miscellaneousLoading ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
+                    >
+                      Loading miscellaneous payments...
+                    </td>
+                  </tr>
+                ) : miscellaneousPayments.length > 0 ? (
+                  miscellaneousPayments.map((item) => (
+                    <tr
+                      key={item._id}
+                      className="group border-transparent transition-all duration-200 hover:bg-surface-container-low/45"
+                    >
+                      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface">
+                        {item.entryTypeLabel || item.entryType || "-"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-sm font-semibold text-on-surface">
+                        {item.merchantDisplayName || item.merchantName || "-"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface-variant">
+                        {item.bankLabel || "-"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface-variant">
+                        {item.linkedMid || item.mid || "-"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface">
+                        {item.processingCurrency || "-"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-right text-sm font-extrabold text-on-surface">
+                        {formatPlainNumber(item.amountPaid || 0)}
+                      </td>
+
+                      <td className="whitespace-nowrap px-8 py-4 text-right text-sm font-extrabold text-on-surface">
+                        {formatPlainNumber(item.settlementAmount || 0)}
+                      </td>
+
+                      <td className="px-8 py-4 text-sm text-on-surface-variant">
+                        {item.notes || "-"}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
+                    >
+                      No miscellaneous payments found for this date.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       <FilterModal

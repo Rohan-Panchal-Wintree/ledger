@@ -99,13 +99,15 @@ export default function UploadFile({
               type="button"
               onClick={onProcess}
               disabled={isProcessing}
-              className="flex items-center gap-2 rounded-full bg-linear-to-br from-primary to-primary-container px-8 py-4 text-sm font-bold tracking-wide text-white transition"
+              className="flex items-center gap-2 rounded-full bg-primary px-8 py-4 text-sm font-bold tracking-wide text-white transition"
             >
-              <Upload className="h-4 w-4" />
               {isProcessing ? (
                 <Spinner type="md" color="white" />
               ) : (
-                "UPLOAD DATA"
+                <>
+                  <Upload className="h-4 w-4" />
+                  UPLOAD DATA
+                </>
               )}
             </button>
 
@@ -297,7 +299,7 @@ export default function UploadFile({
               e.stopPropagation();
               onBrowse();
             }}
-            className="flex items-center gap-2 rounded-default bg-linear-to-br from-primary to-primary-container px-8 py-3 font-bold text-white transition"
+            className="flex items-center gap-2 rounded-xl bg-primary px-8 py-3 font-bold text-white transition"
           >
             Browse Files
           </button>

@@ -1,74 +1,82 @@
-import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import {
   CreditCard,
   Landmark,
   CheckCircle2,
   Clock3,
   AlertTriangle,
+  Calendar,
+  X,
 } from "lucide-react";
+
 import {
-  fetchPayments,
-  selectPaymentsFullState,
-} from "../store/slices/Payments.slice";
-
-// --- Constants ---
-const DASHBOARD_FILTERS_STORAGE_KEY = "dashboard-filters";
-
-// --- Helpers ---
-function getPartnerValue(merchantTag) {
-  const normalizedTag = String(merchantTag || "").toLowerCase();
-  if (normalizedTag.includes("transactworld")) return "transactworld";
-  if (normalizedTag.includes("dreamz")) return "dreamzpay";
-  return "";
-}
-
-function hasActiveDataFilters(filters) {
-  return Boolean(
-    filters.startDate ||
-    filters.endDate ||
-    filters.minAmount ||
-    filters.maxAmount ||
-    filters.merchants?.length > 0 ||
-    filters.acquirers?.length > 0 ||
-    filters.processingCurrencies?.length > 0 ||
-    filters.settlementCurrencies?.length > 0 ||
-    filters.partners?.length > 0 ||
-    filters.statuses?.length > 0,
-  );
-}
-
-function readSavedFilters() {
-  const defaultFilters = {
-    merchants: [],
-    acquirers: [],
-    processingCurrencies: [],
-    settlementCurrencies: [],
-    partners: [],
-    statuses: [],
-    visibleColumns: [],
-  };
-
-  if (typeof window === "undefined") return defaultFilters;
-
-  try {
-    const saved = window.localStorage.getItem(DASHBOARD_FILTERS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : defaultFilters;
-  } catch {
-    return defaultFilters;
-  }
-}
+  useBankReports,
+  usePaymentDayReport,
+  useReportDates,
+} from "../queries/reportQueries";
 
 export default function Reports() {
-  const dispatch = useDispatch();
-  const { transactions, loading } = useSelector(selectPaymentsFullState);
-  const filters = readSavedFilters();
+  const [selectedDate, setSelectedDate] = useState("");
+  const [appliedDate, setAppliedDate] = useState("");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const reportParams = appliedDate ? { paymentDate: appliedDate } : {};
+
+  const reportDatesQuery = useReportDates();
+  const bankReportsQuery = useBankReports(reportParams);
+  const paymentDayReportQuery = usePaymentDayReport(reportParams);
+
+  const reportDateButtons = (reportDatesQuery.data || [])
+    .filter((date) => {
+      const parsedDate = new Date(date);
+      return !Number.isNaN(parsedDate.getTime()) && date <= today;
+    })
+    .sort((a, b) => new Date(b) - new Date(a))
+    .slice(0, 5);
+  const bankReports = bankReportsQuery.data || [];
+  const paymentDayReport = paymentDayReportQuery.data || {};
+  const reportSummary = paymentDayReport.summary || {};
+
+  const loading = bankReportsQuery.isLoading || paymentDayReportQuery.isLoading;
+  const isFetching =
+    bankReportsQuery.isFetching || paymentDayReportQuery.isFetching;
+
+  const handleReportDateClick = (date) => {
+    setSelectedDate(date);
+    setAppliedDate(date);
+  };
+
+  const handleGetReport = () => {
+    if (!selectedDate) return;
+    setAppliedDate(selectedDate);
+  };
+
+  const handleClearDate = () => {
+    setSelectedDate("");
+    setAppliedDate("");
+  };
 
   useEffect(() => {
-    dispatch(fetchPayments());
-  }, [dispatch]);
+    const error =
+      reportDatesQuery.error ||
+      bankReportsQuery.error ||
+      paymentDayReportQuery.error;
 
-  // --- Formatters ---
+    if (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Failed to load reports.",
+      );
+    }
+  }, [
+    reportDatesQuery.error,
+    bankReportsQuery.error,
+    paymentDayReportQuery.error,
+  ]);
+
   function formatAmount(amount, currency = "EUR") {
     const num = Number(amount);
     if (isNaN(num)) return "0.00";
@@ -98,186 +106,99 @@ export default function Reports() {
         });
   }
 
-  function formatDisplayDate(dateValue) {
-    if (!dateValue) return "-";
-    const date = new Date(dateValue);
-    if (Number.isNaN(date.getTime())) return "-";
+  const totalReceivedAllCurrencies = reportSummary.totalReceived || 0;
+  const totalPaidEuro = reportSummary.settlement?.EUR || 0;
+  const totalPaidUsdt = reportSummary.settlement?.USDT || 0;
 
-    return date.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  }
-
-  function formatDateRange(startDate, endDate) {
-    if (!startDate && !endDate) return "Period not available";
-    if (startDate && !endDate) return `From ${formatDisplayDate(startDate)}`;
-    if (!startDate && endDate) return `Until ${formatDisplayDate(endDate)}`;
-    return `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`;
-  }
-
-  // --- Derived Data ---
-  const hasAppliedFilters = hasActiveDataFilters(filters);
-
-  const summaryTransactions = hasAppliedFilters
-    ? transactions.filter((tx) => {
-        const partnerValue = getPartnerValue(tx.merchantTag);
-
-        if (
-          filters.merchants?.length > 0 &&
-          !filters.merchants.includes(tx.merchantName)
-        )
-          return false;
-        if (
-          filters.acquirers?.length > 0 &&
-          !filters.acquirers.includes(tx.acquirer)
-        )
-          return false;
-        if (
-          filters.partners?.length > 0 &&
-          !filters.partners.includes(partnerValue)
-        )
-          return false;
-        if (
-          filters.statuses?.length > 0 &&
-          !filters.statuses.includes(tx.status)
-        )
-          return false;
-
-        return true;
-      })
-    : transactions;
-
-  const totalReceivedAllCurrencies = summaryTransactions.reduce(
-    (sum, tx) => sum + (Number(tx.receivedAmount ?? tx.payable) || 0),
-    0,
+  const sortedReportDates = [...reportDateButtons].sort(
+    (a, b) => new Date(a) - new Date(b),
   );
 
-  const totalPaidEuro = summaryTransactions
-    .filter((tx) => tx.paymentMethod === "WIRE")
-    .reduce((sum, tx) => sum + (Number(tx.settlementPaidAmount) || 0), 0);
+  const earliestReportDate = sortedReportDates[0];
+  const latestReportDate = sortedReportDates[sortedReportDates.length - 1];
 
-  const totalPaidUsdt = summaryTransactions
-    .filter((tx) => tx.paymentMethod === "CRYPTO")
-    .reduce((sum, tx) => sum + (Number(tx.settlementPaidAmount) || 0), 0);
+  const reportPeriodLabel = appliedDate
+    ? new Date(appliedDate).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : earliestReportDate && latestReportDate
+      ? `${new Date(earliestReportDate).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })} → ${new Date(latestReportDate).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })}`
+      : "No period available";
 
-  // --- Grouping Logic ---
-  const receivedBreakdownByAcquirer = [
-    ...new Map(
-      summaryTransactions.reduce((map, tx) => {
-        const acquirer = tx.acquirer || "Unknown";
-        const currency =
-          tx.processingCurrency || tx.receivedCurrency || "UNKNOWN";
-        const amount = Number(tx.receivedAmount ?? tx.payable) || 0;
-        const startDate = tx.startDate ? new Date(tx.startDate) : null;
-        const endDate = tx.endDate ? new Date(tx.endDate) : null;
+  console.log("bank reports", bankReports);
 
-        if (!map.has(acquirer)) {
-          map.set(acquirer, {
-            acquirer,
-            totalReceived: 0,
-            currencies: new Map(),
-            minStartDate: null,
-            maxEndDate: null,
-          });
-        }
-
-        const entry = map.get(acquirer);
-        entry.totalReceived += amount;
-        entry.currencies.set(
+  const receivedBreakdownByAcquirer = bankReports
+    .map((item) => ({
+      acquirer: item.bank || "Unknown Bank",
+      totalReceived: item.totalReceived || 0,
+      periodLabel: reportPeriodLabel,
+      currencies: Object.entries(item.received || {})
+        .map(([currency, amount]) => ({
           currency,
-          (entry.currencies.get(currency) || 0) + amount,
-        );
-
-        if (startDate && !Number.isNaN(startDate.getTime())) {
-          if (!entry.minStartDate || startDate < entry.minStartDate)
-            entry.minStartDate = startDate;
-        }
-        if (endDate && !Number.isNaN(endDate.getTime())) {
-          if (!entry.maxEndDate || endDate > entry.maxEndDate)
-            entry.maxEndDate = endDate;
-        }
-
-        return map;
-      }, new Map()),
-    ).values(),
-  ]
-    .map((entry) => ({
-      acquirer: entry.acquirer,
-      totalReceived: entry.totalReceived,
-      periodLabel: formatDateRange(entry.minStartDate, entry.maxEndDate),
-      currencies: [...entry.currencies.entries()]
-        .map(([currency, amount]) => ({ currency, amount }))
+          amount: Number(amount) || 0,
+        }))
+        .filter((entry) => entry.amount > 0)
         .sort((a, b) => b.amount - a.amount),
     }))
     .sort((a, b) => b.totalReceived - a.totalReceived);
 
+  const totalTransactionCount = bankReports.reduce(
+    (sum, item) => sum + (Number(item.transactionCount) || 0),
+    0,
+  );
+
   const statusBreakdownItems = [
     {
       label: "Completed",
-      value: summaryTransactions.filter((tx) => tx.status === "settled").length,
+      value: bankReports.reduce(
+        (sum, item) => sum + (Number(item.statusCounts?.settled) || 0),
+        0,
+      ),
       icon: CheckCircle2,
       dotClass: "bg-success",
       iconClass: "text-success",
     },
     {
       label: "Partially Paid",
-      value: summaryTransactions.filter((tx) => tx.status === "partially_paid")
-        .length,
+      value: bankReports.reduce(
+        (sum, item) => sum + (Number(item.statusCounts?.partially_paid) || 0),
+        0,
+      ),
       icon: AlertTriangle,
       dotClass: "bg-warning",
       iconClass: "text-warning",
     },
     {
       label: "Pending",
-      value: summaryTransactions.filter((tx) => tx.status === "pending").length,
+      value: bankReports.reduce(
+        (sum, item) => sum + (Number(item.statusCounts?.pending) || 0),
+        0,
+      ),
       icon: Clock3,
       dotClass: "bg-info",
       iconClass: "text-info",
     },
   ];
 
-  const currencyBreakdownItems = [
-    ...receivedBreakdownByAcquirer
-      .reduce((map, acquirer) => {
-        acquirer.currencies.forEach((currencyItem) => {
-          const currency = currencyItem.currency || "UNKNOWN";
-          const amount = Number(currencyItem.amount) || 0;
-
-          // ignore negative and zero values
-          if (amount <= 0) return;
-
-          map.set(currency, (map.get(currency) || 0) + amount);
-        });
-
-        return map;
-      }, new Map())
-      .entries(),
-  ]
+  const currencyBreakdownItems = Object.entries(reportSummary.received || {})
     .map(([currency, amount]) => ({
       currency,
-      amount,
+      amount: Number(amount) || 0,
     }))
+    .filter((item) => item.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 
   const highestCurrencyAmount = currencyBreakdownItems[0]?.amount || 0;
-
-  // console.log(
-  //   "EUR rows:",
-  //   summaryTransactions
-  //     .filter(
-  //       (tx) =>
-  //         (tx.processingCurrency || tx.receivedCurrency || "UNKNOWN") === "EUR",
-  //     )
-  //     .map((tx) => ({
-  //       acquirer: tx.acquirer,
-  //       currency: tx.processingCurrency || tx.receivedCurrency || "UNKNOWN",
-  //       amount: Number(tx.receivedAmount ?? tx.payable) || 0,
-  //       receivedAmount: tx.receivedAmount,
-  //       payable: tx.payable,
-  //     })),
-  // );
 
   if (loading) {
     return (
@@ -304,13 +225,86 @@ export default function Reports() {
 
           <div className="flex flex-wrap gap-2">
             <div className="badge badge-outline border-base-300 bg-surface-low text-on-surface">
-              Transactions: {summaryTransactions.length}
+              Transactions: {totalTransactionCount}
             </div>
-            {hasAppliedFilters && (
+
+            {appliedDate && (
               <div className="badge badge-outline border-brand text-brand">
-                Filters Applied
+                Date: {appliedDate}
               </div>
             )}
+
+            {isFetching && (
+              <div className="badge badge-outline border-brand text-brand">
+                Updating...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-surface-lowest px-5 py-5">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-on-surface">
+              Select Report Date
+            </h2>
+            <p className="mt-1 text-sm text-surface-variant">
+              Choose a date or use one of the quick report date buttons.
+            </p>
+          </div>
+
+          {/* Date Picker */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-2">
+              <Calendar size={16} className="text-on-surface-variant" />
+
+              <input
+                type="date"
+                value={selectedDate}
+                max={today}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                }}
+                className="w-35 bg-transparent text-sm font-semibold text-on-surface-variant outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={handleGetReport}
+                disabled={!selectedDate || isFetching}
+                className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Get
+              </button>
+
+              {(selectedDate || appliedDate) && (
+                <button
+                  type="button"
+                  onClick={handleClearDate}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container hover:text-on-surface"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {reportDateButtons.slice(0, 10).map((date) => (
+                <button
+                  key={date}
+                  type="button"
+                  onClick={() => handleReportDateClick(date)}
+                  className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition ${
+                    appliedDate === date
+                      ? "border-primary bg-primary text-white"
+                      : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                  }`}
+                >
+                  {date}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -386,6 +380,7 @@ export default function Reports() {
             <h3 className="text-lg font-bold text-on-surface">
               Received Breakdown by Acquirer
             </h3>
+
             <p className="mt-1 text-sm text-surface-variant">
               Currency-wise amount split and period for each acquirer.
             </p>
@@ -398,65 +393,184 @@ export default function Reports() {
               </div>
             ) : (
               <div className="space-y-4">
-                {receivedBreakdownByAcquirer.map((entry) => (
-                  <div
-                    key={entry.acquirer}
-                    className="overflow-hidden rounded-2xl border border-base-300 bg-surface-lowest"
-                  >
-                    <div className="flex flex-col gap-4 border-b border-base-300 bg-surface-low px-4 py-4 md:flex-row md:items-start md:justify-between">
-                      <div className="space-y-1">
-                        <h4 className="text-base font-bold text-on-surface">
-                          {entry.acquirer}
-                        </h4>
-                        <p className="text-sm text-surface-variant">
-                          {entry.currencies.length}{" "}
-                          {entry.currencies.length > 1
-                            ? "currencies"
-                            : "currency"}{" "}
-                          available
-                        </p>
-                        <p className="text-sm font-medium text-surface-variant">
-                          Period: {entry.periodLabel}
-                        </p>
-                      </div>
-                      <div className="text-left md:text-right">
-                        <p className="text-xs uppercase tracking-[0.18em] text-surface-variant">
-                          Total
-                        </p>
-                        <p className="text-2xl font-extrabold tracking-tight text-on-surface">
-                          {formatPlainNumber(entry.totalReceived)}
-                        </p>
-                      </div>
-                    </div>
+                {receivedBreakdownByAcquirer.map((entry) => {
+                  const miscellaneousEntries = Object.entries(
+                    entry.miscellaneous || {},
+                  ).filter(([, amount]) => Number(amount) > 0);
 
-                    <div className="overflow-x-auto">
-                      <table className="table">
-                        <thead>
-                          <tr className="text-xs uppercase tracking-wider text-surface-variant">
-                            <th>Currency</th>
-                            <th className="text-right">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {entry.currencies.map((currencyEntry) => (
-                            <tr
-                              key={`${entry.acquirer}-${currencyEntry.currency}`}
-                            >
-                              <td>
-                                <span className="badge badge-outline border-base-300 bg-surface-low text-on-surface">
-                                  {currencyEntry.currency}
-                                </span>
-                              </td>
-                              <td className="text-right font-semibold text-on-surface">
-                                {formatPlainNumber(currencyEntry.amount)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  return (
+                    <div
+                      key={entry.acquirer}
+                      className="overflow-hidden rounded-2xl border border-base-300 bg-surface-lowest"
+                    >
+                      {/* Header */}
+                      <div className="flex flex-col gap-4 border-b border-base-300 bg-surface-low px-4 py-4 md:flex-row md:items-start md:justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-base font-bold text-on-surface">
+                            {entry.acquirer}
+                          </h4>
+
+                          <p className="text-sm text-surface-variant">
+                            {entry.currencies.length}{" "}
+                            {entry.currencies.length > 1
+                              ? "currencies"
+                              : "currency"}{" "}
+                            available
+                          </p>
+                        </div>
+
+                        <div className="text-left md:text-right">
+                          <p className="text-xs capitalize text-surface-variant">
+                            Period
+                          </p>
+
+                          <p className="text-md font-bold text-on-surface">
+                            {entry.periodLabel}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Received */}
+                      <div className="px-4 pt-5">
+                        <h5 className="mb-4 text-base font-bold text-on-surface">
+                          Received
+                        </h5>
+
+                        <div className="overflow-x-auto">
+                          <table className="table w-full [&_th]:px-0 [&_td]:px-0">
+                            <thead>
+                              <tr className="text-xs uppercase tracking-wider text-surface-variant">
+                                <th>Currency</th>
+                                <th className="text-right">Amount</th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {entry.currencies.map((currencyEntry) => (
+                                <tr
+                                  key={`${entry.acquirer}-${currencyEntry.currency}`}
+                                >
+                                  <td className="px-0">
+                                    <span className="badge badge-outline border-base-300 bg-surface-low text-on-surface">
+                                      {currencyEntry.currency}
+                                    </span>
+                                  </td>
+
+                                  <td className="px-0 text-right font-semibold text-on-surface">
+                                    {formatPlainNumber(currencyEntry.amount)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Miscellaneous */}
+                      {miscellaneousEntries.length > 0 && (
+                        <div className="border-t border-base-300 px-4 pt-5">
+                          <h5 className="mb-4 text-base font-bold text-on-surface">
+                            Miscellaneous
+                          </h5>
+
+                          <div className="overflow-x-auto">
+                            <table className="table w-full [&_th]:px-0 [&_td]:px-0">
+                              <thead>
+                                <tr className="text-xs uppercase tracking-wider text-surface-variant">
+                                  <th>Type</th>
+                                  <th className="text-right">Amount</th>
+                                </tr>
+                              </thead>
+
+                              <tbody>
+                                {miscellaneousEntries.map(([label, amount]) => (
+                                  <tr key={`${entry.acquirer}-${label}`}>
+                                    <td className="font-medium text-on-surface">
+                                      {label}
+                                    </td>
+
+                                    <td className="text-right font-semibold text-on-surface">
+                                      {formatPlainNumber(amount)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bottom Summary */}
+                      <div className="space-y-4 border-t border-base-300 px-4 py-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-md font-bold text-on-surface">
+                              Total Received
+                            </p>
+
+                            <p className="text-xs text-surface-variant">
+                              Sum up of received amount from the wiresheets
+                            </p>
+                          </div>
+
+                          <p className="text-right text-md font-extrabold text-on-surface">
+                            {formatPlainNumber(entry.totalReceived || 0)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-md font-bold text-on-surface">
+                              Total Paid
+                            </p>
+
+                            <p className="text-xs text-surface-variant">
+                              Sum up of paid amount before conversion
+                            </p>
+                          </div>
+
+                          <p className="text-right text-md font-extrabold text-on-surface">
+                            {formatPlainNumber(entry.paid || 0)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-md font-bold text-on-surface">
+                              Settlement Amount
+                            </p>
+
+                            <p className=" text-xs text-surface-variant">
+                              Sum up of actual amount settled via crypto/wire
+                            </p>
+                          </div>
+
+                          <p className="text-right text-md font-extrabold text-on-surface">
+                            {formatPlainNumber(
+                              entry.totalSettlementAmount || 0,
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-md font-bold text-on-surface">
+                              Miscellaneous
+                            </p>
+
+                            <p className="text-xs text-surface-variant">
+                              Other settlements except wiresheet payments
+                            </p>
+                          </div>
+
+                          <p className="text-right text-md font-extrabold text-on-surface">
+                            {formatPlainNumber(entry.miscellaneousTotal || 0)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -467,7 +581,7 @@ export default function Reports() {
           {/* Bank Totals */}
           <div className="border-b border-base-300 bg-surface-low px-5 py-4">
             <div className="mb-4">
-              <h3 className="mt-1 text-lg font-extrabold tracking-tight text-on-surface">
+              <h3 className="mt-1 text-lg font-bold tracking-tight text-on-surface">
                 Received Summary
               </h3>
               <p className="mt-1 text-sm text-surface-variant">

@@ -12,6 +12,8 @@ import ProtectedRoutes from "../utils/ProtectedRoutes";
 import Unauthorized from "../pages/Unauthorized";
 import Upload from "../pages/Upload";
 import ManageEmails from "../pages/ManageEmails";
+import Wiresheets from "../pages/Wiresheets";
+import Miscellaneous from "../pages/Miscellaneous";
 
 const authenticatedRoles = ["admin", "finance", "settlement", "viewer"];
 
@@ -69,6 +71,23 @@ const router = createBrowserRouter([
           </ProtectedRoutes>
         ),
       },
+      {
+        path: "miscellaneous",
+        element: (
+          <ProtectedRoutes allowedRoles={["admin"]}>
+            <Miscellaneous />
+          </ProtectedRoutes>
+        ),
+      },
+      {
+        path: "wiresheets",
+        element: (
+          <ProtectedRoutes allowedRoles={["admin"]}>
+            <Wiresheets />
+          </ProtectedRoutes>
+        ),
+      },
+
       {
         path: "manage-emails",
         element: (

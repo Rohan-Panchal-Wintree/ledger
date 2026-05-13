@@ -7,7 +7,8 @@ export default function PaginationControls({
 }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const showingFrom = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+  const showingFrom =
+    totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
   const showingTo = Math.min(safeCurrentPage * pageSize, totalItems);
 
   return (
@@ -46,7 +47,9 @@ export default function PaginationControls({
         </button>
         <button
           type="button"
-          onClick={() => onPageChange(Math.min(totalPages, safeCurrentPage + 1))}
+          onClick={() =>
+            onPageChange(Math.min(totalPages, safeCurrentPage + 1))
+          }
           disabled={safeCurrentPage >= totalPages || totalItems === 0}
           className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-primary-container disabled:cursor-not-allowed disabled:bg-outline-variant"
         >

@@ -1,25 +1,32 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
-  FileUp,
-  FileSpreadsheet,
-  Download,
-  X,
-  ArrowRightLeft,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
+  FileUp,
+  RefreshCcw,
+  X,
 } from "lucide-react";
-import { useDispatch, useSelector } from "react-redux";
 import { unstable_usePrompt, useBeforeUnload } from "react-router-dom";
-import UploadFile from "../component/UploadFile";
-import {
-  fetchUnmatchedPaymentSummary,
-  reconcileUnmatchedPaymentRows,
-  selectPaymentsFullState,
-  uploadFiles,
-} from "../store/slices/Payments.slice";
 import toast from "react-hot-toast";
 
+import UploadFile from "../component/UploadFile";
+import EditInvalidPaymentRowModal from "../component/EditInvalidPaymentRowModal";
+import {
+  useInvalidPaymentRows,
+  useReconcileInvalidPaymentRow,
+  useReconcileUnmatchedPaymentRows,
+  useUnmatchedPaymentsSummary,
+  useUpdateInvalidPaymentRow,
+  useUploadFiles,
+} from "../queries/uploadQueries";
+
+// File upload limits
+const WIRE_FILE_LIMIT = 20;
+const PAYMENT_FILE_LIMIT = 5;
+
+// Sample rows shown before upload
 const wireSheetRows = [
   {
     merchantName: "Demo Merchant",
@@ -46,6 +53,7 @@ const paymentSheetRows = [
   },
 ];
 
+// Payment sheet tab configuration
 const paymentSheetSections = {
   crypto: {
     label: "Crypto",
@@ -59,6 +67,7 @@ const paymentSheetSections = {
 
 const paymentSheetOrder = ["crypto", "wire"];
 
+// Default UI state
 const defaultAnalysis = {
   acquirers: [],
   currencies: [],
@@ -74,6 +83,28 @@ const initialTabState = {
   activeFileIndex: 0,
   isDragging: false,
 };
+
+// General helpers
+function getRowId(row) {
+  return row?.id || row?._id;
+}
+
+function getFileLimit(tab) {
+  return tab === "wire" ? WIRE_FILE_LIMIT : PAYMENT_FILE_LIMIT;
+}
+
+function getErrorMessage(error, fallbackMessage) {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallbackMessage
+  );
+}
+
+function getFileIdentity(file) {
+  return `${file.name}__${file.size}__${file.lastModified}`;
+}
 
 function deriveAcquirerFromFilename(fileName) {
   const baseName = fileName.replace(/\.[^/.]+$/, "");
@@ -120,6 +151,7 @@ function normalizeEntityName(value, { stripDp = false } = {}) {
 function excelDateToString(value) {
   if (typeof value === "number") {
     const parsed = XLSX.SSF.parse_date_code(value);
+
     if (parsed) {
       const yyyy = parsed.y;
       const mm = String(parsed.m).padStart(2, "0");
@@ -162,20 +194,14 @@ function formatAmountCell(value) {
 
 function formatPreviewDate(value) {
   if (!value) return "-";
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
+
   return parsed.toISOString().slice(0, 10);
 }
 
-function getFileIdentity(file) {
-  return `${file.name}__${file.size}__${file.lastModified}`;
-}
-
-function isDuplicateFile(existingFiles, file) {
-  const candidateId = getFileIdentity(file);
-  return existingFiles.some((item) => item.fileId === candidateId);
-}
-
+// Excel helpers
 function readWorkbook(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -245,6 +271,7 @@ function findHeaderRow(
   };
 }
 
+// Wiresheet parsing
 async function readWireSheetByHeaders(file) {
   const workbook = await readWorkbook(file);
   const sheetName = workbook.SheetNames[0];
@@ -336,6 +363,7 @@ async function readWireSheetByHeaders(file) {
   };
 }
 
+// Payment sheet parsing
 function getPaymentSheetType(sheetName, parsedSection) {
   const normalizedSheetName = normalizeHeader(sheetName);
 
@@ -578,6 +606,7 @@ async function readPaymentSheetByHeaders(file) {
   };
 }
 
+// Preview analysis
 function buildAnalysis(parsedData, type) {
   if (type === "wire") {
     const totalAmount = parsedData.rows.reduce((sum, row) => {
@@ -630,37 +659,105 @@ function getActivePaymentSheet(fileItem) {
 }
 
 export default function Upload() {
-  const dispatch = useDispatch();
+  // Local UI state
   const [activeTab, setActiveTab] = useState("wire");
+  const [queueTab, setQueueTab] = useState("unmatched");
+  const [selectedInvalidRow, setSelectedInvalidRow] = useState(null);
+  const [isInvalidRowModalOpen, setIsInvalidRowModalOpen] = useState(false);
+  const [isReconciliationExpanded, setIsReconciliationExpanded] =
+    useState(false);
   const [tabState, setTabState] = useState({
     wire: { ...initialTabState },
     payment: { ...initialTabState },
   });
-  const [isReconciliationExpanded, setIsReconciliationExpanded] =
-    useState(false);
 
-  const {
-    loading: isUploading,
-    unmatchedSummary,
-    unmatchedSummaryLoading,
-  } = useSelector(selectPaymentsFullState);
+  // File input refs
+  const wireInputRef = useRef(null);
+  const paymentInputRef = useRef(null);
 
-  const wireInputRef = React.useRef(null);
-  const paymentInputRef = React.useRef(null);
+  // Server state
+  const unmatchedSummaryQuery = useUnmatchedPaymentsSummary();
+  const invalidRowsQuery = useInvalidPaymentRows({
+    page: 1,
+    limit: 20,
+  });
+  const uploadFilesMutation = useUploadFiles();
+  const reconcileUnmatchedMutation = useReconcileUnmatchedPaymentRows();
+  const updateInvalidRowMutation = useUpdateInvalidPaymentRow();
+  const reconcileInvalidRowMutation = useReconcileInvalidPaymentRow();
 
+  // Upload tab state
   const isWireSheet = activeTab === "wire";
   const currentTab = tabState[activeTab];
   const activeFile = currentTab.files[currentTab.activeFileIndex] || null;
-  const hasUnsavedFiles =
-    tabState.wire.files.length > 0 || tabState.payment.files.length > 0;
+  const currentFileLimit = getFileLimit(activeTab);
+  const currentFileCount = currentTab.files.length;
+
+  // Payment sheet state
   const { sheetKey: activePaymentSheetKey, sheetData: activePaymentSheetData } =
     !isWireSheet
       ? getActivePaymentSheet(activeFile)
       : { sheetKey: null, sheetData: null };
+
   const displayedRows = isWireSheet
     ? activeFile?.rows || []
     : activePaymentSheetData?.rows || [];
 
+  const analysis = isWireSheet
+    ? activeFile?.analysis || defaultAnalysis
+    : activePaymentSheetData?.analysis || defaultAnalysis;
+
+  // Queue state
+  const unmatchedSummary = unmatchedSummaryQuery.data || {
+    pendingCount: 0,
+    manualReviewCount: 0,
+    recentRows: [],
+  };
+
+  const invalidRows = invalidRowsQuery.data?.items || [];
+  const activeQueueRows =
+    queueTab === "unmatched" ? unmatchedSummary?.recentRows || [] : invalidRows;
+
+  const activeQueueCount =
+    queueTab === "unmatched"
+      ? unmatchedSummary?.pendingCount || 0
+      : invalidRows.length;
+
+  const activeQueueTitle =
+    queueTab === "unmatched"
+      ? `${activeQueueCount} unmatched row(s) need reconciliation`
+      : `${activeQueueCount} invalid row(s) need correction`;
+
+  const unmatchedSummaryLoading =
+    unmatchedSummaryQuery.isLoading || unmatchedSummaryQuery.isFetching;
+
+  const invalidRowsLoading =
+    invalidRowsQuery.isLoading || invalidRowsQuery.isFetching;
+
+  const activeQueueLoading =
+    queueTab === "unmatched" ? unmatchedSummaryLoading : invalidRowsLoading;
+
+  const isUploading = uploadFilesMutation.isPending;
+  const isReconciling =
+    reconcileUnmatchedMutation.isPending ||
+    updateInvalidRowMutation.isPending ||
+    reconcileInvalidRowMutation.isPending;
+
+  const canReconcileActiveQueue =
+    queueTab === "unmatched"
+      ? Boolean(unmatchedSummary?.pendingCount)
+      : invalidRows.length > 0;
+
+  const hasUnsavedFiles =
+    tabState.wire.files.length > 0 || tabState.payment.files.length > 0;
+
+  const shouldShowQueue =
+    unmatchedSummaryLoading ||
+    invalidRowsLoading ||
+    unmatchedSummary?.pendingCount > 0 ||
+    invalidRows.length > 0;
+
+  // Leave protection
   unstable_usePrompt({
     when: hasUnsavedFiles,
     message:
@@ -674,10 +771,7 @@ export default function Upload() {
     event.returnValue = "";
   });
 
-  React.useEffect(() => {
-    dispatch(fetchUnmatchedPaymentSummary());
-  }, [dispatch]);
-
+  // State helpers
   const updateTabState = (tab, updates) => {
     setTabState((prev) => ({
       ...prev,
@@ -707,7 +801,17 @@ export default function Upload() {
     });
   };
 
+  // File handlers
   const handleBrowseClick = (tab) => {
+    if (tabState[tab].files.length >= getFileLimit(tab)) {
+      toast.error(
+        tab === "wire"
+          ? `Maximum ${WIRE_FILE_LIMIT} wiresheet files allowed at a time.`
+          : `Maximum ${PAYMENT_FILE_LIMIT} payment sheet files allowed at a time.`,
+      );
+      return;
+    }
+
     if (tab === "wire") {
       wireInputRef.current?.click();
     } else {
@@ -719,6 +823,27 @@ export default function Upload() {
     const selectedFiles = Array.from(files || []).filter(Boolean);
     if (selectedFiles.length === 0) return;
 
+    const fileLimit = getFileLimit(tab);
+    const existingCount = tabState[tab].files.length;
+    const remainingSlots = fileLimit - existingCount;
+
+    if (remainingSlots <= 0) {
+      toast.error(
+        tab === "wire"
+          ? `You can upload maximum ${WIRE_FILE_LIMIT} wiresheet files at a time.`
+          : `You can upload maximum ${PAYMENT_FILE_LIMIT} payment sheet files at a time.`,
+      );
+      return;
+    }
+
+    const limitedSelectedFiles = selectedFiles.slice(0, remainingSlots);
+
+    if (selectedFiles.length > remainingSlots) {
+      toast.error(
+        `Only ${remainingSlots} more file(s) allowed. Extra files were skipped.`,
+      );
+    }
+
     const existingFileIds = new Set(
       tabState[tab].files.map((fileItem) => fileItem.fileId),
     );
@@ -727,7 +852,7 @@ export default function Upload() {
     const skippedDuplicates = [];
     const failedFiles = [];
 
-    for (const file of selectedFiles) {
+    for (const file of limitedSelectedFiles) {
       const fileId = getFileIdentity(file);
 
       if (seenFileIds.has(fileId)) {
@@ -743,7 +868,7 @@ export default function Upload() {
             ? await readWireSheetByHeaders(file)
             : await readPaymentSheetByHeaders(file);
 
-        const analysis = buildAnalysis(parsedData, tab);
+        const analysisData = buildAnalysis(parsedData, tab);
 
         newFiles.push({
           id: `${Date.now()}-${Math.random()}`,
@@ -760,11 +885,10 @@ export default function Upload() {
           rows: parsedData.rows,
           paymentSheets: parsedData.paymentSheets || null,
           activePaymentSheet: parsedData.activePaymentSheet || null,
-          analysis,
+          analysis: analysisData,
           uploadedAt: new Date().toISOString(),
         });
       } catch (error) {
-        console.error("Excel read failed:", error);
         failedFiles.push({
           name: file.name,
           message: error?.message || "Unable to read the uploaded Excel file.",
@@ -787,28 +911,19 @@ export default function Upload() {
       });
     }
 
-    if (skippedDuplicates.length > 0 || failedFiles.length > 0) {
-      const notices = [];
+    if (skippedDuplicates.length > 0) {
+      toast.error(`Skipped duplicate files: ${skippedDuplicates.join(", ")}`);
+    }
 
-      if (skippedDuplicates.length > 0) {
-        notices.push(
-          `Skipped duplicate files: ${skippedDuplicates.join(", ")}`,
-        );
-      }
-
-      if (failedFiles.length > 0) {
-        notices.push(
-          failedFiles.map((item) => `${item.name}: ${item.message}`).join("\n"),
-        );
-      }
-
-      alert(notices.join("\n\n"));
+    if (failedFiles.length > 0) {
+      toast.error(
+        failedFiles.map((item) => `${item.name}: ${item.message}`).join("\n"),
+      );
     }
   };
 
-  const handleInputChange = (e, tab) => {
-    const files = e.target.files;
-    handleFileSelect(files, tab);
+  const handleInputChange = (event, tab) => {
+    handleFileSelect(event.target.files, tab);
 
     if (tab === "wire" && wireInputRef.current) {
       wireInputRef.current.value = "";
@@ -819,27 +934,35 @@ export default function Upload() {
     }
   };
 
-  const handleDragOver = (e, tab) => {
-    e.preventDefault();
+  const handleDragOver = (event, tab) => {
+    event.preventDefault();
     updateTabState(tab, { isDragging: true });
   };
 
-  const handleDragLeave = (e, tab) => {
-    e.preventDefault();
+  const handleDragLeave = (event, tab) => {
+    event.preventDefault();
     updateTabState(tab, { isDragging: false });
   };
 
-  const handleDrop = (e, tab) => {
-    e.preventDefault();
+  const handleDrop = (event, tab) => {
+    event.preventDefault();
     updateTabState(tab, { isDragging: false });
 
-    handleFileSelect(e.dataTransfer.files, tab);
+    if (tabState[tab].files.length >= getFileLimit(tab)) {
+      toast.error(
+        tab === "wire"
+          ? `Maximum ${WIRE_FILE_LIMIT} wiresheet files allowed at a time.`
+          : `Maximum ${PAYMENT_FILE_LIMIT} payment sheet files allowed at a time.`,
+      );
+      return;
+    }
+
+    handleFileSelect(event.dataTransfer.files, tab);
   };
 
   const handleRemoveFile = (tab, index) => {
     setTabState((prev) => {
       const updatedFiles = prev[tab].files.filter((_, i) => i !== index);
-
       let nextIndex = prev[tab].activeFileIndex;
 
       if (updatedFiles.length === 0) {
@@ -875,51 +998,6 @@ export default function Upload() {
     }));
   };
 
-  const handleProcess = async () => {
-    const wireFiles = tabState.wire.files.map((fileItem) => fileItem.file);
-    const paymentFiles = tabState.payment.files.map(
-      (fileItem) => fileItem.file,
-    );
-
-    if (wireFiles.length === 0 && paymentFiles.length === 0) {
-      alert("Please upload at least one wire-sheet or payment file.");
-      return;
-    }
-
-    try {
-      const result = await dispatch(
-        uploadFiles({
-          wireFiles,
-          paymentFiles,
-        }),
-      ).unwrap();
-
-      resetUploadState();
-      const pendingCount = result?.unmatchedSummary?.pendingCount || 0;
-      const uploadMessage =
-        pendingCount > 0
-          ? `Files uploaded successfully. ${pendingCount} unmatched payment row(s) are waiting for reconciliation.`
-          : "Files uploaded successfully.";
-      // alert(uploadMessage);
-      toast.success(uploadMessage);
-    } catch (error) {
-      // alert(error || "Unable to upload the selected files.");
-      console.error(error);
-      toast.error("Unable to upload the selected files.");
-    }
-  };
-
-  const handleReconcileUnmatched = async () => {
-    try {
-      const result = await dispatch(reconcileUnmatchedPaymentRows()).unwrap();
-      alert(
-        `Reconciliation complete.\nProcessed: ${result.processedCount}\nReconciled: ${result.reconciledCount}\nStill pending: ${result.remainingCount}`,
-      );
-    } catch (error) {
-      alert(error || "Unable to reconcile pending unmatched payments.");
-    }
-  };
-
   const handleFileTabChange = (tab, index) => {
     updateTabState(tab, { activeFileIndex: index });
   };
@@ -933,30 +1011,125 @@ export default function Upload() {
     });
   };
 
-  const analysis = isWireSheet
-    ? activeFile?.analysis || defaultAnalysis
-    : activePaymentSheetData?.analysis || defaultAnalysis;
+  // API handlers
+  const handleProcess = async () => {
+    const wireFiles = tabState.wire.files.map((fileItem) => fileItem.file);
+    const paymentFiles = tabState.payment.files.map(
+      (fileItem) => fileItem.file,
+    );
 
-  return (
-    <div className="w-full bg-background text-on-background">
-      <input
-        ref={wireInputRef}
-        type="file"
-        accept=".xlsx,.csv"
-        multiple
-        className="hidden"
-        onChange={(e) => handleInputChange(e, "wire")}
-      />
+    if (wireFiles.length === 0 && paymentFiles.length === 0) {
+      toast.error("Please upload at least one wire-sheet or payment file.");
+      return;
+    }
 
-      <input
-        ref={paymentInputRef}
-        type="file"
-        accept=".xlsx,.csv"
-        multiple
-        className="hidden"
-        onChange={(e) => handleInputChange(e, "payment")}
-      />
+    try {
+      await uploadFilesMutation.mutateAsync({
+        wireFiles,
+        paymentFiles,
+      });
 
+      resetUploadState();
+      toast.success("Files uploaded successfully.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to upload selected files."));
+    }
+  };
+
+  const handleReconcileQueue = async () => {
+    try {
+      if (queueTab === "unmatched") {
+        const result = await reconcileUnmatchedMutation.mutateAsync();
+
+        toast.success(
+          `Reconciliation complete. Reconciled: ${
+            result?.reconciledCount || 0
+          }, Still pending: ${result?.remainingCount || 0}`,
+        );
+
+        return;
+      }
+
+      const fixedRows = invalidRows.filter((row) => row.status === "fixed");
+
+      if (!fixedRows.length) {
+        toast.error(
+          "Please update at least one invalid row before reconciliation.",
+        );
+        return;
+      }
+
+      for (const row of fixedRows) {
+        const rowId = getRowId(row);
+
+        if (rowId) {
+          await reconcileInvalidRowMutation.mutateAsync(rowId);
+        }
+      }
+
+      setSelectedInvalidRow(null);
+      setIsInvalidRowModalOpen(false);
+
+      toast.success("Fixed invalid rows sent for reconciliation.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to reconcile selected queue rows."),
+      );
+    }
+  };
+
+  const handleEditInvalidRow = (row) => {
+    setSelectedInvalidRow(row);
+    setIsInvalidRowModalOpen(true);
+  };
+
+  const handleCloseInvalidRowModal = () => {
+    setSelectedInvalidRow(null);
+    setIsInvalidRowModalOpen(false);
+  };
+
+  const handleSaveInvalidRow = async (updatedData) => {
+    const rowId = getRowId(selectedInvalidRow);
+
+    if (!rowId) {
+      toast.error("Invalid row id missing.");
+      return;
+    }
+
+    const payload = {
+      BANK: updatedData.paymentBank,
+      "MERCHANT NAME": updatedData.merchantName,
+      MID: updatedData.mid,
+      "START DATE": updatedData.sourceStartDate,
+      "FIRST DATE": updatedData.sourceStartDate,
+      "END DATE": updatedData.sourceEndDate,
+      "PROCESSING CURRENCY": updatedData.sourceProcessingCurrency,
+      CURRENCY: updatedData.sourceProcessingCurrency,
+      AMOUNT: updatedData.amountPaid,
+      RATE: updatedData.rate,
+      "SETTLEMENT CURRENCY": updatedData.paymentCurrency,
+    };
+
+    try {
+      await updateInvalidRowMutation.mutateAsync({
+        id: rowId,
+        payload,
+      });
+
+      setSelectedInvalidRow(null);
+      setIsInvalidRowModalOpen(false);
+
+      toast.success("Invalid row updated successfully.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to update invalid payment row."),
+      );
+    }
+  };
+
+  // Render helpers
+  const renderUploadTabs = () => (
+    <div className="flex items-center justify-between">
       <div className="mb-6 flex w-fit items-center gap-1 rounded-xl bg-surface-container-low p-1">
         <button
           type="button"
@@ -985,65 +1158,281 @@ export default function Upload() {
         </button>
       </div>
 
-      {/* Reconciliation */}
-      {(unmatchedSummaryLoading || unmatchedSummary?.pendingCount > 0) && (
-        <section className="mb-6 overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest">
+      <div className="inline-flex items-center gap-3 rounded-full bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface">
+        <span className="rounded-full bg-primary px-3 py-1 text-xs font-extrabold text-white">
+          {currentFileCount}/{currentFileLimit}
+        </span>
+
+        <span className="text-on-surface-variant">
+          {isWireSheet ? "Wiresheets selected" : "Payment sheets selected"}
+        </span>
+      </div>
+    </div>
+  );
+
+  const renderQueueTabs = () => (
+    <div className="mb-4 flex w-fit items-center gap-1 rounded-xl bg-surface-container-low p-1">
+      <button
+        type="button"
+        onClick={() => setQueueTab("unmatched")}
+        className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm transition ${
+          queueTab === "unmatched"
+            ? "bg-surface-container-lowest font-bold text-primary"
+            : "font-semibold text-on-surface-variant hover:text-on-surface"
+        }`}
+      >
+        Unmatched
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setQueueTab("invalid")}
+        className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm transition ${
+          queueTab === "invalid"
+            ? "bg-surface-container-lowest font-bold text-primary"
+            : "font-semibold text-on-surface-variant hover:text-on-surface"
+        }`}
+      >
+        Invalid
+      </button>
+    </div>
+  );
+
+  console.log("invalidRowsQuery:", invalidRowsQuery.data);
+  console.log("invalidRows:", invalidRows);
+
+  const renderUnmatchedRowsTable = () => (
+    <table className="w-full border-collapse text-left">
+      <thead className="bg-surface-container-low/50">
+        <tr>
+          {[
+            "Merchant",
+            "Bank",
+            "MID",
+            "Start Date",
+            "End Date",
+            "Source Currency",
+            "Payment Currency",
+            "Amount Paid",
+            "Retry",
+            "Source File",
+            "Reason",
+          ].map((heading) => (
+            <th
+              key={heading}
+              className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
+            >
+              {heading}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      <tbody className="divide-y divide-outline-variant/5">
+        {activeQueueRows.length > 0 ? (
+          activeQueueRows.map((row) => (
+            <tr
+              key={getRowId(row)}
+              className="group transition-all duration-200 hover:bg-surface-container-low/45"
+            >
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-bold text-on-surface">
+                {row.merchantName || "-"}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {row.paymentBank || "Unknown Bank"}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {row.sourceMid || "-"}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {formatPreviewDate(row.sourceStartDate)}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {formatPreviewDate(row.sourceEndDate)}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4">
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
+                  {row.sourceProcessingCurrency || "-"}
+                </span>
+              </td>
+              <td className="whitespace-nowrap px-8 py-4">
+                <span className="rounded-full bg-surface-container px-3 py-1 text-[11px] font-bold text-on-surface">
+                  {row.paymentCurrency || "-"}
+                </span>
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-extrabold text-error">
+                {row.amountPaid || "-"}
+              </td>
+              <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface">
+                {row.retryCount || 0}
+              </td>
+              <td className="max-w-55 truncate px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {row.originalFilename || "-"}
+              </td>
+              <td className="min-w-65 px-8 py-4 text-sm font-medium text-on-surface-variant">
+                {row.failureReason || "Settlement transaction not found"}
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td
+              colSpan={11}
+              className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
+            >
+              No unmatched rows found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+
+  const renderInvalidRowsTable = () => (
+    <table className="w-full border-collapse text-left">
+      <thead className="bg-surface-container-low/50">
+        <tr>
+          {[
+            "File",
+            "Sheet",
+            "Row",
+            "Merchant",
+            "MID",
+            "Issue",
+            "Updated",
+            "Actions",
+          ].map((heading) => (
+            <th
+              key={heading}
+              className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
+            >
+              {heading}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      <tbody className="divide-y divide-outline-variant/5">
+        {invalidRows.length > 0 ? (
+          invalidRows.map((row) => {
+            const rowId = getRowId(row);
+            const displayRow = {
+              ...row,
+              ...(row.fixedData || {}),
+            };
+
+            const isUpdated = row.status === "fixed";
+
+            return (
+              <tr
+                key={rowId}
+                className="group transition-all duration-200 hover:bg-surface-container-low/45"
+              >
+                <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                  {displayRow.sourceOriginalFilename || "-"}
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                  {displayRow.sourceSheetName || "-"}
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                  {displayRow.excelRowNumber || "-"}
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4 text-sm font-bold text-on-surface">
+                  {displayRow.merchantName ||
+                    row.normalizedRow?.["MERCHANT NAME"] ||
+                    row.rawRow?.["MERCHANT NAME"] ||
+                    "-"}
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+                  {displayRow.mid ||
+                    row.normalizedRow?.MID ||
+                    row.rawRow?.MID ||
+                    "-"}
+                </td>
+
+                <td className="min-w-65 px-8 py-4 text-sm font-medium text-on-surface-variant">
+                  {displayRow.failureReason || "Invalid or missing data"}
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4">
+                  <span
+                    className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                      isUpdated
+                        ? "bg-green-500/10 text-green-600"
+                        : "bg-surface-container text-on-surface-variant"
+                    }`}
+                  >
+                    {isUpdated ? "Updated" : "Pending"}
+                  </span>
+                </td>
+
+                <td className="whitespace-nowrap px-8 py-4">
+                  <button
+                    type="button"
+                    onClick={() => handleEditInvalidRow(row)}
+                    className="rounded-full bg-surface-container px-4 py-2 text-xs font-bold text-on-surface transition hover:bg-surface-container-high"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            );
+          })
+        ) : (
+          <tr>
+            <td
+              colSpan={8}
+              className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
+            >
+              No invalid rows found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+
+  const renderReconciliationQueue = () => {
+    if (!shouldShowQueue) return null;
+
+    return (
+      <div className="mb-6">
+        {renderQueueTabs()}
+
+        <section className="overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest">
           <div className="px-6 py-6 md:px-8">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-primary/8 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
-                  <ArrowRightLeft className="h-3.5 w-3.5" />
-                  Reconciliation Queue
+                  {queueTab === "unmatched"
+                    ? "Unmatched Queue"
+                    : "Invalid Rows Queue"}
                 </div>
 
                 <h2 className="mt-4 text-xl font-bold tracking-tight text-on-surface">
-                  {unmatchedSummaryLoading
-                    ? "Checking unmatched payment rows..."
-                    : `${unmatchedSummary?.pendingCount || 0} pending row(s) need reconciliation`}
+                  {activeQueueLoading
+                    ? "Checking payment rows..."
+                    : activeQueueTitle}
                 </h2>
 
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
-                  Some payment rows were uploaded before their matching
-                  wiresheet records existed. Upload the missing wiresheet, then
-                  reconcile the pending rows from here.
+                  {queueTab === "unmatched"
+                    ? "These payment rows were uploaded before their matching wiresheet records existed. Upload the missing wiresheet, then reconcile the pending rows from here."
+                    : "These rows have missing or invalid data. Edit the row values first, then reconcile the corrected rows."}
                 </p>
-
-                {!unmatchedSummaryLoading &&
-                  unmatchedSummary?.recentRows?.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {unmatchedSummary.recentRows.slice(0, 3).map((row) => (
-                        <div
-                          key={row.id}
-                          className="rounded-full bg-surface-container-low px-3 py-2 text-xs font-medium text-on-surface"
-                        >
-                          <span className="font-bold">
-                            {row.merchantName || "-"}
-                          </span>
-                          <span className="text-on-surface-variant">
-                            {" "}
-                            · {row.paymentBank || "Unknown Bank"}
-                          </span>
-                        </div>
-                      ))}
-
-                      {unmatchedSummary.recentRows.length > 3 && (
-                        <div className="rounded-full bg-surface-container-low px-3 py-2 text-xs font-medium text-on-surface-variant">
-                          +{unmatchedSummary.recentRows.length - 3} more
-                        </div>
-                      )}
-                    </div>
-                  )}
               </div>
 
               <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-65">
                 <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                    Pending Rows
+                    {queueTab === "unmatched" ? "Pending Rows" : "Invalid Rows"}
                   </p>
                   <p className="mt-1 text-3xl font-extrabold tracking-tight text-on-surface">
-                    {unmatchedSummaryLoading
-                      ? "..."
-                      : unmatchedSummary?.pendingCount || 0}
+                    {activeQueueLoading ? "..." : activeQueueCount}
                   </p>
                 </div>
 
@@ -1051,9 +1440,7 @@ export default function Upload() {
                   <button
                     type="button"
                     onClick={() => setIsReconciliationExpanded((prev) => !prev)}
-                    disabled={
-                      unmatchedSummaryLoading || !unmatchedSummary?.pendingCount
-                    }
+                    disabled={activeQueueLoading}
                     className="btn flex-1 rounded-full border border-outline-variant/15 bg-surface-container-low text-on-surface hover:bg-surface-container disabled:bg-surface-container disabled:text-on-surface-variant"
                   >
                     {isReconciliationExpanded ? (
@@ -1069,15 +1456,16 @@ export default function Upload() {
 
                   <button
                     type="button"
-                    onClick={handleReconcileUnmatched}
+                    onClick={handleReconcileQueue}
                     disabled={
                       isUploading ||
-                      unmatchedSummaryLoading ||
-                      !unmatchedSummary?.pendingCount
+                      isReconciling ||
+                      activeQueueLoading ||
+                      !canReconcileActiveQueue
                     }
                     className="btn flex-1 rounded-full border-none bg-primary text-primary-content hover:bg-primary disabled:bg-surface-container disabled:text-on-surface-variant"
                   >
-                    <ArrowRightLeft className="h-4 w-4" />
+                    <RefreshCcw className="h-4 w-4" />
                     Reconcile
                   </button>
                 </div>
@@ -1085,144 +1473,271 @@ export default function Upload() {
             </div>
           </div>
 
-          {isReconciliationExpanded &&
-            !unmatchedSummaryLoading &&
-            unmatchedSummary?.recentRows?.length > 0 && (
-              <div className="border-t border-outline-variant/10 px-6 py-6 md:px-8">
-                <div className="mb-4">
-                  <h3 className="text-base font-bold text-on-surface">
-                    Pending reconciliation rows
-                  </h3>
-                  <p className="mt-1 text-sm text-on-surface-variant">
-                    Review all pending rows below and reconcile them once the
-                    matching wiresheet data is available.
-                  </p>
-                </div>
-
-                <div className="overflow-hidden rounded-3xl border border-outline-variant/10 bg-surface-container-low">
-                  <div className="max-h-105 overflow-auto scrollbar-hide">
-                    <table className="min-w-full border-collapse text-left">
-                      <thead className="sticky top-0 z-10 bg-surface-container">
-                        <tr>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Merchant
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Bank
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            MID
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Start Date
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            End Date
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Source Currency
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Payment Currency
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Amount Paid
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Retry
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Source File
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                            Reason
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody className="divide-y divide-outline-variant/10">
-                        {unmatchedSummary.recentRows.map((row) => (
-                          <tr
-                            key={row.id}
-                            className="transition-colors hover:bg-surface-container-lowest"
-                          >
-                            <td className="whitespace-nowrap px-6 py-4 font-semibold text-on-surface">
-                              {row.merchantName || "-"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
-                              {row.paymentBank || "Unknown Bank"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
-                              {row.sourceMid || "-"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
-                              {formatPreviewDate(row.sourceStartDate)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-on-surface-variant">
-                              {formatPreviewDate(row.sourceEndDate)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
-                                {row.sourceProcessingCurrency || "-"}
-                              </span>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-[11px] font-bold text-on-surface">
-                                {row.paymentCurrency || "-"}
-                              </span>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 font-bold text-error">
-                              {row.amountPaid || "-"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-on-surface">
-                              {row.retryCount || 0}
-                            </td>
-                            <td className="max-w-55 truncate px-6 py-4 text-on-surface-variant">
-                              {row.originalFilename || "-"}
-                            </td>
-                            <td className="min-w-65 px-6 py-4 text-on-surface-variant">
-                              {row.failureReason ||
-                                "Settlement transaction not found"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+          {isReconciliationExpanded && (
+            <div className="border-t border-outline-variant/10 px-6 py-6 md:px-8">
+              <div className="overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+                <div className="overflow-x-auto scrollbar-hide">
+                  {queueTab === "unmatched"
+                    ? renderUnmatchedRowsTable()
+                    : renderInvalidRowsTable()}
                 </div>
               </div>
-            )}
+            </div>
+          )}
         </section>
-      )}
+      </div>
+    );
+  };
 
-      {currentTab.files.length > 0 && (
-        <div className="mb-6 flex gap-2 overflow-x-auto scrollbar-hide">
-          {currentTab.files.map((fileObj, index) => (
-            <div
-              key={fileObj.id}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
-                index === currentTab.activeFileIndex
-                  ? "bg-primary text-white"
-                  : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+  const renderFileTabs = () => {
+    if (currentTab.files.length === 0) return null;
+
+    return (
+      <div className="mb-6 flex gap-2 overflow-x-auto scrollbar-hide">
+        {currentTab.files.map((fileObj, index) => (
+          <div
+            key={fileObj.id}
+            className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
+              index === currentTab.activeFileIndex
+                ? "bg-primary text-white"
+                : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => handleFileTabChange(activeTab, index)}
+            >
+              {fileObj.name}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRemoveFile(activeTab, index)}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderPaymentSheetTabs = () => {
+    if (isWireSheet || !activeFile?.paymentSheets) return null;
+
+    return (
+      <div className="mb-1 flex w-fit items-center gap-1 rounded-xl bg-surface-container-low p-1">
+        {paymentSheetOrder.map((sheetKey) => {
+          const isAvailable = Boolean(activeFile.paymentSheets?.[sheetKey]);
+          const isActive = activePaymentSheetKey === sheetKey;
+
+          return (
+            <button
+              key={sheetKey}
+              type="button"
+              onClick={() => handlePaymentSheetTabChange(sheetKey)}
+              disabled={!isAvailable}
+              className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm transition ${
+                isActive
+                  ? "bg-surface-container-lowest font-bold text-primary"
+                  : isAvailable
+                    ? "font-semibold text-on-surface-variant hover:text-on-surface"
+                    : "cursor-not-allowed font-semibold text-on-surface-variant/40"
               }`}
             >
-              <button
-                type="button"
-                onClick={() => handleFileTabChange(activeTab, index)}
-              >
-                {fileObj.name}
-              </button>
+              {paymentSheetSections[sheetKey].label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
-              <button
-                type="button"
-                onClick={() => handleRemoveFile(activeTab, index)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
+  const renderExtractedDataHeader = () => (
+    <div className="flex items-center justify-between">
+      <div>
+        <h2 className="text-xl font-bold tracking-tight text-on-surface">
+          {currentTab.files.length > 0
+            ? "Extracted File Data"
+            : isWireSheet
+              ? "Expected Wire-sheet Format"
+              : "Expected Payment Sheet Format"}
+        </h2>
+
+        {currentTab.files.length > 0 && (
+          <p className="text-sm text-on-surface-variant">
+            {isWireSheet
+              ? "Showing only: MERCHANT NAME, MID, START DATE, END DATE, PROCESSING CURRENCY, AMOUNT"
+              : `Showing ${
+                  activePaymentSheetData?.label || "payment"
+                } rows with Merchant Name + MID and at most one missing mapped value.`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderWireTable = (rows, keyPrefix) => (
+    <table className="min-w-max w-full border-collapse text-left">
+      <thead>
+        <tr className="bg-surface-container-low">
+          {[
+            "Merchant Name",
+            "MID",
+            "Start Date",
+            "End Date",
+            "Processing Currency",
+            "Amount",
+          ].map((heading) => (
+            <th
+              key={heading}
+              className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant"
+            >
+              {heading}
+            </th>
           ))}
+        </tr>
+      </thead>
+
+      <tbody className="divide-y divide-outline-variant/10">
+        {rows.map((row, index) => (
+          <tr
+            key={`${keyPrefix}-${row.mid || index}-${index}`}
+            className="group transition-colors hover:bg-surface-container-low"
+          >
+            <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
+              {row.merchantName || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.mid || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.startDate || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.endDate || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface">
+              {row.processingCurrency || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
+              {formatAmountCell(row.amount)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const renderPaymentTable = (rows, keyPrefix) => (
+    <table className="min-w-max w-full border-collapse text-left">
+      <thead>
+        <tr className="bg-surface-container-low">
+          {[
+            "Bank",
+            "Merchant Name",
+            "MID",
+            "Start Date",
+            "End Date",
+            "Currency",
+            "Amount",
+            "Rate",
+            "Settlement Currency",
+            "Final Amount",
+          ].map((heading) => (
+            <th
+              key={heading}
+              className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant"
+            >
+              {heading}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      <tbody className="divide-y divide-outline-variant/10">
+        {rows.map((row, index) => (
+          <tr
+            key={`${keyPrefix}-${row.mid || index}-${index}`}
+            className="group transition-colors hover:bg-surface-container-low"
+          >
+            <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
+              {row.bank || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.merchantName || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.mid || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.startDate || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
+              {row.endDate || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface">
+              {row.processingCurrency || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
+              {row.amount || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface">
+              {row.rate || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 text-on-surface">
+              {row.settlementCurrency || "-"}
+            </td>
+            <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
+              {formatAmountCell(row.finalAmount)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const renderExtractedDataTable = () => {
+    const hasUploadedFiles = currentTab.files.length > 0;
+
+    return (
+      <div className="overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+        <div className="overflow-x-auto scrollbar-hide">
+          {hasUploadedFiles
+            ? isWireSheet
+              ? renderWireTable(displayedRows, activeFile?.id || "wire")
+              : renderPaymentTable(displayedRows, activeFile?.id || "payment")
+            : isWireSheet
+              ? renderWireTable(wireSheetRows, "sample-wire")
+              : renderPaymentTable(paymentSheetRows, "sample-payment")}
         </div>
-      )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full bg-background text-on-background">
+      <input
+        ref={wireInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        multiple
+        className="hidden"
+        onChange={(event) => handleInputChange(event, "wire")}
+      />
+
+      <input
+        ref={paymentInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        multiple
+        className="hidden"
+        onChange={(event) => handleInputChange(event, "payment")}
+      />
+
+      {renderUploadTabs()}
+      {renderReconciliationQueue()}
+      {renderFileTabs()}
 
       <UploadFile
         mode={currentTab.files.length > 0 ? "filled" : "empty"}
@@ -1243,9 +1758,9 @@ export default function Upload() {
         selectedFile={activeFile?.file || null}
         isDragging={currentTab.isDragging}
         onBrowse={() => handleBrowseClick(activeTab)}
-        onDragOver={(e) => handleDragOver(e, activeTab)}
-        onDragLeave={(e) => handleDragLeave(e, activeTab)}
-        onDrop={(e) => handleDrop(e, activeTab)}
+        onDragOver={(event) => handleDragOver(event, activeTab)}
+        onDragLeave={(event) => handleDragLeave(event, activeTab)}
+        onDrop={(event) => handleDrop(event, activeTab)}
         onRemove={() => handleRemoveFile(activeTab, currentTab.activeFileIndex)}
         onCancel={() => handleCancel(activeTab)}
         onProcess={handleProcess}
@@ -1255,343 +1770,18 @@ export default function Upload() {
       />
 
       <section className="space-y-6">
-        {!isWireSheet && activeFile?.paymentSheets && (
-          <div className="mb-1 flex w-fit items-center gap-1 rounded-xl bg-surface-container-low p-1">
-            {paymentSheetOrder.map((sheetKey) => {
-              const isAvailable = Boolean(activeFile.paymentSheets?.[sheetKey]);
-              const isActive = activePaymentSheetKey === sheetKey;
-
-              return (
-                <button
-                  key={sheetKey}
-                  type="button"
-                  onClick={() => handlePaymentSheetTabChange(sheetKey)}
-                  disabled={!isAvailable}
-                  className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm transition ${
-                    isActive
-                      ? "bg-surface-container-lowest font-bold text-primary"
-                      : isAvailable
-                        ? "font-semibold text-on-surface-variant hover:text-on-surface"
-                        : "cursor-not-allowed font-semibold text-on-surface-variant/40"
-                  }`}
-                >
-                  {paymentSheetSections[sheetKey].label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-on-surface">
-              {currentTab.files.length > 0
-                ? "Extracted File Data"
-                : isWireSheet
-                  ? "Expected Wire-sheet Format"
-                  : "Expected Payment Sheet Format"}
-            </h2>
-
-            {currentTab.files.length > 0 && (
-              <p className="text-sm text-on-surface-variant">
-                {isWireSheet
-                  ? "Showing only: MERCHANT NAME, MID, START DATE, END DATE, PROCESSING CURRENCY, AMOUNT"
-                  : `Showing ${
-                      activePaymentSheetData?.label || "payment"
-                    } rows with Merchant Name + MID and at most one missing mapped value.`}
-              </p>
-            )}
-          </div>
-
-          {/* <button
-            type="button"
-            className={`flex items-center gap-2 ${
-              currentTab.files.length > 0
-                ? "text-sm font-bold text-primary hover:underline"
-                : "rounded-default bg-surface-container px-4 py-2 text-sm font-bold text-on-surface-variant transition-colors hover:bg-surface-container-highest"
-            }`}
-          >
-            <Download className="h-4 w-4" />
-            {currentTab.files.length > 0
-              ? "DOWNLOAD TEMPLATE"
-              : "Sample Template"}
-          </button> */}
-        </div>
-
-        <div className="overflow-hidden rounded-lg   border border-outline-variant/10 bg-surface-container-lowest">
-          <div className="overflow-x-auto scrollbar-hide">
-            {currentTab.files.length > 0 ? (
-              isWireSheet ? (
-                <table className="w-full min-w-max border-collapse text-left">
-                  <thead>
-                    <tr className="bg-surface-container-low">
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Merchant Name
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        MID
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Start Date
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        End Date
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Processing Currency
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-surface-container">
-                    {displayedRows.map((row, index) => (
-                      <tr
-                        key={`${activeFile.id}-${index}`}
-                        className="group transition-colors hover:bg-surface-container-low"
-                      >
-                        <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
-                          {row.merchantName || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.mid || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.startDate || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.endDate || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5">
-                          <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
-                            {row.processingCurrency || "-"}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                          {formatAmountCell(row.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="w-full min-w-max border-collapse text-left">
-                  <thead>
-                    <tr className="bg-surface-container-low">
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Bank
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Merchant Name
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        MID
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Start Date
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        End Date
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Currency
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Amount
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Rate
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Settlement Currency
-                      </th>
-                      <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                        Final Amount
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-surface-container">
-                    {displayedRows.map((row, index) => (
-                      <tr
-                        key={`${activeFile.id}-${index}`}
-                        className="group transition-colors hover:bg-surface-container-low"
-                      >
-                        <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
-                          {row.bank || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.merchantName || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.mid || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.startDate || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                          {row.endDate || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5">
-                          <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
-                            {row.processingCurrency || "-"}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                          {row.amount || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 text-on-surface">
-                          {row.rate || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5">
-                          <span className="rounded-full bg-surface-container px-3 py-1 text-[11px] font-bold text-on-surface">
-                            {row.settlementCurrency || "-"}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                          {formatAmountCell(row.finalAmount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )
-            ) : isWireSheet ? (
-              <table className="min-w-max w-full border-collapse text-left">
-                <thead>
-                  <tr className="bg-surface-container-low">
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Merchant Name
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      MID
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Start Date
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      End Date
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Processing Currency
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-outline-variant/10">
-                  {wireSheetRows.map((row, index) => (
-                    <tr
-                      key={`${row.mid}-${index}`}
-                      className="group transition-colors hover:bg-surface-container-low"
-                    >
-                      <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
-                        {row.merchantName}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.mid}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.startDate}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.endDate}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface">
-                        {row.processingCurrency}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                        {formatAmountCell(row.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <table className="min-w-max w-full border-collapse text-left">
-                <thead>
-                  <tr className="bg-surface-container-low">
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Bank
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Merchant Name
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      MID
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Start Date
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      End Date
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Currency
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Amount
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Rate
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Settlement Currency
-                    </th>
-                    <th className="whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Final Amount
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-outline-variant/10">
-                  {paymentSheetRows.map((row, index) => (
-                    <tr
-                      key={`${row.mid}-${index}`}
-                      className="group transition-colors hover:bg-surface-container-low"
-                    >
-                      <td className="whitespace-nowrap px-6 py-5 font-medium text-on-surface">
-                        {row.bank}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.merchantName}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.mid}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.startDate}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface-variant">
-                        {row.endDate}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface">
-                        {row.processingCurrency}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                        {row.amount}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface">
-                        {row.rate}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-on-surface">
-                        {row.settlementCurrency}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-5 font-bold text-on-surface">
-                        {formatAmountCell(row.finalAmount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+        {renderPaymentSheetTabs()}
+        {renderExtractedDataHeader()}
+        {renderExtractedDataTable()}
       </section>
+
+      <EditInvalidPaymentRowModal
+        open={isInvalidRowModalOpen}
+        row={selectedInvalidRow}
+        initialData={selectedInvalidRow?.fixedData || null}
+        onClose={handleCloseInvalidRowModal}
+        onSave={handleSaveInvalidRow}
+      />
     </div>
   );
 }

@@ -462,7 +462,8 @@ export default function GroupedMerchantView({
 
                         <div className="rounded-lg bg-surface-container-low p-4">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                            Paid In Amount
+                            Settled Amount (in recieved curr)
+                            {/* Paid In Amount */}
                           </p>
                           <p className="mt-1 text-xl font-extrabold text-on-surface">
                             {formatPlainNumber(activeAcquirer.totalPaidIn)}
@@ -471,7 +472,7 @@ export default function GroupedMerchantView({
 
                         <div className="rounded-lg bg-surface-container-low p-4">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                            Actual Paid
+                            Actual Paid (Converted amount)
                           </p>
                           <p className="mt-1 text-xl font-extrabold text-on-surface">
                             {formatPlainNumber(activeAcquirer.totalActualPaid)}
@@ -480,7 +481,7 @@ export default function GroupedMerchantView({
 
                         <div className="rounded-lg bg-surface-container-low p-4">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                            Remaining Balance
+                            Remaining Balance (in recieved curr)
                           </p>
                           <p className="mt-1 text-xl font-extrabold text-on-surface">
                             {formatPlainNumber(activeAcquirer.totalBalance)}
@@ -581,11 +582,25 @@ export default function GroupedMerchantView({
                             <span className="rounded-full bg-surface-container px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-on-surface">
                               {item.currency}
                             </span>
+
                             <span className="text-sm font-extrabold text-on-surface">
                               {formatAmount(item.amount, item.currency)}
                             </span>
                           </div>
                         ))}
+
+                        <div className="flex items-center justify-between rounded-lg bg-surface-container-low px-4 py-3">
+                          <span className="rounded-full bg-surface-container px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-on-surface">
+                            Rate Applied
+                          </span>
+
+                          <span className="text-sm font-extrabold text-on-surface">
+                            --
+                            {/* {activeAcquirer.averageRate
+                              ? Number(activeAcquirer.averageRate).toFixed(2)
+                              : "--"} */}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

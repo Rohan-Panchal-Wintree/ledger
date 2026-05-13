@@ -1,40 +1,33 @@
 {
-	"name": "merchant-settlement-backend",
+	"name": "ledger-backend",
 	"version": "1.0.0",
-	"description": "Merchant settlement and ledger reconciliation backend",
-	"type": "module",
-	"main": "src/server.js",
-	"scripts": {
-		"dev": "node --watch src/server.js",
-		"start": "node src/server.js",
-		"check": "node scripts/check-imports.js"
-	},
-	"keywords": [
-		"fintech",
-		"settlement",
-		"ledger",
-		"express",
-		"mongodb"
-	],
-	"author": "",
+	"description": "",
 	"license": "ISC",
+	"author": "",
+	"type": "module",
+	"main": "server.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"dev": "node --watch server.js"
+	},
 	"dependencies": {
-		"@simplewebauthn/server": "^10.0.1",
-		"cors": "^2.8.5",
-		"dotenv": "^17.3.1",
+		"cookie-parser": "^1.4.7",
+		"cors": "^2.8.6",
+		"dotenv": "^17.4.2",
 		"express": "^5.2.1",
-		"express-rate-limit": "^8.1.0",
+		"express-rate-limit": "^8.4.1",
 		"helmet": "^8.1.0",
-		"ioredis": "^5.8.1",
 		"jsonwebtoken": "^9.0.3",
-		"mongoose": "^8.19.1",
-		"multer": "^2.0.2",
-		"nodemailer": "^7.0.9",
-		"pdfkit": "^0.17.2",
-		"pino": "^10.0.0",
-		"pino-http": "^11.0.0",
-		"uuid": "^13.0.0",
+		"mongoose": "^9.6.0",
+		"multer": "^2.1.1",
+		"nodemailer": "^8.0.7",
+		"pdfkit": "^0.18.0",
+		"rate-limit-redis": "^5.0.0",
+		"redis": "^5.12.1",
 		"xlsx": "^0.18.5",
-		"zod": "^4.1.11"
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.14"
 	}
 }

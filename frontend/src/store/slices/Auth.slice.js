@@ -2,7 +2,8 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { authApi } from "../../api";
 import { decryptData, encryptData } from "../../utils/cryptoUtils";
 
-// Thunks
+const AUTH_STORAGE_KEY = "pg_user";
+
 export const sendOtp = createAsyncThunk(
   "auth/sendOtp",
   async (email, { rejectWithValue }) => {
@@ -13,12 +14,9 @@ export const sendOtp = createAsyncThunk(
         email: normalizedEmail,
       });
 
-      console.log("response", response);
-
       return {
         email: normalizedEmail,
         message: response.data?.message || "OTP sent successfully",
-        data: response.data,
       };
     } catch (error) {
       return rejectWithValue(
@@ -32,33 +30,27 @@ export const verifyOtp = createAsyncThunk(
   "auth/verifyOtp",
   async ({ email, otp }, { rejectWithValue }) => {
     try {
-      console.log("email", email);
-      console.log("otp", otp);
-
       const response = await authApi.post("/verify-otp", {
-        email,
+        email: email.trim().toLowerCase(),
         otp,
       });
 
       const user = response.data?.user;
-      const accessToken = response.data?.accessToken;
-      const refreshToken = response.data?.refreshToken;
+      const csrfToken = response.data?.csrfToken;
 
       if (!user) {
         throw new Error("No user data found");
       }
 
-      const encryptedUser = await encryptData({
+      const encryptedAuth = await encryptData({
         user,
-        accessToken,
-        refreshToken,
+        csrfToken,
       });
-      localStorage.setItem("pg_user", encryptedUser);
+
+      localStorage.setItem(AUTH_STORAGE_KEY, encryptedAuth);
 
       return {
-        user: response.data?.user,
-        accessToken,
-        refreshToken,
+        user,
       };
     } catch (error) {
       return rejectWithValue(
@@ -74,15 +66,18 @@ export const getUserFromStorage = createAsyncThunk(
   "auth/getUserFromStorage",
   async (_, { rejectWithValue }) => {
     try {
-      const storedUser = localStorage.getItem("pg_user");
+      const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
 
-      if (!storedUser) return null;
+      if (!storedAuth) return null;
 
-      const user = await decryptData(storedUser);
+      const auth = await decryptData(storedAuth);
 
-      return user;
+      return {
+        user: auth?.user || null,
+      };
     } catch (error) {
-      localStorage.removeItem("pg_user");
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+
       return rejectWithValue(
         error.message || "Failed to restore user from storage",
       );
@@ -94,19 +89,23 @@ export const logoutUser = createAsyncThunk(
   "auth/logoutUser",
   async (_, { rejectWithValue }) => {
     try {
-      localStorage.removeItem("pg_user");
+      await authApi.post("/logout");
+
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+
       return true;
     } catch (error) {
-      localStorage.removeItem("pg_user");
-      return rejectWithValue(error.message || "Logout failed");
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+
+      return rejectWithValue(
+        error.response?.data?.message || error.message || "Logout failed",
+      );
     }
   },
 );
 
 const initialState = {
   currentUser: null,
-  accessToken: null,
-  refreshToken: null,
   loading: false,
   error: null,
   otpSent: false,
@@ -116,21 +115,34 @@ const initialState = {
 const authSlice = createSlice({
   name: "auth",
   initialState,
+
   reducers: {
     setCurrentUser: (state, action) => {
       state.currentUser = action.payload;
     },
+
     clearAuthError: (state) => {
       state.error = null;
     },
+
     resetOtpState: (state) => {
       state.otpSent = false;
-      state.otpEmail = "";
+      state.otpEmail = null;
+    },
+
+    clearAuthState: (state) => {
+      state.currentUser = null;
+      state.loading = false;
+      state.error = null;
+      state.otpSent = false;
+      state.otpEmail = null;
+
+      localStorage.removeItem(AUTH_STORAGE_KEY);
     },
   },
+
   extraReducers: (builder) => {
     builder
-      // sendOtp
       .addCase(sendOtp.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -140,8 +152,6 @@ const authSlice = createSlice({
         state.error = null;
         state.otpSent = true;
         state.otpEmail = action.payload.email;
-
-        console.log("state from state", state.otpSent);
       })
       .addCase(sendOtp.rejected, (state, action) => {
         state.loading = false;
@@ -149,7 +159,6 @@ const authSlice = createSlice({
         state.otpSent = false;
       })
 
-      // verifyOtp
       .addCase(verifyOtp.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -157,70 +166,55 @@ const authSlice = createSlice({
       .addCase(verifyOtp.fulfilled, (state, action) => {
         state.loading = false;
         state.currentUser = action.payload.user;
-        state.accessToken = action.payload.accessToken || null;
-        state.refreshToken = action.payload.refreshToken || null;
         state.error = null;
         state.otpSent = false;
-        state.otpEmail = "";
+        state.otpEmail = null;
       })
       .addCase(verifyOtp.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
 
-      // getUserFromStorage
       .addCase(getUserFromStorage.pending, (state) => {
         state.loading = true;
       })
       .addCase(getUserFromStorage.fulfilled, (state, action) => {
         state.loading = false;
         state.currentUser = action.payload?.user || null;
-        state.accessToken = action.payload?.accessToken || null;
-        state.refreshToken = action.payload?.refreshToken || null;
       })
       .addCase(getUserFromStorage.rejected, (state, action) => {
         state.loading = false;
         state.currentUser = null;
-        state.accessToken = null;
-        state.refreshToken = null;
         state.error = action.payload;
       })
 
-      // logoutUser
       .addCase(logoutUser.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(logoutUser.fulfilled, (state) => {
         state.currentUser = null;
-        state.accessToken = null;
-        state.refreshToken = null;
         state.loading = false;
         state.error = null;
         state.otpSent = false;
-        state.otpEmail = "";
+        state.otpEmail = null;
       })
       .addCase(logoutUser.rejected, (state, action) => {
         state.currentUser = null;
-        state.accessToken = null;
-        state.refreshToken = null;
         state.loading = false;
         state.error = action.payload || "Logout failed";
         state.otpSent = false;
-        state.otpEmail = "";
+        state.otpEmail = null;
       });
   },
 });
 
-// Actions
-export const { setCurrentUser } = authSlice.actions;
+export const { setCurrentUser, clearAuthError, resetOtpState, clearAuthState } =
+  authSlice.actions;
 
-// Reducer
 export default authSlice.reducer;
 
-// Selectors
 export const selectCurrentUser = (state) => state.auth.currentUser;
-export const selectAccessToken = (state) => state.auth.accessToken;
 export const selectIsAuthenticated = (state) =>
   Boolean(state.auth.currentUser?.email);
 export const selectAuthLoading = (state) => state.auth.loading;

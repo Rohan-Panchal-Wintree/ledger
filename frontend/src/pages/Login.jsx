@@ -106,114 +106,134 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <header className="mb-10 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
-          <Shield className="h-5 w-5" />
-        </div>
-        <h1 className="text-2xl font-semibold text-on-surface">PayGate</h1>
-      </header>
-
-      <main className="w-full max-w-md">
-        <div className="rounded-default border border-outline-variant/10 bg-surface-container-lowest p-8 md:p-10">
-          {step === "email" ? (
-            <>
-              <div className="mb-8 text-center">
-                <h2 className="mb-2 text-2xl font-bold text-on-surface">
-                  Welcome back
-                </h2>
-                <p className="text-sm text-on-surface-variant">
-                  Sign in to your settlement dashboard
-                </p>
+    <div className="min-h-screen bg-surface-container-low text-on-background">
+      <main className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
+        {/* Left Form Section */}
+        <section className="flex min-h-screen items-center justify-center bg-surface-container-lowest px-6 py-10 md:px-12">
+          <div className="w-full max-w-md">
+            <header className="mb-10 flex items-center justify-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
+                <Shield className="h-5 w-5" />
               </div>
+              <h1 className="text-2xl font-semibold text-on-surface">
+                PayGate
+              </h1>
+            </header>
 
-              <form onSubmit={handleEmailSubmit} className="space-y-6">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-on-surface">
-                    Email address
-                  </label>
+            <div className="rounded-default border border-outline-variant/10 bg-white p-8 md:p-10">
+              {step === "email" ? (
+                <>
+                  <div className="mb-8 text-center">
+                    <h2 className="mb-2 text-2xl font-bold text-on-surface">
+                      Welcome back
+                    </h2>
+                    <p className="text-sm text-on-surface-variant">
+                      Sign in to your settlement dashboard
+                    </p>
+                  </div>
 
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className="w-full rounded-full border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+                  <form onSubmit={handleEmailSubmit} className="space-y-6">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-on-surface">
+                        Email address
+                      </label>
 
-                {error && <p className="text-sm text-red-600">{error}</p>}
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@company.com"
+                        className="w-full rounded-full border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {loading ? "Sending..." : "Continue"}
-                </button>
-              </form>
+                    {error && <p className="text-sm text-red-600">{error}</p>}
 
-              {/* <div className="mt-8 text-center text-xs text-on-surface-variant">
-                Demo emails: admin@paygate.com · merchant1@techflow.com
-              </div> */}
-            </>
-          ) : (
-            <>
-              <div className="mb-8 text-center">
-                <h2 className="mb-2 text-2xl font-bold text-on-surface">
-                  Enter verification code
-                </h2>
-                <p className="text-sm text-on-surface-variant">
-                  We sent a 6-digit code to{" "}
-                  <span className="font-medium text-on-surface">{email}</span>
-                </p>
-              </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {loading ? "Sending..." : "Continue"}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <div className="mb-8 text-center">
+                    <h2 className="mb-2 text-2xl font-bold text-on-surface">
+                      Enter verification code
+                    </h2>
+                    <p className="text-sm text-on-surface-variant">
+                      We sent a 6-digit code to{" "}
+                      <span className="font-medium text-on-surface">
+                        {email}
+                      </span>
+                    </p>
+                  </div>
 
-              <form onSubmit={handleOtpSubmit} className="space-y-6">
-                <div
-                  className="flex justify-center gap-2"
-                  onPaste={handlePaste}
-                >
-                  {otp.map((digit, index) => (
-                    <input
-                      key={index}
-                      id={`otp-${index}`}
-                      type="text"
-                      maxLength="1"
-                      value={digit}
-                      onChange={(e) => handleOtpChange(index, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                      className="h-14 w-12 rounded-lg border border-outline-variant/20 bg-surface-container-low text-center text-xl font-semibold text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                  ))}
-                </div>
+                  <form onSubmit={handleOtpSubmit} className="space-y-6">
+                    <div
+                      className="flex justify-center gap-2"
+                      onPaste={handlePaste}
+                    >
+                      {otp.map((digit, index) => (
+                        <input
+                          key={index}
+                          id={`otp-${index}`}
+                          type="text"
+                          maxLength="1"
+                          value={digit}
+                          onChange={(e) =>
+                            handleOtpChange(index, e.target.value)
+                          }
+                          onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                          className={`h-14 w-12 rounded-lg border ${digit ? "border-primary" : "border-outline-variant/20"} bg-surface-container-low text-center text-xl font-semibold text-on-surface outline-none focus:ring-2 focus:ring-primary/20`}
+                        />
+                      ))}
+                    </div>
 
-                {error && (
-                  <p className="text-center text-sm text-red-600">{error}</p>
-                )}
+                    {error && (
+                      <p className="text-center text-sm text-red-600">
+                        {error}
+                      </p>
+                    )}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-full bg-primary py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {loading ? "Verifying..." : "Verify & Sign in"}
-                </button>
-              </form>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-full bg-primary py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {loading ? "Verifying..." : "Verify & Sign in"}
+                    </button>
+                  </form>
 
-              <div className="mt-6 space-y-2 text-center">
-                <button
-                  type="button"
-                  onClick={handleBackToEmail}
-                  className="text-sm text-on-surface-variant hover:text-on-surface"
-                >
-                  Use a different email
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+                  <div className="mt-6 space-y-2 text-center">
+                    <button
+                      type="button"
+                      onClick={handleBackToEmail}
+                      className="text-sm text-on-surface-variant hover:text-on-surface"
+                    >
+                      Use a different email
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Right Image Section */}
+        <section className="hidden min-h-screen bg-white lg:block">
+          <div className="h-full overflow-hidden bg-surface-container-lowest">
+            <img
+              src={step === "email" ? "assets/email.png" : "assets/otp.png"}
+              alt={step === "email" ? "Login illustration" : "OTP illustration"}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        </section>
       </main>
     </div>
   );
