@@ -11,8 +11,8 @@ const unmatchedPaymentSchema = new mongoose.Schema(
 
 		status: {
 			type: String,
-			enum: ["pending_reconciliation", "reconciled"],
-			default: "pending_reconciliation",
+			enum: ["invalid", "unmatched", "reconciled"],
+			default: "unmatched",
 			index: true,
 		},
 
@@ -68,9 +68,35 @@ const unmatchedPaymentSchema = new mongoose.Schema(
 		},
 
 		reconciledAt: Date,
+		rawRow: {
+			type: Object,
+			default: null,
+		},
+
+		normalizedRow: {
+			type: Object,
+			default: null,
+		},
+
+		missingFields: {
+			type: [String],
+			default: [],
+		},
+
+		retryCount: {
+			type: Number,
+			default: 0,
+		},
+
+		lastReconciledAt: Date,
 	},
 	{ timestamps: true },
 );
+
+unmatchedPaymentSchema.index({
+	status: 1,
+	createdAt: -1,
+});
 
 export const UnmatchedPayment = mongoose.model(
 	"UnmatchedPayment",
