@@ -7,7 +7,9 @@ import {
   listPayments,
   listUnmatchedPayments,
   getUnmatchedPaymentsSummary,
+  updateUnmatchedPaymentRow,
   reconcilePendingPayments,
+  reconcileSingleUnmatchedPayment,
 } from "../../controller/payment.controller.js";
 
 import {
@@ -43,6 +45,13 @@ router.get(
   asyncHandler(listUnmatchedPayments),
 );
 
+// Update rows of the unmatched
+router.put(
+  "/unmatched/:id",
+  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  asyncHandler(updateUnmatchedPaymentRow),
+);
+
 router.get(
   "/unmatched-summary",
   middlewares.roleMiddleware(["admin", "finance", "settlement"]),
@@ -54,6 +63,12 @@ router.post(
   middlewares.roleMiddleware(["admin", "finance", "settlement"]),
   validateRequest(reconcileUnmatchedPaymentsSchema),
   asyncHandler(reconcilePendingPayments),
+);
+
+router.post(
+  "/unmatched/:id/reconcile",
+  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  asyncHandler(reconcileSingleUnmatchedPayment),
 );
 
 // ROUTES - END

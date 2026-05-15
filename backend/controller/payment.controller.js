@@ -7,8 +7,6 @@ import { MerchantAccount } from "../models/merchant-account.model.js";
 import { WiresheetTransaction } from "../models/wiresheet-transaction.model.js";
 import { Payment } from "../models/payment.model.js";
 import { UnmatchedPayment } from "../models/unmatchedPayment.model.js";
-import { InvalidPaymentRow } from "../models/invalid-payment-row.model.js";
-
 import {
   derivePaymentMethod,
   deriveSettlementStatus,
@@ -532,6 +530,80 @@ const buildMerchantAccountLookup = async ({ rows, bankAcquirerMap }) => {
   };
 };
 
+const storeInvalidRowsAsUnmatched = async ({
+  invalidRows,
+  userId,
+  originalFilename,
+}) => {
+  if (!invalidRows.length) return 0;
+
+  const operations = invalidRows.map((item) => {
+    const row = item.normalizedRow;
+
+    return {
+      updateOne: {
+        filter: {
+          rowIdentityKey: buildUnmatchedPaymentIdentityKey({
+            paymentBank: row.bank,
+            merchantName: row.merchantName,
+            paidToMerchantDate: row.paymentDate,
+            sourceMid: row.mid,
+            sourceStartDate: row.startDate,
+            sourceEndDate: row.endDate,
+            sourceProcessingCurrency: row.processingCurrency,
+            paymentCurrency: row.settlementCurrency,
+            amountPaid: row.amountPaid,
+            settlementAmount: row.settlementAmount,
+          }),
+        },
+        update: {
+          $set: {
+            status: "invalid",
+            failureReason: item.message,
+            missingFields: item.missingFields,
+
+            rawRow: item.rawRow,
+            normalizedRow: item.normalizedRow,
+
+            paymentBank: row.bank,
+            merchantName: row.merchantName,
+            sourceMid: row.mid,
+            sourceStartDate: row.startDate,
+            sourceEndDate: row.endDate,
+            sourceProcessingCurrency: row.processingCurrency,
+
+            amountPaid: roundMoney(row.amountPaid),
+            paymentRate: roundMoney(row.paymentRate),
+            settlementCurrency: normalizeText(row.settlementCurrency),
+            settlementAmount: roundMoney(row.settlementAmount),
+
+            paymentMethod: row.paymentMethod,
+            paymentDate: row.paymentDate,
+            paidToMerchantDate: row.paidToMerchantDate,
+
+            paymentSheetDateLabel: row.paymentSheetDateLabel,
+            hashPayment: row.hashPayment,
+            referenceNo: row.referenceNo,
+
+            sheetName: row.sheetName,
+            originalFilename,
+            wiresheetTransactionId: null,
+            merchantMappingId: null,
+          },
+          $setOnInsert: {
+            createdBy: userId,
+          },
+        },
+        upsert: true,
+      },
+    };
+  });
+
+  await UnmatchedPayment.bulkWrite(operations);
+
+  return invalidRows.length;
+};
+
 const buildTransactionIndex = async ({ rows, allAccountIds }) => {
   if (!allAccountIds.length) return new Map();
 
@@ -719,7 +791,6 @@ const matchRowsToTransactions = async ({ rows }) => {
 };
 
 //recalculateTransactionAndWiresheetTotals
-
 const recalculateTransactionAndWiresheetTotals = async (transactionIds) => {
   const cleanTransactionIds = [
     ...new Set(transactionIds.map((id) => id.toString())),
@@ -1041,7 +1112,7 @@ const storeUnmatchedRows = async ({
     return {
       storedCount: 0,
       pendingCount: await UnmatchedPayment.countDocuments({
-        status: "pending_reconciliation",
+        status: "unmatched",
       }),
     };
   }
@@ -1051,7 +1122,7 @@ const storeUnmatchedRows = async ({
       filter: { rowIdentityKey: getRowIdentityKey(row) },
       update: {
         $set: {
-          status: "pending_reconciliation",
+          status: "unmatched",
           failureReason: reason,
 
           paymentBank: row.bank,
@@ -1077,15 +1148,19 @@ const storeUnmatchedRows = async ({
 
           sheetName: row.sheetName,
           originalFilename,
+
           wiresheetTransactionId: null,
           merchantMappingId: null,
+
           reconciledAt: null,
           reconciledBy: null,
         },
+
         $setOnInsert: {
           createdBy: userId,
         },
       },
+
       upsert: true,
     },
   }));
@@ -1094,8 +1169,9 @@ const storeUnmatchedRows = async ({
 
   return {
     storedCount: skippedRows.length,
+
     pendingCount: await UnmatchedPayment.countDocuments({
-      status: "pending_reconciliation",
+      status: { $in: ["invalid", "unmatched"] },
     }),
   };
 };
@@ -1115,70 +1191,29 @@ const toSkippedRowPayload = ({ row, reason }) => ({
 });
 
 const buildUnmatchedSummary = async () => {
-  const [pendingCount, recentRows] = await Promise.all([
-    UnmatchedPayment.countDocuments({ status: "pending_reconciliation" }),
-    UnmatchedPayment.find({ status: "pending_reconciliation" })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean(),
-  ]);
+  const activeStatuses = ["invalid", "unmatched"];
+
+  const [totalCount, invalidCount, unmatchedCount, recentRows] =
+    await Promise.all([
+      UnmatchedPayment.countDocuments({
+        status: { $in: activeStatuses },
+      }),
+      UnmatchedPayment.countDocuments({ status: "invalid" }),
+      UnmatchedPayment.countDocuments({ status: "unmatched" }),
+      UnmatchedPayment.find({
+        status: { $in: activeStatuses },
+      })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
 
   return {
-    pendingCount,
+    pendingCount: totalCount,
+    invalidCount,
+    unmatchedCount,
     recentRows,
   };
-};
-
-const buildInvalidPaymentRowKey = ({
-  originalFilename,
-  sheetName,
-  excelRowNumber,
-  rawRow,
-}) =>
-  [
-    originalFilename,
-    sheetName,
-    excelRowNumber,
-    JSON.stringify(rawRow || {}),
-  ].join("|");
-
-const storeInvalidRows = async ({ invalidRows, userId, originalFilename }) => {
-  if (!invalidRows.length) return 0;
-
-  const operations = invalidRows.map((row) => ({
-    updateOne: {
-      filter: {
-        rowIdentityKey: buildInvalidPaymentRowKey({
-          originalFilename,
-          sheetName: row.sheetName,
-          excelRowNumber: row.excelRowNumber,
-          rawRow: row.rawRow,
-        }),
-      },
-      update: {
-        $set: {
-          sourceOriginalFilename: originalFilename,
-          sourceSheetName: row.sheetName,
-          excelRowNumber: row.excelRowNumber,
-          rawRow: row.rawRow,
-          normalizedRow: row.normalizedRow,
-          missingFields: row.missingFields,
-          failureReason: row.message,
-          paymentSheetDate: row.paymentSheetDate,
-          paymentSheetDateLabel: row.paymentSheetDateLabel,
-          status: "pending_fix",
-        },
-        $setOnInsert: {
-          createdBy: userId,
-        },
-      },
-      upsert: true,
-    },
-  }));
-
-  await InvalidPaymentRow.bulkWrite(operations);
-
-  return invalidRows.length;
 };
 
 export const uploadPayments = async (req, res) => {
@@ -1201,7 +1236,7 @@ export const uploadPayments = async (req, res) => {
         originalFilename: file.originalname,
       });
 
-      const storedInvalidRowsCount = await storeInvalidRows({
+      const storedInvalidRowsCount = await storeInvalidRowsAsUnmatched({
         invalidRows,
         userId: req.user._id,
         originalFilename: file.originalname,
@@ -1291,12 +1326,103 @@ export const listPayments = async (_req, res) => {
   });
 };
 
-export const listUnmatchedPayments = async (_req, res) => {
-  const data = await UnmatchedPayment.find().sort({ createdAt: -1 }).lean();
+export const listUnmatchedPayments = async (req, res) => {
+  const { status } = req.query;
+
+  const query = status
+    ? { status }
+    : { status: { $in: ["invalid", "unmatched"] } };
+
+  const data = await UnmatchedPayment.find(query)
+    .sort({ createdAt: -1 })
+    .lean();
 
   return res.json({
     success: true,
     data,
+  });
+};
+
+export const updateUnmatchedPaymentRow = async (req, res) => {
+  const row = await UnmatchedPayment.findById(req.params.id);
+
+  if (!row) {
+    return res.status(404).json({
+      success: false,
+      message: "Unmatched payment row not found",
+    });
+  }
+
+  // update editable fields
+  row.paymentBank = normalizeText(req.body.paymentBank ?? row.paymentBank);
+
+  row.merchantName = normalizeText(req.body.merchantName ?? row.merchantName);
+
+  row.sourceMid = String(req.body.sourceMid ?? row.sourceMid).trim();
+
+  row.sourceStartDate = req.body.sourceStartDate
+    ? parseFlexibleSheetDate(req.body.sourceStartDate)
+    : row.sourceStartDate;
+
+  row.sourceEndDate = req.body.sourceEndDate
+    ? parseFlexibleSheetDate(req.body.sourceEndDate)
+    : row.sourceEndDate;
+
+  row.sourceProcessingCurrency = normalizeText(
+    req.body.sourceProcessingCurrency ?? row.sourceProcessingCurrency,
+  );
+
+  row.amountPaid =
+    req.body.amountPaid !== undefined
+      ? roundMoney(req.body.amountPaid)
+      : row.amountPaid;
+
+  row.paymentRate =
+    req.body.paymentRate !== undefined
+      ? roundMoney(req.body.paymentRate)
+      : row.paymentRate;
+
+  row.settlementCurrency = normalizeText(
+    req.body.settlementCurrency ?? row.settlementCurrency,
+  );
+
+  row.settlementAmount =
+    req.body.settlementAmount !== undefined
+      ? roundMoney(req.body.settlementAmount)
+      : row.settlementAmount;
+
+  // rebuild row object for validation
+  const validationRow = {
+    bank: row.paymentBank,
+    merchantName: row.merchantName,
+    mid: row.sourceMid,
+    startDate: row.sourceStartDate,
+    endDate: row.sourceEndDate,
+    processingCurrency: row.sourceProcessingCurrency,
+    amountPaid: row.amountPaid,
+  };
+
+  const missingFields = getMissingFields(validationRow);
+
+  // status logic
+  if (missingFields.length) {
+    row.status = "invalid";
+    row.missingFields = missingFields;
+
+    row.failureReason = `Missing fields: ${missingFields.join(", ")}`;
+  } else {
+    row.status = "unmatched";
+    row.missingFields = [];
+
+    row.failureReason = "ready_for_reconcile";
+  }
+
+  await row.save();
+
+  return res.json({
+    success: true,
+    message: "Unmatched payment updated successfully",
+    data: row,
   });
 };
 
@@ -1309,9 +1435,10 @@ export const getUnmatchedPaymentsSummary = async (_req, res) => {
   });
 };
 
+// Reconcile All
 export const reconcilePendingPayments = async (req, res) => {
   const pendingRows = await UnmatchedPayment.find({
-    status: "pending_reconciliation",
+    status: "unmatched",
   })
     .sort({ createdAt: 1, _id: 1 })
     .lean();
@@ -1371,7 +1498,7 @@ export const reconcilePendingPayments = async (req, res) => {
         filter: { _id: row.unmatchedPaymentId },
         update: {
           $set: {
-            status: "pending_reconciliation",
+            status: "unmatched",
             failureReason: reason,
             lastReconciledAt: now,
           },
@@ -1401,129 +1528,101 @@ export const reconcilePendingPayments = async (req, res) => {
   });
 };
 
-export const reconcileInvalidPaymentRow = async (req, res) => {
-  const invalidRow = await InvalidPaymentRow.findById(req.params.id);
+// Reconcile Single
+export const reconcileSingleUnmatchedPayment = async (req, res) => {
+  const unmatchedRow = await UnmatchedPayment.findById(req.params.id).lean();
 
-  if (!invalidRow) {
+  if (!unmatchedRow) {
     return res.status(404).json({
       success: false,
-      message: "Invalid payment row not found",
+      message: "Unmatched payment not found",
     });
   }
 
-  const mergedRawRow = {
-    ...(invalidRow.rawRow || {}),
-    ...(invalidRow.fixedData || {}),
-    ...(req.body || {}),
-  };
-
-  const paymentDate =
-    invalidRow.paymentSheetDate ||
-    parseSheetDate(req.body.paymentSheetDate) ||
-    new Date();
-
-  const normalizedRow = normalizePaymentRow({
-    row: {
-      ...mergedRawRow,
-      __excelRowNumber: invalidRow.excelRowNumber,
-    },
-    sheetName: invalidRow.sourceSheetName,
-    paymentDate,
-    paymentSheetDateLabel:
-      invalidRow.paymentSheetDateLabel ||
-      formatPaymentSheetDateLabel(paymentDate),
-    originalFilename: invalidRow.sourceOriginalFilename,
-  });
-
-  const missingFields = getMissingFields(normalizedRow);
-
-  if (missingFields.length) {
-    invalidRow.rawRow = mergedRawRow;
-    invalidRow.normalizedRow = normalizedRow;
-    invalidRow.fixedData = {
-      ...(invalidRow.fixedData || {}),
-      ...(req.body || {}),
-    };
-    invalidRow.missingFields = missingFields;
-    invalidRow.failureReason = `Still missing: ${missingFields.join(", ")}`;
-    invalidRow.status = "pending_fix";
-    invalidRow.fixedBy = req.user._id;
-
-    await invalidRow.save();
-
+  if (unmatchedRow.status !== "unmatched") {
     return res.status(400).json({
       success: false,
-      message: invalidRow.failureReason,
-      data: invalidRow,
+      message: "Only unmatched rows can be reconciled",
     });
   }
 
+  const rows = [
+    {
+      unmatchedPaymentId: unmatchedRow._id,
+
+      rowIdentityKey: unmatchedRow.rowIdentityKey,
+
+      bank: unmatchedRow.paymentBank,
+      merchantName: unmatchedRow.merchantName,
+      mid: unmatchedRow.sourceMid,
+
+      startDate: unmatchedRow.sourceStartDate,
+      endDate: unmatchedRow.sourceEndDate,
+
+      processingCurrency: unmatchedRow.sourceProcessingCurrency,
+
+      amountPaid: unmatchedRow.amountPaid,
+      paymentRate: unmatchedRow.paymentRate,
+
+      settlementCurrency: unmatchedRow.settlementCurrency,
+
+      settlementAmount: unmatchedRow.settlementAmount,
+
+      paymentMethod: unmatchedRow.paymentMethod,
+
+      paymentDate: unmatchedRow.paymentDate || unmatchedRow.paidToMerchantDate,
+
+      paidToMerchantDate:
+        unmatchedRow.paidToMerchantDate || unmatchedRow.paymentDate,
+
+      paymentSheetDateLabel: unmatchedRow.paymentSheetDateLabel,
+
+      hashPayment: unmatchedRow.hashPayment,
+      referenceNo: unmatchedRow.referenceNo,
+
+      sheetName: unmatchedRow.sheetName,
+      originalFilename: unmatchedRow.originalFilename,
+    },
+  ];
+
   const { matchedRows, skippedRows } = await matchRowsToTransactions({
-    rows: [normalizedRow],
+    rows,
   });
 
+  // matched
   if (matchedRows.length) {
-    const result = await persistMatchedRows({
+    const matchedResult = await persistMatchedRows({
       matchedRows,
       userId: req.user._id,
     });
 
-    invalidRow.status = "reconciled";
-    invalidRow.normalizedRow = normalizedRow;
-    invalidRow.fixedData = {
-      ...(invalidRow.fixedData || {}),
-      ...(req.body || {}),
-    };
-    invalidRow.missingFields = [];
-    invalidRow.failureReason = "";
-    invalidRow.reconciledAt = new Date();
-    invalidRow.reconciledBy = req.user._id;
-
-    await invalidRow.save();
-
     return res.json({
       success: true,
-      message: "Invalid row reconciled and payment created",
-      data: {
-        status: "reconciled",
-        result,
-        row: invalidRow,
-      },
+      message: "Payment reconciled successfully",
+      data: matchedResult,
     });
   }
 
-  const unmatchedResult = await storeUnmatchedRows({
-    skippedRows,
-    userId: req.user._id,
-    originalFilename: invalidRow.sourceOriginalFilename,
-  });
-
-  const unmatchedPayment = await UnmatchedPayment.findOne({
-    rowIdentityKey: getRowIdentityKey(normalizedRow),
-  }).lean();
-
-  invalidRow.status = "moved_to_unmatched";
-  invalidRow.normalizedRow = normalizedRow;
-  invalidRow.fixedData = {
-    ...(invalidRow.fixedData || {}),
-    ...(req.body || {}),
-  };
-  invalidRow.missingFields = [];
-  invalidRow.failureReason =
-    skippedRows[0]?.reason || "wiresheet_transaction_not_found";
-  invalidRow.unmatchedPaymentId = unmatchedPayment?._id || null;
-  invalidRow.reconciledAt = new Date();
-  invalidRow.reconciledBy = req.user._id;
-
-  await invalidRow.save();
+  // still unmatched
+  await UnmatchedPayment.updateOne(
+    { _id: unmatchedRow._id },
+    {
+      $set: {
+        status: "unmatched",
+        failureReason: "wiresheet_transaction_not_found",
+        lastReconciledAt: new Date(),
+      },
+      $inc: {
+        retryCount: 1,
+      },
+    },
+  );
 
   return res.json({
     success: true,
-    message: "Invalid row fixed but moved to unmatched payments",
+    message: "No matching wiresheet transaction found",
     data: {
-      status: "moved_to_unmatched",
-      unmatchedResult,
-      row: invalidRow,
+      skippedRows: skippedRows.map(toSkippedRowPayload),
     },
   });
 };

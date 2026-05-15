@@ -10,7 +10,6 @@ import paymentRoutes from "./payment.routes.js";
 import miscellaneousPaymentRoutes from "./miscellaneous-payment.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
-import invalidRoutes from "./invalid-payment-row.routes.js";
 import { middlewares } from "../../middlewares/index.js";
 import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
 
@@ -33,6 +32,5 @@ router.use("/payments", paymentRoutes);
 router.use("/miscellaneous-payments", miscellaneousPaymentRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/reports", reportsRoutes);
-router.use("/invalid", invalidRoutes);
 
 export default router;
