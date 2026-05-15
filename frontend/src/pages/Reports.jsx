@@ -421,7 +421,7 @@ export default function Reports() {
 
                         <div className="text-left md:text-right">
                           <p className="text-xs capitalize text-surface-variant">
-                            Period
+                            Payment Period
                           </p>
 
                           <p className="text-md font-bold text-on-surface">

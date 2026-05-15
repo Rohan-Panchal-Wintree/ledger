@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Search,
@@ -8,6 +8,7 @@ import {
   WalletCards,
   Banknote,
   FileText,
+  AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -17,6 +18,11 @@ import {
   useMiscellaneousPayments,
   useUpdateMiscellaneousPayment,
 } from "../queries/miscellaneousQueries";
+import Spinner from "../component/UI/Spinner.jsx";
+
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
 
 const initialForm = {
   entryType: "",
@@ -48,10 +54,13 @@ const entryTypes = [
   { value: "other", label: "Other" },
 ];
 
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
 function formatNumber(value) {
   const number = Number(value);
   if (Number.isNaN(number)) return "0.00";
-
   return number.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -60,10 +69,8 @@ function formatNumber(value) {
 
 function formatDate(value) {
   if (!value) return "-";
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-
   return date.toISOString().slice(0, 10);
 }
 
@@ -75,6 +82,99 @@ function getErrorMessage(error, fallback) {
     fallback
   );
 }
+
+function validateForm(form) {
+  if (!form.entryType) return "Please select entry type.";
+  if (!form.paymentSheetDate) return "Please select payment sheet date.";
+  if (!form.merchantName && !form.merchantId) return "Please enter merchant.";
+  if (!form.amountPaid) return "Please enter processing amount.";
+
+  const rate = Number(form.rate);
+  if (!form.rate || Number.isNaN(rate) || rate <= 0)
+    return "Rate must be a positive number.";
+
+  if (!form.settlementCurrency) return "Please enter settlement currency.";
+  if (!form.settlementAmount) return "Please enter settlement amount.";
+
+  return "";
+}
+
+function buildPayload(form) {
+  return {
+    entryType: form.entryType,
+    paymentSheetDate: form.paymentSheetDate,
+    paymentSheetDateLabel: form.paymentSheetDateLabel,
+    bankLabel: form.bankLabel,
+    merchantName: form.merchantName,
+    merchantId: form.merchantId || undefined,
+    merchantMappingId: form.merchantMappingId || undefined,
+    mid: form.mid,
+    startDate: form.startDate || undefined,
+    endDate: form.endDate || undefined,
+    processingCurrency: form.processingCurrency,
+    amountPaid: Number(form.amountPaid || 0),
+    rate: Number(form.rate || 1),
+    settlementCurrency: form.settlementCurrency,
+    settlementAmount: Number(form.settlementAmount || 0),
+    notes: form.notes,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Delete Confirmation Modal
+// ─────────────────────────────────────────────
+
+function DeleteConfirmModal({ open, onConfirm, onCancel, isDeleting }) {
+  if (!open) return null;
+
+  return (
+    <dialog className="modal modal-open">
+      <div className="modal-box max-w-sm rounded-[2rem] bg-surface-container-lowest p-0">
+        <div className="flex flex-col items-center gap-4 px-8 py-8 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
+            <AlertTriangle size={26} className="text-red-500" />
+          </div>
+
+          <div>
+            <h3 className="text-lg font-extrabold tracking-tight text-on-surface">
+              Delete Entry?
+            </h3>
+            <p className="mt-1.5 text-sm text-on-surface-variant">
+              This action cannot be undone. The miscellaneous entry will be
+              permanently removed.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-outline-variant/10 px-7 py-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="btn rounded-full bg-surface-container-low px-7 text-on-surface hover:bg-surface-container disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="btn rounded-full border-none bg-red-500 px-8 text-white hover:bg-red-600 disabled:bg-red-300 disabled:text-white"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+
+      <div className="modal-backdrop" onClick={onCancel} />
+    </dialog>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Entry Form Modal
+// ─────────────────────────────────────────────
 
 function MiscellaneousEntryModal({
   open,
@@ -89,16 +189,17 @@ function MiscellaneousEntryModal({
 
   const isEdit = mode === "edit";
 
-  const updateField = (field, value) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
+  // Stable field updater — setForm from useState is already stable,
+  // so this callback only changes if nothing does.
+  const updateField = useCallback(
+    (field, value) => setForm((prev) => ({ ...prev, [field]: value })),
+    [setForm],
+  );
 
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-h-[88vh] w-11/12 max-w-5xl overflow-hidden rounded-[2rem] bg-surface-container-lowest p-0">
+        {/* Header */}
         <div className="flex items-start justify-between border-b border-outline-variant/10 px-7 py-6">
           <div>
             <h3 className="text-2xl font-extrabold tracking-tight text-on-surface">
@@ -120,8 +221,10 @@ function MiscellaneousEntryModal({
           </button>
         </div>
 
+        {/* Scrollable Body */}
         <div className="max-h-[62vh] overflow-y-auto px-7 py-6">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {/* Entry Type */}
             <label className="space-y-2 md:col-span-2">
               <span className="text-sm font-semibold text-on-surface">
                 Which Type Of Entry
@@ -144,6 +247,7 @@ function MiscellaneousEntryModal({
               </p>
             </label>
 
+            {/* Payment Sheet Date */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Payment Sheet Date
@@ -161,6 +265,7 @@ function MiscellaneousEntryModal({
               </p>
             </label>
 
+            {/* Payment Sheet Label */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Payment Sheet Label
@@ -179,6 +284,7 @@ function MiscellaneousEntryModal({
               </p>
             </label>
 
+            {/* Merchant Name */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Merchant Name
@@ -192,6 +298,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Connected MID */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Connected MID
@@ -205,6 +312,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Bank Label */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Bank Label
@@ -218,6 +326,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Processing Currency */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Processing Currency
@@ -233,6 +342,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Start Date */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Start Date & Time
@@ -245,6 +355,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* End Date */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 End Date & Time
@@ -257,6 +368,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Processing Amount */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Processing Amount
@@ -270,6 +382,7 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Rate */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Rate
@@ -279,10 +392,13 @@ function MiscellaneousEntryModal({
                 value={form.rate}
                 onChange={(e) => updateField("rate", e.target.value)}
                 placeholder="1.000"
+                min="0.000001"
+                step="any"
                 className="input w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none"
               />
             </label>
 
+            {/* Settlement Currency */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Settlement Currency
@@ -298,9 +414,13 @@ function MiscellaneousEntryModal({
               />
             </label>
 
+            {/* Settlement Amount — auto-computed, still editable */}
             <label className="space-y-2">
               <span className="text-sm font-semibold text-on-surface">
                 Settlement Amount
+                <span className="ml-2 text-[10px] font-medium text-on-surface-variant/60">
+                  (auto-calculated)
+                </span>
               </span>
               <input
                 type="number"
@@ -311,8 +431,12 @@ function MiscellaneousEntryModal({
                 placeholder="0.00"
                 className="input w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none"
               />
+              <p className="text-xs text-on-surface-variant">
+                Auto-filled from Processing Amount × Rate. Override if needed.
+              </p>
             </label>
 
+            {/* Notes */}
             <label className="space-y-2 md:col-span-2">
               <span className="text-sm font-semibold text-on-surface">
                 Notes
@@ -327,6 +451,7 @@ function MiscellaneousEntryModal({
           </div>
         </div>
 
+        {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-outline-variant/10 px-7 py-5">
           <button
             type="button"
@@ -350,11 +475,18 @@ function MiscellaneousEntryModal({
   );
 }
 
+// ─────────────────────────────────────────────
+// Main Page
+// ─────────────────────────────────────────────
+
 export default function Miscellaneous() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [form, setForm] = useState(initialForm);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const miscellaneousQuery = useMiscellaneousPayments();
   const createMutation = useCreateMiscellaneousPayment();
@@ -365,9 +497,20 @@ export default function Miscellaneous() {
   const isLoading =
     miscellaneousQuery.isLoading || miscellaneousQuery.isFetching;
 
+  // ── Auto-calculate settlement amount from amountPaid × rate ──
+  useEffect(() => {
+    const amount = Number(form.amountPaid);
+    const rate = Number(form.rate);
+
+    if (!Number.isNaN(amount) && !Number.isNaN(rate) && rate > 0) {
+      const calculated = (amount * rate).toFixed(2);
+      setForm((prev) => ({ ...prev, settlementAmount: calculated }));
+    }
+  }, [form.amountPaid, form.rate]);
+
+  // ── Filtered entries ──
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-
     if (!query) return entries;
 
     return entries.filter((entry) => {
@@ -385,43 +528,34 @@ export default function Miscellaneous() {
         entry.notes,
       ]
         .filter(Boolean)
-        .map((value) => String(value).toLowerCase());
+        .map((v) => String(v).toLowerCase());
 
-      return values.some((value) => value.includes(query));
+      return values.some((v) => v.includes(query));
     });
   }, [entries, searchQuery]);
 
+  // ── Summary (merchants Set removed — was unused) ──
   const summary = useMemo(() => {
     return filteredEntries.reduce(
       (acc, entry) => {
         acc.totalEntries += 1;
         acc.totalAmountPaid += Number(entry.amountPaid || 0);
         acc.totalSettlementAmount += Number(entry.settlementAmount || 0);
-
-        if (entry.merchantDisplayName || entry.merchantName) {
-          acc.merchants.add(entry.merchantDisplayName || entry.merchantName);
-        }
-
         return acc;
       },
-      {
-        totalEntries: 0,
-        totalAmountPaid: 0,
-        totalSettlementAmount: 0,
-        merchants: new Set(),
-      },
+      { totalEntries: 0, totalAmountPaid: 0, totalSettlementAmount: 0 },
     );
   }, [filteredEntries]);
 
-  const openCreateModal = () => {
+  // ── Modal helpers ──
+  const openCreateModal = useCallback(() => {
     setEditingEntry(null);
     setForm(initialForm);
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const openEditModal = (entry) => {
+  const openEditModal = useCallback((entry) => {
     setEditingEntry(entry);
-
     setForm({
       entryType: entry.entryType || "",
       paymentSheetDate: entry.paymentSheetDate
@@ -447,48 +581,18 @@ export default function Miscellaneous() {
       settlementAmount: entry.settlementAmount ?? "",
       notes: entry.notes || "",
     });
-
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setEditingEntry(null);
     setForm(initialForm);
     setIsModalOpen(false);
-  };
+  }, []);
 
-  const validateForm = () => {
-    if (!form.entryType) return "Please select entry type.";
-    if (!form.paymentSheetDate) return "Please select payment sheet date.";
-    if (!form.merchantName && !form.merchantId) return "Please enter merchant.";
-    if (!form.amountPaid) return "Please enter processing amount.";
-    if (!form.settlementCurrency) return "Please enter settlement currency.";
-    if (!form.settlementAmount) return "Please enter settlement amount.";
-
-    return "";
-  };
-
-  const buildPayload = () => ({
-    entryType: form.entryType,
-    paymentSheetDate: form.paymentSheetDate,
-    paymentSheetDateLabel: form.paymentSheetDateLabel,
-    bankLabel: form.bankLabel,
-    merchantName: form.merchantName,
-    merchantId: form.merchantId || undefined,
-    merchantMappingId: form.merchantMappingId || undefined,
-    mid: form.mid,
-    startDate: form.startDate || undefined,
-    endDate: form.endDate || undefined,
-    processingCurrency: form.processingCurrency,
-    amountPaid: Number(form.amountPaid || 0),
-    rate: Number(form.rate || 0),
-    settlementCurrency: form.settlementCurrency,
-    settlementAmount: Number(form.settlementAmount || 0),
-    notes: form.notes,
-  });
-
-  const handleSubmit = async () => {
-    const error = validateForm();
+  // ── Submit (create / update) ──
+  const handleSubmit = useCallback(async () => {
+    const error = validateForm(form);
 
     if (error) {
       toast.error(error);
@@ -499,12 +603,11 @@ export default function Miscellaneous() {
       if (editingEntry) {
         await updateMutation.mutateAsync({
           id: editingEntry._id,
-          payload: buildPayload(),
+          payload: buildPayload(form),
         });
-
         toast.success("Miscellaneous entry updated.");
       } else {
-        await createMutation.mutateAsync(buildPayload());
+        await createMutation.mutateAsync(buildPayload(form));
         toast.success("Miscellaneous entry created.");
       }
 
@@ -512,25 +615,36 @@ export default function Miscellaneous() {
     } catch (err) {
       toast.error(getErrorMessage(err, "Unable to save miscellaneous entry."));
     }
-  };
+  }, [form, editingEntry, updateMutation, createMutation, closeModal]);
 
-  const handleDelete = async (entry) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this miscellaneous entry?",
-    );
+  // ── Delete flow ──
+  const requestDelete = useCallback((entry) => {
+    setDeleteTarget(entry);
+  }, []);
 
-    if (!confirmed) return;
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
 
     try {
-      await deleteMutation.mutateAsync(entry._id);
+      await deleteMutation.mutateAsync(deleteTarget._id);
       toast.success("Miscellaneous entry deleted.");
+      setDeleteTarget(null);
     } catch (err) {
       toast.error(getErrorMessage(err, "Unable to delete entry."));
     }
-  };
+  }, [deleteTarget, deleteMutation]);
+
+  const cancelDelete = useCallback(() => {
+    if (!deleteMutation.isPending) setDeleteTarget(null);
+  }, [deleteMutation.isPending]);
+
+  // ─────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────
 
   return (
     <div className="w-full bg-background text-on-background">
+      {/* Summary Cards */}
       <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
           <div className="flex items-start justify-between">
@@ -539,7 +653,6 @@ export default function Miscellaneous() {
             </span>
             <FileText className="text-primary" size={20} />
           </div>
-
           <div className="mt-8">
             <div className="text-4xl font-extrabold tracking-tight text-on-surface">
               {summary.totalEntries}
@@ -557,7 +670,6 @@ export default function Miscellaneous() {
             </span>
             <WalletCards className="text-primary" size={20} />
           </div>
-
           <div className="mt-8">
             <div className="text-4xl font-extrabold tracking-tight text-on-surface">
               {formatNumber(summary.totalAmountPaid)}
@@ -575,7 +687,6 @@ export default function Miscellaneous() {
             </span>
             <Banknote className="text-primary" size={20} />
           </div>
-
           <div className="mt-8">
             <div className="text-4xl font-extrabold tracking-tight text-on-surface">
               {formatNumber(summary.totalSettlementAmount)}
@@ -587,6 +698,7 @@ export default function Miscellaneous() {
         </div>
       </section>
 
+      {/* Toolbar */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-on-surface">
@@ -607,7 +719,7 @@ export default function Miscellaneous() {
               type="text"
               placeholder="Search entries..."
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-full border-none bg-surface-container-low py-2.5 pl-10 pr-4 text-sm text-on-surface outline-none transition-all focus:ring-2 focus:ring-primary/20 sm:w-80"
             />
           </div>
@@ -623,9 +735,10 @@ export default function Miscellaneous() {
         </div>
       </div>
 
+      {/* Entry List */}
       {isLoading ? (
-        <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest px-8 py-12 text-center text-sm font-medium text-on-surface-variant">
-          Loading miscellaneous entries...
+        <div className="flex items-center justify-center p-2">
+          <Spinner />
         </div>
       ) : filteredEntries.length === 0 ? (
         <div className="rounded-lg border border-dashed border-outline-variant/20 bg-surface-container-lowest px-8 py-14 text-center">
@@ -642,13 +755,13 @@ export default function Miscellaneous() {
             <article
               key={entry._id}
               className={`
-        flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-6 py-3
-        bg-surface-container-lowest transition-colors
-        ${index !== filteredEntries.length - 1 ? "border-b border-outline-variant/10" : ""}
-      `}
+                flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-6 py-3
+                bg-surface-container-lowest transition-colors
+                ${index !== filteredEntries.length - 1 ? "border-b border-outline-variant/10" : ""}
+              `}
             >
-              {/* 1. Merchant & Identity Group */}
-              <div className="flex min-w-[280px] items-center gap-4">
+              {/* Merchant & Identity */}
+              <div className="flex min-w-70 items-center gap-4">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-container text-[10px] font-black text-primary/70">
                   {entry.entryType?.substring(0, 3).toUpperCase() || "PAY"}
                 </div>
@@ -667,8 +780,8 @@ export default function Miscellaneous() {
                 </div>
               </div>
 
-              {/* 2. Date/Period Section */}
-              <div className="hidden xl:block min-w-[120px]">
+              {/* Sheet Date */}
+              <div className="hidden xl:block min-w-30">
                 <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
                   Sheet Date
                 </p>
@@ -678,9 +791,9 @@ export default function Miscellaneous() {
                 </p>
               </div>
 
-              {/* 3. Financial Data - Compact & Aligned */}
+              {/* Financial Data */}
               <div className="flex items-center gap-10 lg:gap-16">
-                <div className="min-w-[90px]">
+                <div className="min-w-22.5">
                   <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
                     Processing
                   </p>
@@ -692,7 +805,7 @@ export default function Miscellaneous() {
                   </p>
                 </div>
 
-                <div className="min-w-[90px]">
+                <div className="min-w-22.5">
                   <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
                     Settlement
                   </p>
@@ -705,7 +818,7 @@ export default function Miscellaneous() {
                 </div>
               </div>
 
-              {/* 4. Persistent Actions */}
+              {/* Actions */}
               <div className="flex items-center justify-end gap-2 pl-4">
                 <button
                   type="button"
@@ -718,8 +831,11 @@ export default function Miscellaneous() {
 
                 <button
                   type="button"
-                  onClick={() => handleDelete(entry)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-600"
+                  onClick={() => requestDelete(entry)}
+                  disabled={
+                    deleteMutation.isPending && deleteTarget?._id === entry._id
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-600 disabled:opacity-40"
                   title="Delete"
                 >
                   <Trash2 size={14} strokeWidth={2.5} />
@@ -730,6 +846,7 @@ export default function Miscellaneous() {
         </section>
       )}
 
+      {/* Entry Form Modal */}
       <MiscellaneousEntryModal
         open={isModalOpen}
         mode={editingEntry ? "edit" : "create"}
@@ -738,6 +855,14 @@ export default function Miscellaneous() {
         onClose={closeModal}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        open={!!deleteTarget}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+        isDeleting={deleteMutation.isPending}
       />
     </div>
   );
