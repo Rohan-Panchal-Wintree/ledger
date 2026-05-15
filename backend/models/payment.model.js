@@ -59,6 +59,11 @@ paymentSchema.index(
 		sourceEndDate: 1,
 		sourceProcessingCurrency: 1,
 		settlementCurrency: 1,
+		paymentDate: 1,
+		amountPaid: 1,
+		settlementAmount: 1,
+		hashPayment: 1,
+		referenceNo: 1,
 	},
 	{ unique: true },
 );

@@ -98,6 +98,19 @@ unmatchedPaymentSchema.index({
 	createdAt: -1,
 });
 
+unmatchedPaymentSchema.index({
+	sourceMid: 1,
+	sourceProcessingCurrency: 1,
+	sourceStartDate: 1,
+	sourceEndDate: 1,
+	status: 1,
+});
+
+unmatchedPaymentSchema.index({
+	paymentDate: 1,
+	status: 1,
+});
+
 export const UnmatchedPayment = mongoose.model(
 	"UnmatchedPayment",
 	unmatchedPaymentSchema,

@@ -6,7 +6,6 @@ import {
 	uploadPayments,
 	listPayments,
 	listUnmatchedPayments,
-	getUnmatchedPaymentsSummary,
 	updateUnmatchedPaymentRow,
 	reconcilePendingPayments,
 	reconcileSingleUnmatchedPayment,
@@ -50,12 +49,6 @@ router.put(
 	"/unmatched/:id",
 	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
 	asyncHandler(updateUnmatchedPaymentRow),
-);
-
-router.get(
-	"/unmatched-summary",
-	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
-	asyncHandler(getUnmatchedPaymentsSummary),
 );
 
 router.post(

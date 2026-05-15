@@ -1193,7 +1193,7 @@ const toSkippedRowPayload = ({ row, reason }) => ({
 const buildUnmatchedSummary = async () => {
 	const activeStatuses = ["invalid", "unmatched"];
 
-	const [totalCount, invalidCount, unmatchedCount, recentRows] =
+	const [totalCount, invalidCount, unmatchedCount, unmatchedRows] =
 		await Promise.all([
 			UnmatchedPayment.countDocuments({
 				status: { $in: activeStatuses },
@@ -1212,7 +1212,7 @@ const buildUnmatchedSummary = async () => {
 		pendingCount: totalCount,
 		invalidCount,
 		unmatchedCount,
-		recentRows,
+		unmatchedRows,
 	};
 };
 
@@ -1327,18 +1327,39 @@ export const listPayments = async (_req, res) => {
 };
 
 export const listUnmatchedPayments = async (req, res) => {
-	const { status } = req.query;
+	const { status, page = 1, limit = 20 } = req.query;
+
+	const pageNumber = Math.max(Number(page) || 1, 1);
+	const limitNumber = Math.min(Math.max(Number(limit) || 20, 1), 100);
+	const skip = (pageNumber - 1) * limitNumber;
 
 	const query = status
 		? { status }
 		: { status: { $in: ["invalid", "unmatched"] } };
 
-	const data = await UnmatchedPayment.find(query)
-		.sort({ createdAt: -1 })
-		.lean();
+	const [data, total, summary] = await Promise.all([
+		UnmatchedPayment.find(query)
+			.sort({ createdAt: -1 })
+			.skip(skip)
+			.limit(limitNumber)
+			.lean(),
+
+		UnmatchedPayment.countDocuments(query),
+
+		buildUnmatchedSummary(),
+	]);
 
 	return res.json({
 		success: true,
+		summary,
+		meta: {
+			total,
+			page: pageNumber,
+			limit: limitNumber,
+			totalPages: Math.ceil(total / limitNumber),
+			hasNextPage: pageNumber * limitNumber < total,
+			hasPrevPage: pageNumber > 1,
+		},
 		data,
 	});
 };
@@ -1423,15 +1444,6 @@ export const updateUnmatchedPaymentRow = async (req, res) => {
 		success: true,
 		message: "Unmatched payment updated successfully",
 		data: row,
-	});
-};
-
-export const getUnmatchedPaymentsSummary = async (_req, res) => {
-	const summary = await buildUnmatchedSummary();
-
-	return res.json({
-		success: true,
-		data: summary,
 	});
 };
 
