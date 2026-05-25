@@ -37,6 +37,7 @@ export const verifyOtp = createAsyncThunk(
 
       const user = response.data?.user;
       const csrfToken = response.data?.csrfToken;
+      const responseKey = response.data?.responseKey;
 
       if (!user) {
         throw new Error("No user data found");
@@ -45,6 +46,7 @@ export const verifyOtp = createAsyncThunk(
       const encryptedAuth = await encryptData({
         user,
         csrfToken,
+        responseKey,
       });
 
       localStorage.setItem(AUTH_STORAGE_KEY, encryptedAuth);

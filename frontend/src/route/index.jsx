@@ -12,10 +12,11 @@ import ProtectedRoutes from "../utils/ProtectedRoutes";
 import Unauthorized from "../pages/Unauthorized";
 import Upload from "../pages/Upload";
 import ManageEmails from "../pages/ManageEmails";
-import Wiresheets from "../pages/Wiresheets";
+import Sheets from "../pages/Sheets.jsx";
 import Miscellaneous from "../pages/Miscellaneous";
+import ReportDetail from "../pages/ReportDetail";
 
-const authenticatedRoles = ["admin", "finance", "settlement", "viewer"];
+const authenticatedRoles = ["admin", "finance", "settlement", "merchant"];
 
 const router = createBrowserRouter([
   {
@@ -42,7 +43,7 @@ const router = createBrowserRouter([
       {
         path: "merchants",
         element: (
-          <ProtectedRoutes allowedRoles={authenticatedRoles}>
+          <ProtectedRoutes allowedRoles={["admin", "settlement", "finance"]}>
             <Merchants />
           </ProtectedRoutes>
         ),
@@ -58,7 +59,7 @@ const router = createBrowserRouter([
       {
         path: "reports",
         element: (
-          <ProtectedRoutes allowedRoles={["admin"]}>
+          <ProtectedRoutes allowedRoles={["admin", "settlement"]}>
             <Reports />
           </ProtectedRoutes>
         ),
@@ -66,7 +67,7 @@ const router = createBrowserRouter([
       {
         path: "upload",
         element: (
-          <ProtectedRoutes allowedRoles={["admin"]}>
+          <ProtectedRoutes allowedRoles={["admin", "settlement"]}>
             <Upload />
           </ProtectedRoutes>
         ),
@@ -74,16 +75,16 @@ const router = createBrowserRouter([
       {
         path: "miscellaneous",
         element: (
-          <ProtectedRoutes allowedRoles={["admin"]}>
+          <ProtectedRoutes allowedRoles={["admin", "settlement", "finance"]}>
             <Miscellaneous />
           </ProtectedRoutes>
         ),
       },
       {
-        path: "wiresheets",
+        path: "sheets",
         element: (
-          <ProtectedRoutes allowedRoles={["admin"]}>
-            <Wiresheets />
+          <ProtectedRoutes allowedRoles={["admin", "settlement", "finance"]}>
+            <Sheets />
           </ProtectedRoutes>
         ),
       },

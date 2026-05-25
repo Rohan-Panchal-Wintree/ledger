@@ -39,106 +39,18 @@ const miscLabels = {
   other: "Other",
 };
 
-const getLedgerRowsDirect = async ({ paymentDate, acquirer }) => {
-  const paymentDateMatch = paymentDate
-    ? { paidToMerchantDate: getDateRange(paymentDate) }
-    : {};
-
-  const payments = await Payment.find(paymentDateMatch)
-    .populate({
-      path: "wiresheetTransactionId",
-      populate: [
-        { path: "merchantId", select: "merchantName merchantTag" },
-        {
-          path: "merchantMappingId",
-          select:
-            "mid acquirerId processingCurrency settlementCurrency paymentMethod",
-          populate: { path: "acquirerId", select: "name" },
-        },
-      ],
-    })
-    .populate({
-      path: "merchantMappingId",
-      select:
-        "mid acquirerId processingCurrency settlementCurrency paymentMethod",
-      populate: { path: "acquirerId", select: "name" },
-    })
-    .sort({ paidToMerchantDate: -1, createdAt: -1 })
-    .lean();
-
-  const paymentRows = payments.map((payment) => {
-    const transaction = payment.wiresheetTransactionId || {};
-    const mapping =
-      payment.merchantMappingId || transaction.merchantMappingId || {};
-
-    const bank =
-      mapping.acquirerId?.name || payment.paymentBank || "Unknown Bank";
-
-    return {
-      type: "payment",
-      bank,
-      receivedCurrency:
-        transaction.processingCurrency ||
-        payment.sourceProcessingCurrency ||
-        "UNKNOWN",
-      receivedAmount: toNumber(transaction.processingAmount),
-      paidCurrency: getDisplayCurrency(
-        payment.settlementCurrency,
-        payment.paymentMethod,
-      ),
-      paidAmount: toNumber(payment.amountPaid),
-      settlementAmount: toNumber(payment.settlementAmount),
-      balance: toNumber(transaction.balance),
-      status: transaction.status || "settled",
-      paymentCategory: "settlement",
-      paymentCategoryLabel: "Settlement",
-    };
-  });
-
-  const miscMatch = paymentDate
-    ? { paymentSheetDate: getDateRange(paymentDate) }
-    : {};
-
-  const miscPayments = await MiscellaneousPayment.find(miscMatch)
-    .populate({
-      path: "merchantMappingId",
-      select:
-        "mid acquirerId processingCurrency settlementCurrency paymentMethod",
-      populate: { path: "acquirerId", select: "name" },
-    })
-    .sort({ paymentSheetDate: -1, createdAt: -1 })
-    .lean();
-
-  const miscRows = miscPayments.map((entry) => {
-    const mapping = entry.merchantMappingId || {};
-
-    return {
-      type: "miscellaneous",
-      bank: mapping.acquirerId?.name || entry.bankLabel || "Unknown Bank",
-      receivedCurrency: entry.processingCurrency || "UNKNOWN",
-      receivedAmount: 0,
-      paidCurrency: getDisplayCurrency(
-        entry.settlementCurrency,
-        entry.paymentMethod,
-      ),
-      paidAmount: toNumber(entry.amountPaid),
-      settlementAmount: toNumber(entry.settlementAmount),
-      balance: 0,
-      status: "settled",
-      paymentCategory: entry.entryType,
-      paymentCategoryLabel: miscLabels[entry.entryType] || "Other",
-    };
-  });
-
-  return [...paymentRows, ...miscRows].filter((row) => {
-    if (acquirer && row.bank !== acquirer) return false;
-    return true;
-  });
-};
-
 export const getReportDates = async (_req, res) => {
+  const today = new Date();
+
   const dates = await Payment.aggregate([
-    { $match: { paidToMerchantDate: { $ne: null } } },
+    {
+      $match: {
+        paidToMerchantDate: {
+          $lte: today,
+        },
+      },
+    },
+
     {
       $group: {
         _id: {
@@ -149,8 +61,16 @@ export const getReportDates = async (_req, res) => {
         },
       },
     },
-    { $sort: { _id: -1 } },
-    { $limit: 10 },
+
+    {
+      $sort: {
+        _id: -1,
+      },
+    },
+
+    {
+      $limit: 5,
+    },
   ]);
 
   return res.json({
@@ -159,138 +79,228 @@ export const getReportDates = async (_req, res) => {
   });
 };
 
-const buildBankReportData = async (filters) => {
-  const rows = await getLedgerRowsDirect(filters);
-  const bankMap = new Map();
-
-  for (const row of rows) {
-    const bank = row.bank;
-
-    if (!bankMap.has(bank)) {
-      bankMap.set(bank, {
-        bank,
-        received: {},
-        paid: {},
-        settlement: {},
-        settlementTotal: 0,
-        miscellaneous: {},
-        miscellaneousTotal: 0,
-        totalReceived: 0,
-        totalPaid: 0,
-        totalSettlementAmount: 0,
-        totalBalance: 0,
-        transactionCount: 0,
-        statusCounts: {
-          pending: 0,
-          partially_paid: 0,
-          settled: 0,
-        },
-      });
-    }
-
-    const item = bankMap.get(bank);
-
-    item.received[row.receivedCurrency] =
-      toNumber(item.received[row.receivedCurrency]) + row.receivedAmount;
-
-    item.paid[row.paidCurrency] =
-      toNumber(item.paid[row.paidCurrency]) + row.paidAmount;
-
-    item.settlement[row.paidCurrency] =
-      toNumber(item.settlement[row.paidCurrency]) + row.settlementAmount;
-
-    item.totalReceived += row.receivedAmount;
-    item.totalPaid += row.paidAmount;
-    item.totalSettlementAmount += row.settlementAmount;
-    item.totalBalance += row.balance;
-    item.transactionCount += 1;
-
-    if (row.paymentCategory === "settlement") {
-      item.settlementTotal += row.settlementAmount;
-    } else {
-      const label = row.paymentCategoryLabel || "Other";
-
-      item.miscellaneous[label] =
-        toNumber(item.miscellaneous[label]) + row.settlementAmount;
-
-      item.miscellaneousTotal += row.settlementAmount;
-    }
-
-    if (row.status === "settled") item.statusCounts.settled += 1;
-    else if (row.status === "partially_paid")
-      item.statusCounts.partially_paid += 1;
-    else item.statusCounts.pending += 1;
-  }
-
-  return [...bankMap.values()];
-};
-
-export const getBankReports = async (req, res) => {
-  const data = await buildBankReportData(req.query);
-
-  return res.json({
-    success: true,
-    data,
-  });
-};
-
 export const getPaymentDayReport = async (req, res) => {
-  const rows = await getLedgerRowsDirect(req.query);
+  const { paymentDate } = req.query;
 
-  const payments = rows.filter((row) => row.type === "payment");
+  const paymentMatch = paymentDate
+    ? {
+        paidToMerchantDate: getDateRange(paymentDate),
+      }
+    : {};
 
-  const miscellaneous = rows.filter((row) => row.type === "miscellaneous");
+  const payments = await Payment.find(paymentMatch)
+    .populate({
+      path: "wiresheetTransactionId",
+      select:
+        "processingAmount processingCurrency startDate endDate balance status",
+    })
+    .sort({
+      paymentBank: 1,
+      merchantName: 1,
+      sourceMid: 1,
+    })
+    .lean();
+
+  const miscPayments = await MiscellaneousPayment.find(
+    paymentDate
+      ? {
+          paymentSheetDate: getDateRange(paymentDate),
+        }
+      : {},
+  ).lean();
+
+  const bankMap = new Map();
 
   const summary = {
     received: {},
-    paid: {},
+    paidAgainstProcessing: {},
     settlement: {},
     miscellaneous: {},
 
     totalReceived: 0,
-    totalPaid: 0,
-    totalSettlementAmount: 0,
+    totalPaidAgainstProcessing: 0,
+    totalSettlement: 0,
     totalMiscellaneous: 0,
-    grandTotal: 0,
   };
 
-  for (const row of rows) {
-    summary.received[row.receivedCurrency] =
-      toNumber(summary.received[row.receivedCurrency]) + row.receivedAmount;
+  for (const payment of payments) {
+    const bank = payment.paymentBank || "Unknown Bank";
 
-    summary.paid[row.paidCurrency] =
-      toNumber(summary.paid[row.paidCurrency]) + row.paidAmount;
+    if (!bankMap.has(bank)) {
+      bankMap.set(bank, {
+        bank,
 
-    summary.settlement[row.paidCurrency] =
-      toNumber(summary.settlement[row.paidCurrency]) + row.settlementAmount;
+        summary: {
+          received: {},
+          paidAgainstProcessing: {},
+          settlement: {},
+          miscellaneous: {},
+        },
 
-    summary.totalReceived += row.receivedAmount;
-    summary.totalPaid += row.paidAmount;
-    summary.totalSettlementAmount += row.settlementAmount;
-
-    if (row.type === "miscellaneous") {
-      const label = row.paymentCategoryLabel || "Other";
-
-      summary.miscellaneous[label] =
-        toNumber(summary.miscellaneous[label]) + row.settlementAmount;
-
-      summary.totalMiscellaneous += row.settlementAmount;
+        merchants: [],
+      });
     }
+
+    const bankItem = bankMap.get(bank);
+
+    let merchant = bankItem.merchants.find(
+      (item) =>
+        item.merchantName === payment.merchantName &&
+        item.mid === payment.sourceMid,
+    );
+
+    if (!merchant) {
+      merchant = {
+        merchantName: payment.merchantName,
+        mid: payment.sourceMid,
+
+        received: {},
+        paidAgainstProcessing: {},
+        settlement: {},
+
+        transactions: [],
+      };
+
+      bankItem.merchants.push(merchant);
+    }
+
+    const processingCurrency = payment.sourceProcessingCurrency || "UNKNOWN";
+
+    const settlementCurrency = payment.settlementCurrency || "UNKNOWN";
+
+    const receivedAmount = toNumber(
+      payment.wiresheetTransactionId?.processingAmount,
+    );
+
+    const paidAmount = toNumber(payment.amountPaid);
+
+    const settlementAmount = toNumber(payment.settlementAmount);
+
+    /*
+		 |--------------------------------------------------------------------------
+		 | RECEIVED
+		 |--------------------------------------------------------------------------
+		 */
+
+    merchant.received[processingCurrency] =
+      toNumber(merchant.received[processingCurrency]) + receivedAmount;
+
+    bankItem.summary.received[processingCurrency] =
+      toNumber(bankItem.summary.received[processingCurrency]) + receivedAmount;
+
+    summary.received[processingCurrency] =
+      toNumber(summary.received[processingCurrency]) + receivedAmount;
+
+    summary.totalReceived += receivedAmount;
+
+    /*
+		 |--------------------------------------------------------------------------
+		 | PAID AGAINST PROCESSING
+		 |--------------------------------------------------------------------------
+		 */
+
+    merchant.paidAgainstProcessing[processingCurrency] =
+      toNumber(merchant.paidAgainstProcessing[processingCurrency]) + paidAmount;
+
+    bankItem.summary.paidAgainstProcessing[processingCurrency] =
+      toNumber(bankItem.summary.paidAgainstProcessing[processingCurrency]) +
+      paidAmount;
+
+    summary.paidAgainstProcessing[processingCurrency] =
+      toNumber(summary.paidAgainstProcessing[processingCurrency]) + paidAmount;
+
+    summary.totalPaidAgainstProcessing += paidAmount;
+
+    /*
+		 |--------------------------------------------------------------------------
+		 | SETTLEMENT
+		 |--------------------------------------------------------------------------
+		 */
+
+    merchant.settlement[settlementCurrency] =
+      toNumber(merchant.settlement[settlementCurrency]) + settlementAmount;
+
+    bankItem.summary.settlement[settlementCurrency] =
+      toNumber(bankItem.summary.settlement[settlementCurrency]) +
+      settlementAmount;
+
+    summary.settlement[settlementCurrency] =
+      toNumber(summary.settlement[settlementCurrency]) + settlementAmount;
+
+    summary.totalSettlement += settlementAmount;
+
+    merchant.transactions.push({
+      receivedPeriod: {
+        startDate: payment.sourceStartDate,
+        endDate: payment.sourceEndDate,
+      },
+
+      receivedCurrency: processingCurrency,
+      receivedAmount,
+
+      paidCurrency: processingCurrency,
+      paidAmount,
+
+      settlementCurrency,
+      settlementAmount,
+
+      paymentMethod: payment.paymentMethod,
+
+      paymentDate: payment.paymentDate,
+      paidToMerchantDate: payment.paidToMerchantDate,
+
+      status: payment.wiresheetTransactionId?.status || "settled",
+    });
   }
 
-  summary.grandTotal =
-    summary.totalSettlementAmount + summary.totalMiscellaneous;
+  /*
+	 |--------------------------------------------------------------------------
+	 | MISCELLANEOUS
+	 |--------------------------------------------------------------------------
+	 */
+
+  for (const misc of miscPayments) {
+    const bank = misc.bankLabel || "Unknown Bank";
+
+    if (!bankMap.has(bank)) {
+      bankMap.set(bank, {
+        bank,
+
+        summary: {
+          received: {},
+          paidAgainstProcessing: {},
+          settlement: {},
+          miscellaneous: {},
+        },
+
+        merchants: [],
+      });
+    }
+
+    const bankItem = bankMap.get(bank);
+
+    const label = miscLabels[misc.entryType] || "Other";
+
+    const amount = toNumber(misc.settlementAmount);
+
+    bankItem.summary.miscellaneous[label] =
+      toNumber(bankItem.summary.miscellaneous[label]) + amount;
+
+    summary.miscellaneous[label] =
+      toNumber(summary.miscellaneous[label]) + amount;
+
+    summary.totalMiscellaneous += amount;
+  }
 
   return res.json({
     success: true,
+
     data: {
-      paymentDate: req.query.paymentDate || null,
-
-      payments,
-
-      miscellaneous,
+      paymentDate: paymentDate || null,
 
       summary,
+
+      banks: [...bankMap.values()],
     },
   });
 };

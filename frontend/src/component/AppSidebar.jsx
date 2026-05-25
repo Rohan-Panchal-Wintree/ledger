@@ -8,7 +8,8 @@ import {
   FileBarChart,
   User,
   Shield,
-  Cable,
+  Blend,
+  FilePlus,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -81,14 +82,14 @@ export function AppSidebar() {
     },
     {
       name: "Miscellaneous",
-      icon: Cable,
+      icon: Blend,
       path: "/miscellaneous",
       show: currentUser?.role === "admin",
     },
     {
-      name: "Wiresheets",
-      icon: Cable,
-      path: "/wiresheets",
+      name: "Sheets",
+      icon: FilePlus,
+      path: "/sheets",
       show: currentUser?.role === "admin",
     },
     {

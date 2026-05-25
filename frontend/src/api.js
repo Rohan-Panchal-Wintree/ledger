@@ -9,8 +9,12 @@ import {
   WIRESHEET_URL,
   INVALID_URL,
   MISCELLANEOUS_PAYMENT_URL,
+  PROFILE_URL,
+  USERS_URL,
+  SHEETS_URL,
 } from "./config";
 import { decryptData, encryptData } from "./utils/cryptoUtils";
+import { decryptApiResponse } from "./utils/apiEncryption";
 
 const AUTH_STORAGE_KEY = "pg_user";
 
@@ -74,9 +78,10 @@ async function refreshSession() {
         const nextAuth = {
           user: response.data?.user || previousAuth?.user,
           csrfToken: response.data?.csrfToken || previousAuth?.csrfToken,
+          responseKey: response.data?.responseKey || previousAuth?.responseKey,
         };
 
-        if (!nextAuth.user || !nextAuth.csrfToken) {
+        if (!nextAuth.user || !nextAuth.csrfToken || !nextAuth.responseKey) {
           throw new Error("Refresh response missing auth data");
         }
 
@@ -107,10 +112,59 @@ function createApiInstance(baseURL) {
     withCredentials: true,
   });
 
-  instance.interceptors.request.use(attachCsrfHeader);
+  // instance.interceptors.request.use(attachCsrfHeader);
+
+  // instance.interceptors.response.use(
+  //   (response) => response,
+  //   async (error) => {
+  //     const originalRequest = error.config;
+
+  //     if (
+  //       error.response?.status !== 401 ||
+  //       !originalRequest ||
+  //       originalRequest._retry ||
+  //       isAuthRoute(originalRequest.url)
+  //     ) {
+  //       return Promise.reject(error);
+  //     }
+
+  //     originalRequest._retry = true;
+
+  //     try {
+  //       await refreshSession();
+
+  //       originalRequest.headers = originalRequest.headers ?? {};
+
+  //       const csrfToken = await getCsrfTokenFromStorage();
+
+  //       if (shouldAttachCsrf(originalRequest.method) && csrfToken) {
+  //         originalRequest.headers["X-CSRF-Token"] = csrfToken;
+  //       }
+
+  //       return instance(originalRequest);
+  //     } catch (refreshError) {
+  //       localStorage.removeItem(AUTH_STORAGE_KEY);
+  //       window.dispatchEvent(new Event("auth:expired"));
+  //       return Promise.reject(refreshError);
+  //     }
+  //   },
+  // );
 
   instance.interceptors.response.use(
-    (response) => response,
+    async (response) => {
+      const auth = await getStoredAuth();
+      const responseKey = auth?.responseKey || null;
+
+      if (response.data?.encrypted === true) {
+        if (!responseKey) {
+          throw new Error("Missing response decryption key");
+        }
+
+        response.data = await decryptApiResponse(response.data, responseKey);
+      }
+
+      return response;
+    },
     async (error) => {
       const originalRequest = error.config;
 
@@ -155,7 +209,10 @@ export const merchantApi = createApiInstance(MERCHANT_URL);
 export const acquirerApi = createApiInstance(ACQUIRER_URL);
 export const reportsApi = createApiInstance(REPORTS_URL);
 export const wiresheetApi = createApiInstance(WIRESHEET_URL);
+export const sheetsApi = createApiInstance(SHEETS_URL);
 export const invalidApi = createApiInstance(INVALID_URL);
 export const miscellaneousPaymentApi = createApiInstance(
   MISCELLANEOUS_PAYMENT_URL,
 );
+export const profileApi = createApiInstance(PROFILE_URL);
+export const usersApi = createApiInstance(USERS_URL);

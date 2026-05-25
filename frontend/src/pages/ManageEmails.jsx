@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Mail,
   Search,
@@ -9,50 +9,66 @@ import {
   Pencil,
   Trash2,
   Plus,
+  BadgeDollarSign,
 } from "lucide-react";
 import EmailFormModal from "../component/EmailFormModal";
-
-const initialEmails = [
-  {
-    id: 1,
-    email: "admin@company.com",
-    role: "Admin",
-    merchantMid: "MID-0001-X",
-  },
-  {
-    id: 2,
-    email: "merchant@company.com",
-    role: "Merchant",
-    merchantMid: "MID-0002-X",
-  },
-  {
-    id: 3,
-    email: "support@company.com",
-    role: "Support",
-    merchantMid: "MID-0003-X",
-  },
-];
+import {
+  createUser,
+  deleteUser,
+  getUsers,
+  updateUser,
+} from "../queries/userQueries";
 
 const roleClasses = {
-  Admin: "bg-primary/10 text-primary",
-  Merchant: "bg-green-500/10 text-green-600",
-  Support: "bg-orange-400/10 text-orange-600",
+  admin: "bg-primary/10 text-primary",
+  merchant: "bg-green-500/10 text-green-600",
+  finance: "bg-blue-500/10 text-blue-600",
+  settlement: "bg-orange-400/10 text-orange-600",
+};
+
+const roleLabels = {
+  admin: "Admin",
+  merchant: "Merchant",
+  finance: "Finance",
+  settlement: "Settlement",
 };
 
 const emptyForm = {
+  name: "",
   email: "",
   role: "",
   merchantMid: "",
 };
 
 const ManageEmails = () => {
-  const [emails, setEmails] = useState(initialEmails);
+  const [emails, setEmails] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEmail, setEditingEmail] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState(null);
+
+  const loadUsers = async () => {
+    try {
+      setIsLoading(true);
+
+      const response = await getUsers();
+
+      setEmails(response?.data || []);
+    } catch (error) {
+      console.error("Failed to load users:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
 
   const filteredEmails = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -60,7 +76,12 @@ const ManageEmails = () => {
     if (!query) return emails;
 
     return emails.filter((item) =>
-      [item.email, item.role, item.merchantMid]
+      [
+        item.name,
+        item.email,
+        roleLabels[item.role] || item.role,
+        item.merchantMid,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query)),
     );
@@ -83,27 +104,33 @@ const ManageEmails = () => {
 
   const stats = [
     {
-      label: "Total Emails",
+      label: "Total Users",
       value: emails.length,
-      helper: "All registered emails",
+      helper: "All registered users",
       icon: Mail,
     },
     {
       label: "Admins",
-      value: emails.filter((item) => item.role === "Admin").length,
+      value: emails.filter((item) => item.role === "admin").length,
       helper: "Admin access users",
       icon: ShieldCheck,
     },
     {
       label: "Merchants",
-      value: emails.filter((item) => item.role === "Merchant").length,
+      value: emails.filter((item) => item.role === "merchant").length,
       helper: "Merchant access users",
       icon: Store,
     },
     {
-      label: "Support Users",
-      value: emails.filter((item) => item.role === "Support").length,
-      helper: "Support access users",
+      label: "Finance",
+      value: emails.filter((item) => item.role === "finance").length,
+      helper: "Finance access users",
+      icon: BadgeDollarSign,
+    },
+    {
+      label: "Settlement",
+      value: emails.filter((item) => item.role === "settlement").length,
+      helper: "Settlement access users",
       icon: UsersRound,
     },
   ];
@@ -117,48 +144,85 @@ const ManageEmails = () => {
   const handleOpenEditForm = (emailItem) => {
     setEditingEmail(emailItem);
     setFormData({
-      email: emailItem.email,
-      role: emailItem.role,
-      merchantMid: emailItem.merchantMid,
+      name: emailItem.name || "",
+      email: emailItem.email || "",
+      role: emailItem.role || "",
+      merchantMid: emailItem.merchantMid || "",
     });
     setIsFormOpen(true);
   };
 
   const handleCloseForm = () => {
+    if (isSubmitting) return;
+
     setIsFormOpen(false);
     setEditingEmail(null);
     setFormData(emptyForm);
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  const buildPayload = () => {
+    const payload = {
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      role: formData.role,
+      isActive: true,
+    };
 
-    if (editingEmail) {
-      setEmails((prev) =>
-        prev.map((item) =>
-          item.id === editingEmail.id ? { ...item, ...formData } : item,
-        ),
-      );
-    } else {
-      setEmails((prev) => [
-        {
-          id: Date.now(),
-          ...formData,
-        },
-        ...prev,
-      ]);
+    if (formData.role === "merchant") {
+      payload.merchantMid = formData.merchantMid.trim();
     }
 
-    handleCloseForm();
+    return payload;
   };
 
-  const handleDelete = (id) => {
-    setEmails((prev) => prev.filter((item) => item.id !== id));
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    try {
+      setIsSubmitting(true);
+
+      const payload = buildPayload();
+
+      if (editingEmail) {
+        await updateUser(editingEmail.id, payload);
+      } else {
+        await createUser(payload);
+      }
+
+      await loadUsers();
+      handleCloseForm();
+    } catch (error) {
+      console.error("Failed to save user:", error);
+      alert(error?.response?.data?.message || "Failed to save user");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this user?",
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingUserId(id);
+
+      await deleteUser(id);
+
+      setEmails((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error("Failed to delete user:", error);
+      alert(error?.response?.data?.message || "Failed to delete user");
+    } finally {
+      setDeletingUserId(null);
+    }
   };
 
   return (
     <div className="w-full bg-background text-on-background">
-      <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map((item) => {
           const Icon = item.icon;
 
@@ -205,7 +269,7 @@ const ManageEmails = () => {
             />
             <input
               type="text"
-              placeholder="Search emails..."
+              placeholder="Search users..."
               value={searchQuery}
               onChange={(event) => {
                 setSearchQuery(event.target.value);
@@ -221,7 +285,7 @@ const ManageEmails = () => {
             className="flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-content transition-all active:scale-[0.98]"
           >
             <Plus size={16} />
-            Add Email
+            Add User
           </button>
         </div>
       </div>
@@ -229,7 +293,7 @@ const ManageEmails = () => {
       <section className="overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
         <div className="flex items-center justify-between border-b border-outline-variant/5 px-8 py-6">
           <h3 className="text-xl font-bold tracking-tight text-on-surface">
-            Registered Emails
+            Registered Users
           </h3>
         </div>
 
@@ -238,7 +302,7 @@ const ManageEmails = () => {
             <thead className="bg-surface-container-low/50">
               <tr>
                 <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  Email
+                  User
                 </th>
                 <th className="whitespace-nowrap px-8 py-4 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                   Role
@@ -253,7 +317,16 @@ const ManageEmails = () => {
             </thead>
 
             <tbody className="divide-y divide-outline-variant/5">
-              {paginatedEmails.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
+                  >
+                    Loading users...
+                  </td>
+                </tr>
+              ) : paginatedEmails.length > 0 ? (
                 paginatedEmails.map((item) => (
                   <tr
                     key={item.id}
@@ -265,9 +338,14 @@ const ManageEmails = () => {
                           <Mail className="text-primary" size={16} />
                         </div>
 
-                        <span className="text-sm font-bold text-on-surface">
-                          {item.email}
-                        </span>
+                        <div>
+                          <span className="block text-sm font-bold text-on-surface capitalize">
+                            {item.name || "-"}
+                          </span>
+                          <span className="mt-1 block text-xs font-medium text-on-surface-variant">
+                            {item.email}
+                          </span>
+                        </div>
                       </div>
                     </td>
 
@@ -278,12 +356,12 @@ const ManageEmails = () => {
                           "bg-surface-container text-on-surface-variant"
                         }`}
                       >
-                        {item.role || "-"}
+                        {roleLabels[item.role] || item.role || "-"}
                       </span>
                     </td>
 
                     <td className="whitespace-nowrap px-8 py-4 text-sm font-bold text-on-surface-variant">
-                      {item.merchantMid || "-"}
+                      {item.role === "merchant" ? item.merchantMid || "-" : "-"}
                     </td>
 
                     <td className="whitespace-nowrap px-8 py-4 text-right">
@@ -314,11 +392,14 @@ const ManageEmails = () => {
                           <li>
                             <button
                               type="button"
+                              disabled={deletingUserId === item.id}
                               onClick={() => handleDelete(item.id)}
-                              className="flex items-center gap-2 rounded-lg text-sm font-semibold text-error"
+                              className="flex items-center gap-2 rounded-lg text-sm font-semibold text-error disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <Trash2 size={15} />
-                              Delete
+                              {deletingUserId === item.id
+                                ? "Deleting..."
+                                : "Delete"}
                             </button>
                           </li>
                         </ul>
@@ -332,7 +413,7 @@ const ManageEmails = () => {
                     colSpan={4}
                     className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
                   >
-                    No registered emails found.
+                    No registered users found.
                   </td>
                 </tr>
               )}
@@ -344,7 +425,7 @@ const ManageEmails = () => {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div>
               Showing {showingFrom > 0 ? `${showingFrom}-${showingTo}` : "0"} of{" "}
-              {filteredEmails.length} emails
+              {filteredEmails.length} users
             </div>
 
             <label className="flex items-center gap-2">
@@ -398,6 +479,7 @@ const ManageEmails = () => {
         formData={formData}
         setFormData={setFormData}
         isEditing={Boolean(editingEmail)}
+        isSubmitting={isSubmitting}
       />
     </div>
   );

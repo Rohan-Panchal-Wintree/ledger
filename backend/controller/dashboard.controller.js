@@ -1,7 +1,6 @@
 import { Payment } from "../models/payment.model.js";
 import { UnmatchedPayment } from "../models/unmatchedPayment.model.js";
 import { Wiresheet } from "../models/wiresheet.model.js";
-import { WiresheetTransaction } from "../models/wiresheet-transaction.model.js";
 import { MiscellaneousPayment } from "../models/miscellaneous-payment.model.js";
 
 const toNumber = (value) => Number(value) || 0;
@@ -221,8 +220,8 @@ const getLedgerRowsDirect = async ({
       settlementCurrency: entry.settlementCurrency || "",
       settlementDisplayCurrency: displayCurrency,
 
-      paidAmount: toNumber(entry.amountPaid),
-      settlementPaidAmount: toNumber(entry.settlementAmount),
+      paidAmount: 0,
+      settlementPaidAmount: 0,
       balance: 0,
 
       status: "settled",
@@ -294,7 +293,10 @@ const buildGroupedData = (rows) => {
     const group = groupMap.get(key);
 
     const receivedCurrency = row.receivedCurrency || "UNKNOWN";
-    const paidCurrency = row.settlementDisplayCurrency || "UNKNOWN";
+    const paidCurrency =
+      row.processingCurrency || row.receivedCurrency || "UNKNOWN";
+    const settlementCurrency =
+      row.settlementDisplayCurrency || row.settlementCurrency || "UNKNOWN";
 
     group.received[receivedCurrency] =
       toNumber(group.received[receivedCurrency]) + toNumber(row.receivedAmount);
@@ -302,8 +304,8 @@ const buildGroupedData = (rows) => {
     group.paid[paidCurrency] =
       toNumber(group.paid[paidCurrency]) + toNumber(row.paidAmount);
 
-    group.settlement[paidCurrency] =
-      toNumber(group.settlement[paidCurrency]) +
+    group.settlement[settlementCurrency] =
+      toNumber(group.settlement[settlementCurrency]) +
       toNumber(row.settlementPaidAmount);
 
     group.totalReceived += toNumber(row.receivedAmount);
@@ -330,23 +332,60 @@ const buildGroupedData = (rows) => {
   }));
 };
 
+const addCurrencyAmount = (target, currency, amount) => {
+  const key = currency || "UNKNOWN";
+  target[key] = toNumber(target[key]) + toNumber(amount);
+};
+
 const buildSummary = ({ rows, unmatchedPayments, wiresheets }) => {
   const summary = {
+    received: {},
+    paidAgainstProcessing: {},
+    settlement: {},
+
     totalReceived: 0,
-    totalPaid: 0,
+    totalPaidAgainstProcessing: 0,
     totalSettlementAmount: 0,
     totalBalance: 0,
+
     totalTransactions: rows.length,
     pendingCount: 0,
     partiallyPaidCount: 0,
     settledCount: 0,
-    unmatchedCount: unmatchedPayments.length,
+
+    unmatchedCount: unmatchedPayments.filter(
+      (item) => item.status === "unmatched",
+    ).length,
+
+    invalidCount: unmatchedPayments.filter((item) => item.status === "invalid")
+      .length,
+
     wiresheetCount: wiresheets.length,
   };
 
   for (const row of rows) {
+    const receivedCurrency = row.receivedCurrency || "UNKNOWN";
+    const paidCurrency =
+      row.processingCurrency || row.receivedCurrency || "UNKNOWN";
+    const settlementCurrency =
+      row.settlementDisplayCurrency || row.settlementCurrency || "UNKNOWN";
+
+    addCurrencyAmount(summary.received, receivedCurrency, row.receivedAmount);
+
+    addCurrencyAmount(
+      summary.paidAgainstProcessing,
+      paidCurrency,
+      row.paidAmount,
+    );
+
+    addCurrencyAmount(
+      summary.settlement,
+      settlementCurrency,
+      row.settlementPaidAmount,
+    );
+
     summary.totalReceived += toNumber(row.receivedAmount);
-    summary.totalPaid += toNumber(row.paidAmount);
+    summary.totalPaidAgainstProcessing += toNumber(row.paidAmount);
     summary.totalSettlementAmount += toNumber(row.settlementPaidAmount);
     summary.totalBalance += toNumber(row.balance);
 
@@ -364,10 +403,15 @@ const buildDashboardPayload = async (filters) => {
   const unmatchedPayments = await UnmatchedPayment.find(
     filters.paymentDate
       ? {
-          paidToMerchantDate: getDateRange(filters.paymentDate),
-          status: "pending_reconciliation",
+          status: { $in: ["invalid", "unmatched"] },
+          $or: [
+            { paidToMerchantDate: getDateRange(filters.paymentDate) },
+            { paymentDate: getDateRange(filters.paymentDate) },
+          ],
         }
-      : { status: "pending_reconciliation" },
+      : {
+          status: { $in: ["invalid", "unmatched"] },
+        },
   )
     .sort({ createdAt: -1 })
     .lean();
@@ -397,6 +441,7 @@ const buildDashboardPayload = async (filters) => {
     })),
   };
 };
+
 export const getDashboardLatest = async (_req, res) => {
   const latestData = await getLatestPaymentDate();
 
@@ -433,28 +478,5 @@ export const getDashboardByPeriod = async (req, res) => {
   return res.json({
     success: true,
     data,
-  });
-};
-
-export const getWiresheetUploads = async (_req, res) => {
-  const wiresheets = await Wiresheet.find()
-    .populate("acquirerId", "name")
-    .sort({ createdAt: -1 })
-    .lean();
-
-  return res.json({
-    success: true,
-    data: wiresheets.map((item) => ({
-      wiresheetId: item._id,
-      wiresheetName: item.wiresheetName,
-      acquirerName: item.acquirerId?.name || "",
-      startDate: item.startDate,
-      endDate: item.endDate,
-      uploadedAt: item.createdAt,
-      totalPayable: item.totalPayable,
-      totalPaid: item.totalPaid,
-      totalBalance: item.totalBalance,
-      status: item.status,
-    })),
   });
 };

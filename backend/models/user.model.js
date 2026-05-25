@@ -19,9 +19,14 @@ const userSchema = new mongoose.Schema(
       ref: "Merchant",
       default: null,
     },
+    merchantAccountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MerchantAccount",
+      default: null,
+    },
     role: {
       type: String,
-      enum: ["admin", "finance", "settlement", "viewer"],
+      enum: ["admin", "finance", "settlement", "merchant"],
       required: true,
     },
     isActive: {

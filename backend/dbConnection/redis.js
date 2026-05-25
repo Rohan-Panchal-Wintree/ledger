@@ -3,26 +3,26 @@ import { createClient } from "redis";
 let redisClient;
 
 export const connectRedis = async () => {
-	if (redisClient?.isOpen) return redisClient;
+  if (redisClient?.isOpen) return redisClient;
 
-	redisClient = createClient({
-		url: process.env.REDIS_URL,
-	});
+  redisClient = createClient({
+    url: process.env.REDIS_URL,
+  });
 
-	redisClient.on("error", (error) => {
-		console.error("Redis error:", error.message);
-	});
+  redisClient.on("error", (error) => {
+    console.error("Redis error:", error.message);
+  });
 
-	await redisClient.connect();
-	console.log("Redis connected");
+  await redisClient.connect();
+  console.log("Redis connected");
 
-	return redisClient;
+  return redisClient;
 };
 
 export const getRedis = () => {
-	if (!redisClient) {
-		throw new Error("Redis is not initialized");
-	}
+  if (!redisClient) {
+    throw new Error("Redis is not initialized");
+  }
 
-	return redisClient;
+  return redisClient;
 };

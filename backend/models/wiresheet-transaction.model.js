@@ -81,12 +81,17 @@ const wiresheetTransactionSchema = new mongoose.Schema(
 );
 
 wiresheetTransactionSchema.index({
+	merchantMappingId: 1,
 	mid: 1,
-	settlementCurrency: 1,
+	processingCurrency: 1,
 	startDate: 1,
 	endDate: 1,
 });
 
+wiresheetTransactionSchema.index({
+	wiresheetId: 1,
+	status: 1,
+});
 export const WiresheetTransaction = mongoose.model(
 	"WiresheetTransaction",
 	wiresheetTransactionSchema,

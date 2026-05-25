@@ -1,18 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { miscellaneousPaymentApi } from "../api";
 import { dashboardQueryKeys } from "./dashboardQueries";
 
 export const miscellaneousQueryKeys = {
   all: ["miscellaneous-payments"],
+
   list: ({ paymentSheetDate, search, entryType, bankLabel } = {}) => [
     ...miscellaneousQueryKeys.all,
     "list",
-    { paymentSheetDate, search, entryType, bankLabel },
+    {
+      paymentSheetDate,
+      search,
+      entryType,
+      bankLabel,
+    },
   ],
+
   detail: (id) => [...miscellaneousQueryKeys.all, "detail", id],
 };
 
-// Fetch miscellaneous payments
+// Extract API response data
+function extractResponseData(response, fallback) {
+  return response?.data?.data ?? fallback;
+}
+
+// Fetch miscellaneous list
 async function fetchMiscellaneousPaymentsApi({
   paymentSheetDate = "",
   search = "",
@@ -28,9 +41,7 @@ async function fetchMiscellaneousPaymentsApi({
     },
   });
 
-  const items = response.data?.data || [];
-
-  console.log("miscelleanous", items);
+  const items = extractResponseData(response, []);
 
   return {
     items,
@@ -38,80 +49,102 @@ async function fetchMiscellaneousPaymentsApi({
   };
 }
 
-// Fetch one miscellaneous payment
+// Fetch single entry
 async function fetchMiscellaneousPaymentApi(id) {
   const response = await miscellaneousPaymentApi.get(`/${id}`);
-  return response.data?.data || null;
+
+  return extractResponseData(response, null);
 }
 
-// Create miscellaneous payment
+// Create entry
 async function createMiscellaneousPaymentApi(payload) {
   const response = await miscellaneousPaymentApi.post("/", payload);
-  return response.data?.data || response.data;
+
+  return extractResponseData(response, response.data);
 }
 
-// Update miscellaneous payment
+// Update entry
 async function updateMiscellaneousPaymentApi({ id, payload }) {
   const response = await miscellaneousPaymentApi.put(`/${id}`, payload);
-  return response.data?.data || response.data;
+
+  return extractResponseData(response, response.data);
 }
 
-// Delete miscellaneous payment
+// Delete entry
 async function deleteMiscellaneousPaymentApi(id) {
   await miscellaneousPaymentApi.delete(`/${id}`);
+
   return id;
 }
 
-// Queries
+// Shared invalidation
+function invalidateMiscellaneousQueries(queryClient) {
+  queryClient.invalidateQueries({
+    queryKey: miscellaneousQueryKeys.all,
+  });
 
+  queryClient.invalidateQueries({
+    queryKey: dashboardQueryKeys.all,
+  });
+}
+
+// List query
 export function useMiscellaneousPayments(params = {}) {
   return useQuery({
     queryKey: miscellaneousQueryKeys.list(params),
+
     queryFn: () => fetchMiscellaneousPaymentsApi(params),
+
     placeholderData: (previousData) => previousData,
   });
 }
 
+// Detail query
 export function useMiscellaneousPayment(id) {
   return useQuery({
     queryKey: miscellaneousQueryKeys.detail(id),
+
     queryFn: () => fetchMiscellaneousPaymentApi(id),
+
     enabled: Boolean(id),
   });
 }
 
+// Create mutation
 export function useCreateMiscellaneousPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: createMiscellaneousPaymentApi,
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: miscellaneousQueryKeys.all });
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
+      invalidateMiscellaneousQueries(queryClient);
     },
   });
 }
 
+// Update mutation
 export function useUpdateMiscellaneousPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: updateMiscellaneousPaymentApi,
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: miscellaneousQueryKeys.all });
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
+      invalidateMiscellaneousQueries(queryClient);
     },
   });
 }
 
+// Delete mutation
 export function useDeleteMiscellaneousPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: deleteMiscellaneousPaymentApi,
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: miscellaneousQueryKeys.all });
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
+      invalidateMiscellaneousQueries(queryClient);
     },
   });
 }

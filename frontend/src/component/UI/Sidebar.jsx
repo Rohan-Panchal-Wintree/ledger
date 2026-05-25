@@ -159,7 +159,7 @@ function SidebarMenuButton({
   return (
     <button
       className={cn(
-        "flex w-full items-center rounded-lg text-sm transition-colors",
+        "flex w-full items-center rounded-lg text-sm transition-colors cursor-pointer",
         open ? "justify-start gap-4 px-3 py-2.5" : "justify-center p-2.5",
         isActive
           ? "bg-primary text-white"

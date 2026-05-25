@@ -1,0 +1,113 @@
+import { useEffect, useMemo, useRef } from "react";
+import { RefreshCcw } from "lucide-react";
+
+import Button from "../UI/Button";
+import DataTable from "../UI/DataTable";
+
+import UploadIssueRow from "./UploadIssueRow";
+
+import { uploadIssueColumns } from "./uploadIssueConstants";
+import Spinner from "../UI/Spinner";
+
+export default function UploadIssuesSection({
+  rows = [],
+  meta = {},
+  page = 1,
+  onPageChange,
+  onPageSizeChange,
+  onEdit,
+  onReconcile,
+  isReconciling = false,
+  isFetching = false,
+  title = "Review Upload Issues",
+  description = "Fix invalid rows and reconcile unmatched payment rows.",
+}) {
+  const sectionRef = useRef(null);
+
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      if (a.status === "invalid" && b.status !== "invalid") return -1;
+      if (a.status !== "invalid" && b.status === "invalid") return 1;
+      return 0;
+    });
+  }, [rows]);
+
+  useEffect(() => {
+    sectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, [page]);
+
+  if (!rows.length) return null;
+
+  return (
+    <section
+      ref={sectionRef}
+      className="overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-container-lowest"
+    >
+      <div className="flex flex-col gap-2 border-b border-outline-variant/10 px-8 py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-on-surface">
+              {title}
+            </h2>
+
+            <p className="mt-1 text-sm text-on-surface-variant">
+              {description}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full border border-outline-variant/10 bg-surface-container-low px-4 py-2 text-xs font-bold uppercase tracking-wider text-on-surface">
+              {meta.total} {meta.total === 1 ? "Issue" : "Issues"}
+            </div>
+
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              rounded="full"
+              onClick={onReconcile}
+              disabled={isReconciling}
+            >
+              {isReconciling ? (
+                <Spinner type="xs" color="white" />
+              ) : (
+                <>
+                  <RefreshCcw className="w-4 h-4" />
+                  Reconcile
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <DataTable
+        columns={uploadIssueColumns}
+        totalItems={meta.total || 0}
+        page={page}
+        onPageChange={onPageChange}
+        onRowsPerPageChange={onPageSizeChange}
+        isEmpty={!rows.length}
+        emptyTitle="No upload issues found"
+        emptyDescription="All payment rows are ready for processing."
+        showFooter
+      >
+        {sortedRows.map((row, index) => (
+          <UploadIssueRow
+            key={`${row._id || row.id || "issue"}-${index}`}
+            row={row}
+            onEdit={onEdit}
+          />
+        ))}
+      </DataTable>
+      {isFetching && rows.length > 0 && (
+        <div className="flex items-center justify-center gap-3 border-t border-outline-variant/10 bg-surface-container-low/30 px-8 py-4">
+          <Spinner type="sm" />
+        </div>
+      )}
+    </section>
+  );
+}

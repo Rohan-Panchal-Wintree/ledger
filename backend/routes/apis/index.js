@@ -10,9 +10,11 @@ import paymentRoutes from "./payment.routes.js";
 import miscellaneousPaymentRoutes from "./miscellaneous-payment.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
+import uploadsRoutes from "./uploads-history.routes.js";
+import profileRoutes from "./profile.routes.js";
 import { middlewares } from "../../middlewares/index.js";
 import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
-
+import { enableEncryptedResponses } from "../../middlewares/encryptedResponse.middleware.js";
 const router = Router();
 
 // Public auth routes
@@ -28,9 +30,11 @@ router.use("/merchants", merchantRoutes);
 router.use("/acquirers", acquirerRoutes);
 router.use("/merchant-accounts", merchantAccountRoutes);
 router.use("/wiresheets", wiresheetRoutes);
-router.use("/payments", paymentRoutes);
+router.use("/payments", enableEncryptedResponses, paymentRoutes);
 router.use("/miscellaneous-payments", miscellaneousPaymentRoutes);
-router.use("/dashboard", dashboardRoutes);
+router.use("/dashboard", enableEncryptedResponses, dashboardRoutes);
 router.use("/reports", reportsRoutes);
+router.use("/uploads", enableEncryptedResponses, uploadsRoutes);
+router.use("/profile", profileRoutes);
 
 export default router;

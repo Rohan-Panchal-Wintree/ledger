@@ -88,7 +88,7 @@ export default function UploadFile({
             <button
               type="button"
               onClick={onRemove}
-              className="text-on-surface-variant transition-colors hover:text-error"
+              className="text-on-surface-variant transition-colors hover:bg-gray-100 p-2 rounded-full"
             >
               <X className="h-5 w-5" />
             </button>
@@ -182,7 +182,7 @@ export default function UploadFile({
               <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
                 Merchants Detected
               </p>
-              <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
+              <div className="flex max-h-20 flex-wrap gap-2 overflow-y-auto pr-1">
                 {analysis.merchantsList.length > 0 ? (
                   analysis.merchantsList.map((item) => (
                     <span
@@ -313,17 +313,36 @@ export default function UploadFile({
         </h2>
 
         <div className="flex min-h-90 flex-col items-center justify-center rounded-lg border border-outline-variant/10 bg-surface-container-low p-12 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest text-outline">
-            <Activity className="h-8 w-8" />
-          </div>
+          {isProcessing ? (
+            <>
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest">
+                <Spinner type="lg" />
+              </div>
 
-          <p className="text-lg font-medium italic text-on-surface-variant">
-            No file uploaded yet
-          </p>
-          <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
-            Upload a file to see real-time extraction and validation results
-            here.
-          </p>
+              <p className="text-lg font-bold text-on-surface">
+                Analyzing file...
+              </p>
+
+              <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
+                Reading spreadsheet data and preparing the preview.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest text-outline">
+                <Activity className="h-8 w-8" />
+              </div>
+
+              <p className="text-lg font-medium italic text-on-surface-variant">
+                No file uploaded yet
+              </p>
+
+              <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
+                Upload a file to see real-time extraction and validation results
+                here.
+              </p>
+            </>
+          )}
         </div>
       </section>
     </div>

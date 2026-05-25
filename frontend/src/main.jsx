@@ -36,7 +36,24 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")).render(
   <Provider store={store}>
     <QueryClientProvider client={queryClient}>
-      <Toaster reverseOrder={false} />
+      <Toaster
+        position="top-center"
+        reverseOrder={false}
+        gutter={12}
+        toastOptions={{
+          duration: 3000,
+          className: "toast-base",
+          success: {
+            className: "toast-base toast-success",
+          },
+          error: {
+            className: "toast-base toast-error",
+          },
+          loading: {
+            className: "toast-base toast-loading",
+          },
+        }}
+      />
       <RouterProvider router={router} />
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

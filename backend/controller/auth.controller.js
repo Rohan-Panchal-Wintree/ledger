@@ -9,12 +9,14 @@ import {
   createSession,
   getSession,
   touchSession,
-  deleteSession,
+  // deleteSession,
   validateSession,
   attachSessionToUser,
-  removeSessionFromUser,
+  // removeSessionFromUser,
+  deleteUserSession,
 } from "../utils/session.js";
 import { sendOtpEmail } from "../utils/SendEmail.js";
+import { deriveSessionResponseKey } from "../utils/encryption.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -159,11 +161,15 @@ export const verifyOtpLogin = async (req, res) => {
   });
 
   setAuthCookies(res, accessToken, refreshToken);
+  const responseKey = deriveSessionResponseKey(session.sessionId).toString(
+    "hex",
+  );
 
   return res.json({
     success: true,
     user: serializeUser(user),
     csrfToken: session.csrfToken,
+    responseKey,
   });
 };
 
@@ -221,11 +227,15 @@ export const refreshToken = async (req, res) => {
   });
 
   setAuthCookies(res, nextAccessToken, nextRefreshToken);
+  const responseKey = deriveSessionResponseKey(session.sessionId).toString(
+    "hex",
+  );
 
   return res.json({
     success: true,
     user: serializeUser(user),
     csrfToken: session.csrfToken,
+    responseKey,
   });
 };
 
@@ -236,8 +246,7 @@ export const logout = async (req, res) => {
     if (refreshTokenValue) {
       const payload = verifyRefreshToken(refreshTokenValue);
 
-      await removeSessionFromUser(payload.sub, payload.sid);
-      await deleteSession(payload.sid);
+      await deleteUserSession(payload.sub, payload.sid, "logout");
     }
   } catch (error) {
   } finally {

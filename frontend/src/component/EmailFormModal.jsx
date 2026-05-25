@@ -1,6 +1,13 @@
 import React from "react";
 import { X } from "lucide-react";
 
+const roles = [
+  { label: "Admin", value: "admin" },
+  { label: "Merchant", value: "merchant" },
+  { label: "Finance", value: "finance" },
+  { label: "Settlement", value: "settlement" },
+];
+
 const EmailFormModal = ({
   isOpen,
   onClose,
@@ -8,107 +15,136 @@ const EmailFormModal = ({
   formData,
   setFormData,
   isEditing,
+  isSubmitting = false,
 }) => {
   if (!isOpen) return null;
 
+  const handleChange = (key, value) => {
+    setFormData((prev) => {
+      const nextData = {
+        ...prev,
+        [key]: value,
+      };
+
+      if (key === "role" && value !== "merchant") {
+        nextData.merchantMid = "";
+      }
+
+      return nextData;
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/70 p-4 backdrop-blur-xs">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-surface-container-lowest">
-        {/* Header */}
-        <div className="border-b border-outline-variant/20 px-6 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-on-surface">
-                {isEditing ? "Edit Email" : "Add New Email"}
-              </h2>
-              <p className="mt-1 text-sm text-on-surface-variant">
-                Manage user access, roles, and merchant mapping.
-              </p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-lg bg-surface-container-lowest p-6 shadow-xl">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-on-surface">
+              {isEditing ? "Edit User" : "Add User"}
+            </h3>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Manage login access and role permissions.
+            </p>
           </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-on-surface-variant transition-colors hover:bg-surface-container"
+          >
+            <X size={18} />
+          </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="grid gap-5 overflow-y-auto px-6 py-6 md:grid-cols-2">
-            {/* Email */}
-            <label className="md:col-span-2">
-              <span className="mb-2 block text-xs font-semibold uppercase text-on-surface-variant">
-                Email Address
-              </span>
-              <input
-                type="email"
-                required
-                placeholder="e.g. name@company.com"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    email: e.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-outline/50 focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Name
             </label>
-
-            {/* Role */}
-            <label>
-              <span className="mb-2 block text-xs font-semibold uppercase text-on-surface-variant">
-                Access Role
-              </span>
-              <select
-                required
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    role: e.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Select Role</option>
-                <option value="Admin">Admin</option>
-                <option value="Merchant">Merchant</option>
-                <option value="Support">Support</option>
-              </select>
-            </label>
-
-            {/* MID */}
-            <label>
-              <span className="mb-2 block text-xs font-semibold uppercase text-on-surface-variant">
-                Merchant MID
-              </span>
-              <input
-                type="text"
-                placeholder="MID-0000-X"
-                value={formData.merchantMid}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    merchantMid: e.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-outline/50 focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(event) => handleChange("name", event.target.value)}
+              required
+              minLength={2}
+              className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Enter full name"
+            />
           </div>
 
-          {/* Footer */}
-          <div className="flex flex-col-reverse gap-3 border-t border-outline-variant/20 px-6 py-4 sm:flex-row sm:justify-end">
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Email
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(event) => handleChange("email", event.target.value)}
+              required
+              className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="user@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Role
+            </label>
+            <select
+              value={formData.role}
+              onChange={(event) => handleChange("role", event.target.value)}
+              required
+              className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">Select role</option>
+              {roles.map((role) => (
+                <option key={role.value} value={role.value}>
+                  {role.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {formData.role === "merchant" && (
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                MID
+              </label>
+              <input
+                type="text"
+                value={formData.merchantMid}
+                onChange={(event) =>
+                  handleChange("merchantMid", event.target.value)
+                }
+                required
+                className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="Enter merchant MID"
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-outline-variant/20 px-5 py-3 text-sm font-semibold text-on-surface transition-all hover:bg-surface-container-low"
+              disabled={isSubmitting}
+              className="rounded-full px-5 py-2.5 text-sm font-bold text-on-surface-variant transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-container"
+              disabled={isSubmitting}
+              className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-content transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isEditing ? "Save Changes" : "Add Email"}
+              {isSubmitting
+                ? isEditing
+                  ? "Updating..."
+                  : "Creating..."
+                : isEditing
+                  ? "Update User"
+                  : "Add User"}
             </button>
           </div>
         </form>

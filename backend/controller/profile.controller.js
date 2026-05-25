@@ -1,136 +1,196 @@
 import { User } from "../models/user.model.js";
 import {
-  deleteSession,
-  getSession,
-  getUserSessionIds,
-  removeSessionFromUser,
+  deleteUserSession,
+  getLastSession,
+  getUserSessions,
 } from "../utils/session.js";
 
-export const getNotificationPreferences = async (req, res) => {
-  const user = await User.findById(req.user._id)
-    .select("notificationPreferences")
-    .lean();
+const formatSessionForProfile = (session, currentSessionId) => {
+  const deviceInfo = session.deviceInfo || {};
+  const isCurrentSession = session.sessionId === currentSessionId;
 
-  return res.status(200).json({
-    success: true,
-    data: {
-      notificationPreferences: user?.notificationPreferences || {
-        pushNotifications: false,
-      },
-    },
-  });
+  const deviceName =
+    deviceInfo.deviceName ||
+    deviceInfo.device ||
+    (deviceInfo.deviceType === "mobile"
+      ? "Mobile Device"
+      : deviceInfo.deviceType === "tablet"
+        ? "Tablet"
+        : deviceInfo.os === "macOS"
+          ? "Mac Device"
+          : deviceInfo.os === "Windows"
+            ? "Windows Device"
+            : "Desktop Device");
+
+  const platform =
+    deviceInfo.platform ||
+    [deviceInfo.os, deviceInfo.osVersion].filter(Boolean).join(" ") ||
+    "Unknown OS";
+
+  return {
+    sessionId: session.sessionId,
+
+    device: deviceName,
+    deviceType: deviceInfo.deviceType || "desktop",
+
+    browser: deviceInfo.browser || "Unknown Browser",
+    os: deviceInfo.os || "Unknown OS",
+    osVersion: deviceInfo.osVersion || "",
+    platform,
+
+    location: deviceInfo.ipAddress || "Unknown location",
+    ipAddress: deviceInfo.ipAddress || null,
+
+    createdAt: session.createdAt,
+    lastActiveAt: session.lastActiveAt,
+
+    current: isCurrentSession,
+    status: isCurrentSession ? "Current session" : "Active session",
+  };
 };
 
-export const updateNotificationPreferences = async (req, res) => {
-  const { pushNotifications } = req.body;
+export const getProfilePreferences = async (req, res, next) => {
+  try {
+    const userId = req.user._id.toString();
 
-  if (typeof pushNotifications !== "boolean") {
-    return res.status(400).json({
-      success: false,
-      message: "pushNotifications must be a boolean",
-    });
-  }
+    console.log("ProfilePreferences -> userId :", userId);
 
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    {
-      $set: {
-        "notificationPreferences.pushNotifications": pushNotifications,
-      },
-    },
-    {
-      new: true,
-      runValidators: true,
-    },
-  ).select("name email role notificationPreferences");
+    const user = await User.findById(userId)
+      .select("notificationPreferences")
+      .lean();
 
-  return res.status(200).json({
-    success: true,
-    message: "Notification preferences updated successfully",
-    data: {
-      user,
-      notificationPreferences: user.notificationPreferences,
-    },
-  });
-};
-
-export const getActiveSessions = async (req, res) => {
-  const userId = req.user._id.toString();
-  const currentSessionId = req.session?.sessionId;
-
-  const sessionIds = await getUserSessionIds(userId);
-
-  const sessions = [];
-
-  for (const sessionId of sessionIds) {
-    const session = await getSession(sessionId);
-
-    if (!session) {
-      await removeSessionFromUser(userId, sessionId);
-      continue;
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    if (session.userId !== userId) continue;
-
-    sessions.push({
-      sessionId: session.sessionId,
-      email: session.email,
-      role: session.role,
-      userAgent: session.userAgent || "unknown",
-      ipAddress: session.ipAddress || "unknown",
-      createdAt: session.createdAt,
-      lastActive: session.lastActive || session.createdAt,
-      isCurrentSession: session.sessionId === currentSessionId,
+    return res.status(200).json({
+      success: true,
+      notificationPreferences: {
+        pushNotifications:
+          user.notificationPreferences?.pushNotifications ?? false,
+      },
     });
+  } catch (error) {
+    next(error);
   }
-
-  sessions.sort(
-    (a, b) =>
-      new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime(),
-  );
-
-  return res.status(200).json({
-    success: true,
-    data: {
-      count: sessions.length,
-      sessions,
-    },
-  });
 };
 
-export const logoutSession = async (req, res) => {
-  const userId = req.user._id.toString();
-  const currentSessionId = req.session?.sessionId;
-  const { sessionId } = req.params;
+export const updateProfilePreferences = async (req, res, next) => {
+  try {
+    const userId = req.user._id.toString();
+    const { pushNotifications } = req.body;
 
-  if (!sessionId) {
-    return res.status(400).json({
-      success: false,
-      message: "Session id is required",
+    if (typeof pushNotifications !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "pushNotifications must be a boolean",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          "notificationPreferences.pushNotifications": pushNotifications,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
+      .select("notificationPreferences")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      notificationPreferences: {
+        pushNotifications:
+          user.notificationPreferences?.pushNotifications ?? false,
+      },
     });
+  } catch (error) {
+    next(error);
   }
+};
 
-  if (sessionId === currentSessionId) {
-    return res.status(400).json({
-      success: false,
-      message: "You cannot logout the current session from this action",
+export const getProfileSessions = async (req, res, next) => {
+  try {
+    const userId = req.user._id.toString();
+    const currentSessionId = req.session.sessionId;
+
+    const sessions = await getUserSessions(userId);
+    const lastSession = await getLastSession(userId);
+
+    const formattedSessions = sessions
+      .map((session) => formatSessionForProfile(session, currentSessionId))
+      .sort((a, b) => {
+        if (a.current) return -1;
+        if (b.current) return 1;
+
+        return new Date(b.lastActiveAt || 0) - new Date(a.lastActiveAt || 0);
+      })
+      .slice(0, 4);
+
+    return res.status(200).json({
+      success: true,
+      sessions: formattedSessions,
+      lastSession,
     });
+  } catch (error) {
+    next(error);
   }
+};
 
-  const session = await getSession(sessionId);
+export const terminateProfileSession = async (req, res, next) => {
+  try {
+    const userId = req.user._id.toString();
+    const currentSessionId = req.session.sessionId;
+    const { sessionId } = req.params;
 
-  if (!session || session.userId !== userId) {
-    return res.status(404).json({
-      success: false,
-      message: "Session not found",
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session id is required",
+      });
+    }
+
+    if (sessionId === currentSessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Current session cannot be terminated from here",
+      });
+    }
+
+    const sessions = await getUserSessions(userId);
+    const sessionBelongsToUser = sessions.some(
+      (session) => session.sessionId === sessionId,
+    );
+
+    if (!sessionBelongsToUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Session not found",
+      });
+    }
+
+    await deleteUserSession(userId, sessionId, "terminated");
+
+    return res.status(200).json({
+      success: true,
+      message: "Session terminated successfully",
     });
+  } catch (error) {
+    next(error);
   }
-
-  await deleteSession(sessionId);
-  await removeSessionFromUser(userId, sessionId);
-
-  return res.status(200).json({
-    success: true,
-    message: "Session logged out successfully",
-  });
 };

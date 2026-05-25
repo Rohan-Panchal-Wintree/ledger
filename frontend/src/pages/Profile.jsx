@@ -1,16 +1,39 @@
-import React, { useState } from "react";
-import {
-  User,
-  Mail,
-  Bell,
-  Smartphone,
-  Monitor,
-  Laptop,
-  Clock3,
-} from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { User, Bell, Smartphone, Monitor, Laptop, Clock3 } from "lucide-react";
 import { useSelector } from "react-redux";
 import { selectCurrentUser } from "../store/slices/Auth.slice";
 import ToggleSwitch from "../component/UI/ToggleSwitch";
+import {
+  getProfilePreferences,
+  getProfileSessions,
+  terminateProfileSession,
+  updateProfilePreferences,
+} from "../queries/profileQueries";
+
+const getSessionIcon = (deviceType) => {
+  if (deviceType === "mobile") return Smartphone;
+  if (deviceType === "tablet") return Smartphone;
+  if (deviceType === "desktop") return Laptop;
+
+  return Monitor;
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${day}/${month}/${year} : ${hours}:${minutes}`;
+};
 
 const Profile = () => {
   const currentUser = useSelector(selectCurrentUser);
@@ -18,65 +41,109 @@ const Profile = () => {
   const name = currentUser?.name || "User";
   const email = currentUser?.email || "-";
   const role = currentUser?.role || "user";
-  const lastSession = currentUser?.lastLogin || "2 hours ago";
 
-  const [notificationPreferences, setNotificationPreferences] = useState({
-    emailAlerts: true,
-    smsNotifications: false,
-    pushNotifications: true,
-  });
+  const [pushNotifications, setPushNotifications] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [lastSession, setLastSession] = useState(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
+  const [terminatingSessionId, setTerminatingSessionId] = useState(null);
 
-  const handleTogglePreference = (key) => {
-    setNotificationPreferences((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  const initials = useMemo(() => {
+    return name
+      .split(" ")
+      .map((item) => item[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }, [name]);
+
+  const lastSessionText = lastSession?.endedAt
+    ? formatDateTime(lastSession.endedAt)
+    : "No previous session";
+
+  const formatNetwork = (ipAddress) => {
+    if (
+      !ipAddress ||
+      ipAddress === "::1" ||
+      ipAddress === "127.0.0.1" ||
+      ipAddress === "::ffff:127.0.0.1"
+    ) {
+      return "Local device";
+    }
+
+    return ipAddress;
   };
 
-  const initials = name
-    .split(" ")
-    .map((item) => item[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const loadProfileData = async () => {
+    try {
+      setIsLoadingProfile(true);
+
+      const [preferencesResponse, sessionsResponse] = await Promise.all([
+        getProfilePreferences(),
+        getProfileSessions(),
+      ]);
+
+      setPushNotifications(
+        preferencesResponse?.notificationPreferences?.pushNotifications ??
+          false,
+      );
+
+      setSessions(sessionsResponse?.sessions || []);
+      setLastSession(sessionsResponse?.lastSession || null);
+    } catch (error) {
+      console.error("Failed to load profile data:", error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfileData();
+  }, []);
+
+  const handleTogglePushNotifications = async () => {
+    const nextValue = !pushNotifications;
+
+    setPushNotifications(nextValue);
+    setIsUpdatingPreference(true);
+
+    try {
+      const response = await updateProfilePreferences(nextValue);
+
+      setPushNotifications(
+        response?.notificationPreferences?.pushNotifications ?? nextValue,
+      );
+    } catch (error) {
+      setPushNotifications(!nextValue);
+      console.error("Failed to update notification preference:", error);
+    } finally {
+      setIsUpdatingPreference(false);
+    }
+  };
+
+  const handleTerminateSession = async (sessionId) => {
+    if (!sessionId) return;
+
+    try {
+      setTerminatingSessionId(sessionId);
+
+      await terminateProfileSession(sessionId);
+
+      await loadProfileData();
+    } catch (error) {
+      console.error("Failed to terminate session:", error);
+    } finally {
+      setTerminatingSessionId(null);
+    }
+  };
 
   const notifications = [
-    {
-      key: "emailAlerts",
-      title: "Email Alerts",
-      description: "Weekly summaries and critical alerts.",
-      icon: Mail,
-    },
-    {
-      key: "smsNotifications",
-      title: "SMS Notifications",
-      description: "Login activity alerts.",
-      icon: Smartphone,
-    },
     {
       key: "pushNotifications",
       title: "Push Notifications",
       description: "Browser and device updates.",
       icon: Monitor,
-    },
-  ];
-
-  const sessions = [
-    {
-      device: "MacBook Pro",
-      browser: "Chrome · macOS",
-      location: "Current device",
-      active: "Active now",
-      current: true,
-      icon: Laptop,
-    },
-    {
-      device: "iPhone",
-      browser: "App · iOS",
-      location: "Recent login",
-      active: lastSession,
-      current: false,
-      icon: Smartphone,
     },
   ];
 
@@ -96,6 +163,10 @@ const Profile = () => {
                 </h1>
 
                 <p className="mt-2 text-sm text-on-surface-variant">{email}</p>
+
+                <p className="mt-2 inline-flex rounded-full bg-primary/8 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
+                  {role}
+                </p>
               </div>
             </div>
 
@@ -107,7 +178,7 @@ const Profile = () => {
                     Last Session
                   </p>
                   <p className="mt-1 text-sm font-bold text-on-surface">
-                    {lastSession}
+                    {lastSessionText}
                   </p>
                 </div>
               </div>
@@ -148,8 +219,9 @@ const Profile = () => {
                   </div>
 
                   <ToggleSwitch
-                    checked={notificationPreferences[item.key]}
-                    onChange={() => handleTogglePreference(item.key)}
+                    checked={pushNotifications}
+                    onChange={handleTogglePushNotifications}
+                    disabled={isUpdatingPreference || isLoadingProfile}
                   />
                 </div>
               );
@@ -169,14 +241,25 @@ const Profile = () => {
               <thead className="bg-surface-container-low/50">
                 <tr>
                   <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Browser
+                  </th>
+
+                  <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                     Device
                   </th>
+
                   <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Location
+                    Type
                   </th>
+
                   <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Last Active
+                    IP / Network
                   </th>
+
+                  <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Started
+                  </th>
+
                   <th className="whitespace-nowrap px-8 py-4 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                     Action
                   </th>
@@ -184,56 +267,85 @@ const Profile = () => {
               </thead>
 
               <tbody className="divide-y divide-outline-variant/5">
-                {sessions.map((session) => {
-                  const Icon = session.icon;
-
-                  return (
-                    <tr
-                      key={session.device}
-                      className="group border-transparent transition-all duration-200 hover:bg-surface-container-low/45"
+                {isLoadingProfile ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-8 py-8 text-center text-sm font-medium text-on-surface-variant"
                     >
-                      <td className="whitespace-nowrap px-8 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/8">
-                            <Icon className="text-primary" size={16} />
-                          </div>
+                      Loading sessions...
+                    </td>
+                  </tr>
+                ) : sessions.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-8 py-8 text-center text-sm font-medium text-on-surface-variant"
+                    >
+                      No active sessions found.
+                    </td>
+                  </tr>
+                ) : (
+                  sessions.map((session) => {
+                    const Icon = getSessionIcon(session.deviceType);
+                    const isTerminating =
+                      terminatingSessionId === session.sessionId;
 
-                          <div className="min-w-0">
-                            <span className="block truncate text-sm font-bold text-on-surface">
-                              {session.device}
+                    return (
+                      <tr
+                        key={session.sessionId}
+                        className="group border-transparent transition-all duration-200 hover:bg-surface-container-low/45"
+                      >
+                        <td className="whitespace-nowrap px-8 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/8">
+                              <Icon className="text-primary" size={17} />
+                            </div>
+
+                            <span className="text-sm font-bold text-on-surface">
+                              {session.browser || "Unknown Browser"}
                             </span>
-                            <span className="mt-1 block text-[11px] font-medium uppercase tracking-wide text-on-surface-variant/75">
-                              {session.browser}
-                            </span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-                        {session.location}
-                      </td>
+                        <td className="whitespace-nowrap px-8 py-5 text-sm font-medium text-on-surface-variant">
+                          {session.device || "Unknown Device"}
+                        </td>
 
-                      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-                        {session.active}
-                      </td>
+                        <td className="whitespace-nowrap px-8 py-5 text-sm font-medium capitalize text-on-surface-variant">
+                          {session.deviceType || "desktop"}
+                        </td>
 
-                      <td className="whitespace-nowrap px-8 py-4 text-right">
-                        {session.current ? (
-                          <span className="rounded-full bg-primary/8 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                            Current
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="rounded-full px-4 py-2 text-xs font-bold uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-container hover:text-error"
-                          >
-                            Logout
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <td className="whitespace-nowrap px-8 py-5 text-sm font-medium text-on-surface-variant">
+                          {formatNetwork(session.ipAddress)}
+                        </td>
+
+                        <td className="whitespace-nowrap px-8 py-5 text-sm font-medium text-on-surface-variant">
+                          {formatDateTime(session.createdAt)}
+                        </td>
+
+                        <td className="whitespace-nowrap px-8 py-5 text-right">
+                          {session.current ? (
+                            <span className="rounded-full bg-primary/8 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                              Current
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isTerminating}
+                              onClick={() =>
+                                handleTerminateSession(session.sessionId)
+                              }
+                              className="rounded-full px-4 py-2 text-xs font-bold uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-container hover:text-error disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isTerminating ? "Logging out..." : "Logout"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
