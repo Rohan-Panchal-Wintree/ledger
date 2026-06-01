@@ -1,4 +1,10 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+
+function formatEntryType(value) {
+  return String(value || "payment")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export default function MiscellaneousEntryRow({
   entry,
@@ -10,10 +16,12 @@ export default function MiscellaneousEntryRow({
   onDelete,
   isDeleting,
 }) {
+  const isAgentEntry = entry.entryType === "agent";
+
   return (
     <article
       className={`
-        flex flex-col justify-between gap-4 bg-surface-container-lowest px-6 py-3
+        flex flex-col justify-between gap-4 bg-surface-container-lowest px-6 py-4
         transition-colors table-row-hover lg:flex-row lg:items-center
         ${index !== totalEntries - 1 ? "border-b border-outline-variant/10" : ""}
       `}
@@ -25,77 +33,106 @@ export default function MiscellaneousEntryRow({
 
         <div className="min-w-0">
           <h3 className="truncate text-sm font-bold text-on-surface">
-            {entry.merchantDisplayName ||
-              entry.merchantName ||
-              "Unknown Merchant"}
+            {isAgentEntry
+              ? entry.merchantName || "Unknown Agent"
+              : entry.merchantDisplayName ||
+                entry.merchantName ||
+                "Unknown Merchant"}
           </h3>
 
-          <p className="truncate text-[11px] font-medium text-on-surface-variant/60">
-            {entry.bankLabel || "-"} •{" "}
-            <span className="font-mono">
-              {entry.linkedMid || entry.mid || "-"}
-            </span>
+          <p className="truncate text-[11px] font-medium text-on-surface-variant/70">
+            {formatEntryType(entry.entryType)}
+            {!isAgentEntry ? (
+              <>
+                {" "}
+                • {entry.bankLabel || "-"} •{" "}
+                <span className="font-mono">
+                  {entry.linkedMid || entry.mid || "-"}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
       </div>
 
       <div className="hidden min-w-30 xl:block">
-        <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
-          Sheet Date
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
+          Period
         </p>
 
         <p className="text-xs font-semibold text-on-surface/80">
-          {entry.paymentSheetDateLabel || formatDate(entry.paymentSheetDate)}
+          {formatDate(entry.startDate)} → {formatDate(entry.endDate)}
         </p>
       </div>
 
       <div className="flex items-center gap-10 lg:gap-16">
         <div className="min-w-22.5">
-          <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
             Processing
           </p>
 
           <p className="text-sm font-bold text-on-surface">
             {formatNumber(entry.amountPaid)}{" "}
-            <span className="text-[10px] text-primary/50">
+            <span className="text-[10px] text-primary/60">
               {entry.processingCurrency}
             </span>
           </p>
         </div>
 
         <div className="min-w-22.5">
-          <p className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
             Settlement
           </p>
 
           <p className="text-sm font-bold text-on-surface">
             {formatNumber(entry.settlementAmount)}{" "}
-            <span className="text-[10px] text-secondary/60">
+            <span className="text-[10px] text-secondary/70">
               {entry.settlementCurrency}
             </span>
           </p>
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 pl-4">
-        <button
-          type="button"
-          onClick={() => onEdit(entry)}
-          className="flex h-8 items-center gap-2 rounded-md bg-surface-container px-3 text-xs font-bold text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
-        >
-          <Pencil size={13} strokeWidth={2.5} />
-          <span>Edit</span>
-        </button>
+      <div className="flex items-center justify-end pl-4">
+        <div className="dropdown dropdown-left dropdown-end relative z-30">
+          <button
+            type="button"
+            tabIndex={0}
+            disabled={isDeleting}
+            className="btn btn-ghost btn-circle btn-sm text-on-surface-variant hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <MoreVertical size={18} />
+          </button>
 
-        <button
-          type="button"
-          onClick={() => onDelete(entry)}
-          disabled={isDeleting}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-600 disabled:opacity-40"
-          title="Delete"
-        >
-          <Trash2 size={14} strokeWidth={2.5} />
-        </button>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu z-20 w-44 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-2"
+          >
+            <li>
+              <button
+                type="button"
+                onClick={() => onEdit(entry)}
+                disabled={isDeleting}
+                className="flex items-center gap-2 rounded-lg text-sm font-semibold text-on-surface"
+              >
+                <Pencil size={15} />
+                Edit
+              </button>
+            </li>
+
+            <li>
+              <button
+                type="button"
+                onClick={() => onDelete(entry)}
+                disabled={isDeleting}
+                className="flex items-center gap-2 rounded-lg text-sm font-semibold text-error"
+              >
+                <Trash2 size={15} />
+                Delete
+              </button>
+            </li>
+          </ul>
+        </div>
       </div>
     </article>
   );

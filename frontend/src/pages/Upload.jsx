@@ -1,25 +1,17 @@
 import { AlertTriangle, FileSpreadsheet, FileUp, X } from "lucide-react";
 
-import UploadFile from "../component/UploadFile";
-import EditInvalidPaymentRowModal from "../component/EditInvalidPaymentRowModal";
+import UploadFile from "../component/upload/UploadFile";
+import EditInvalidPaymentRowForm from "../component/upload/EditInvalidPaymentRowForm";
+import UploadPreviewSection from "../component/upload/UploadPreviewSection";
 
-import DataTable from "../component/UI/DataTable";
 import Spinner from "../component/UI/Spinner";
 import Tabs from "../component/UI/Tabs";
+import Button from "../component/UI/Button";
+import Modal from "../component/UI/Modal";
 
 import UploadIssuesSection from "../component/upload/UploadIssuesSection";
-import PaymentSheetRow from "../component/upload/rows/PaymentSheetRow";
-import WireSheetRow from "../component/upload/rows/WireSheetRow";
 
 import { useUploadPageController } from "../hooks/useUploadPageController";
-
-import {
-  formatAmountCell,
-  paymentSheetOrder,
-  paymentSheetRows,
-  paymentSheetSections,
-  wireSheetRows,
-} from "../utils/uploadUtils";
 
 const wirePreviewColumns = [
   { key: "merchantName", label: "Merchant Name" },
@@ -178,131 +170,36 @@ export default function Upload() {
     );
   };
 
-  const renderPaymentSheetTabs = () => {
-    if (!isPaymentSheet || !activeFile?.paymentSheets) return null;
-
-    return (
-      <Tabs
-        activeTab={activePaymentSheetKey}
-        onChange={handlePaymentSheetTabChange}
-        className="mb-1"
-        tabs={paymentSheetOrder.map((sheetKey) => ({
-          label: paymentSheetSections[sheetKey].label,
-          value: sheetKey,
-          disabled: !activeFile.paymentSheets?.[sheetKey],
-        }))}
-      />
-    );
-  };
-
-  const renderExtractedDataHeader = () => {
-    const hasUploadedFiles = currentTab.files.length > 0;
-
-    return (
-      <div className="flex items-center justify-between">
-        <div className="w-full">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-bold tracking-tight text-on-surface">
-              {hasUploadedFiles
-                ? "Extracted File Data (Valid Table Rows)"
-                : isWireSheet
-                  ? "Expected Wire-sheet Format"
-                  : "Expected Payment Sheet Format"}
-            </h2>
-
-            {!hasUploadedFiles && (
-              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg px-4 py-3 text-xs font-medium text-on-surface-variant">
-                <span className="font-bold text-on-surface">
-                  Expected file name:
-                </span>
-
-                <span className="rounded-lg bg-surface-container-high px-2 py-1 font-mono text-primary">
-                  {isWireSheet
-                    ? "Bankname automation wiresheet DD.MM.YYYY to DD.MM.YYYY.xlsx"
-                    : "01.02 Payments.xlsx"}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {hasUploadedFiles && (
-            <p className="mt-1 text-sm text-on-surface-variant">
-              {isWireSheet
-                ? "Showing only: MERCHANT NAME, MID, START DATE, END DATE, PROCESSING CURRENCY, AMOUNT"
-                : `Showing ${
-                    activePaymentSheetData?.label || "payment"
-                  } rows with Merchant Name + MID and at most one missing mapped value.`}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderWireTable = (rows, keyPrefix) => (
-    <DataTable
-      columns={wirePreviewColumns}
-      totalItems={rows.length}
-      isEmpty={rows.length === 0}
-      emptyTitle="No wire-sheet rows found."
-      emptyDescription="Upload a valid wiresheet file to preview extracted rows."
-      showFooter={false}
-    >
-      {rows.map((row, index) => (
-        <WireSheetRow
-          key={`${keyPrefix}-${row.mid || index}-${index}`}
-          row={row}
-          index={index}
-          keyPrefix={keyPrefix}
-          formatAmountCell={formatAmountCell}
-        />
-      ))}
-    </DataTable>
-  );
-
-  const renderPaymentTable = (rows, keyPrefix) => (
-    <DataTable
-      columns={paymentPreviewColumns}
-      totalItems={rows.length}
-      isEmpty={rows.length === 0}
-      emptyTitle="No payment rows found."
-      emptyDescription="Upload a valid payment sheet file to preview extracted rows."
-      showFooter={false}
-    >
-      {rows.map((row, index) => (
-        <PaymentSheetRow
-          key={`${keyPrefix}-${row.mid || index}-${index}`}
-          row={row}
-          index={index}
-          keyPrefix={keyPrefix}
-          formatAmountCell={formatAmountCell}
-        />
-      ))}
-    </DataTable>
-  );
-
-  const renderExtractedDataTable = () => {
-    const hasUploadedFiles = currentTab.files.length > 0;
-
-    if (hasUploadedFiles) {
-      return isWireSheet
-        ? renderWireTable(displayedRows, activeFile?.id || "wire")
-        : renderPaymentTable(displayedRows, activeFile?.id || "payment");
-    }
-
-    return isWireSheet
-      ? renderWireTable(wireSheetRows, "sample-wire")
-      : renderPaymentTable(paymentSheetRows, "sample-payment");
-  };
-
   const renderInvalidRowModal = () => (
-    <EditInvalidPaymentRowModal
+    <Modal
       open={isInvalidRowModalOpen}
-      row={selectedInvalidRow}
-      initialData={selectedInvalidRow?.fixedData || null}
+      title="Edit Invalid Payment Row"
+      description="Fix the row data before reconciliation."
+      size="lg"
       onClose={handleCloseInvalidRowModal}
-      onSave={handleSaveInvalidRow}
-    />
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCloseInvalidRowModal}
+          >
+            Cancel
+          </Button>
+
+          <Button type="submit" form="invalid-payment-row-form">
+            Save Changes
+          </Button>
+        </>
+      }
+    >
+      <EditInvalidPaymentRowForm
+        formId="invalid-payment-row-form"
+        row={selectedInvalidRow}
+        initialData={selectedInvalidRow?.fixedData || null}
+        onSubmit={handleSaveInvalidRow}
+      />
+    </Modal>
   );
 
   if (isReviewTab) {
@@ -397,11 +294,16 @@ export default function Upload() {
           </div>
         </div>
       ) : (
-        <section className="space-y-6">
-          {renderPaymentSheetTabs()}
-          {renderExtractedDataHeader()}
-          {renderExtractedDataTable()}
-        </section>
+        <UploadPreviewSection
+          isWireSheet={isWireSheet}
+          isPaymentSheet={isPaymentSheet}
+          hasUploadedFiles={currentTab.files.length > 0}
+          activeFile={activeFile}
+          activePaymentSheetKey={activePaymentSheetKey}
+          activePaymentSheetData={activePaymentSheetData}
+          displayedRows={displayedRows}
+          onPaymentSheetTabChange={handlePaymentSheetTabChange}
+        />
       )}
 
       {renderInvalidRowModal()}

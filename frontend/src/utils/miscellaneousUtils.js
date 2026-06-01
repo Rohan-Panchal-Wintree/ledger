@@ -20,19 +20,81 @@ export const miscellaneousInitialForm = {
 };
 
 export function validateMiscellaneousForm(form) {
-  if (!form.entryType) return "Please select entry type.";
-  if (!form.paymentSheetDate) return "Please select payment sheet date.";
-  if (!form.merchantName && !form.merchantId) return "Please enter merchant.";
-  if (!form.amountPaid) return "Please enter processing amount.";
+  const isAgentEntry = form.entryType === "agent";
 
+  const amountPaid = Number(form.amountPaid);
   const rate = Number(form.rate);
+  const settlementAmount = Number(form.settlementAmount);
+
+  const textOnlyPattern = /^[A-Za-z]+$/;
+
+  if (!form.entryType) return "Please select entry type.";
+
+  if (!form.paymentSheetDateLabel) {
+    return "Please select payment sheet label.";
+  }
+
+  if (!form.paymentSheetDate) {
+    return "Please select payment sheet date.";
+  }
+
+  if (!form.merchantName) {
+    return isAgentEntry
+      ? "Please enter agent name."
+      : "Please select merchant.";
+  }
+
+  if (!isAgentEntry && !form.bankLabel) {
+    return "Please select bank label.";
+  }
+
+  if (!isAgentEntry && form.mid && !/^\d+$/.test(form.mid)) {
+    return "Connected MID should contain numbers only.";
+  }
+
+  if (!form.processingCurrency) {
+    return "Please enter processing currency.";
+  }
+
+  if (!textOnlyPattern.test(form.processingCurrency)) {
+    return "Processing currency should contain text only.";
+  }
+
+  if (!form.startDate) {
+    return "Please select start date and time.";
+  }
+
+  if (!form.endDate) {
+    return "Please select end date and time.";
+  }
+
+  if (new Date(form.startDate).getTime() > new Date(form.endDate).getTime()) {
+    return "Start date cannot be after end date.";
+  }
+
+  if (!form.amountPaid || Number.isNaN(amountPaid) || amountPaid <= 0) {
+    return "Processing amount must be a positive number.";
+  }
 
   if (!form.rate || Number.isNaN(rate) || rate <= 0) {
     return "Rate must be a positive number.";
   }
 
-  if (!form.settlementCurrency) return "Please enter settlement currency.";
-  if (!form.settlementAmount) return "Please enter settlement amount.";
+  if (!form.settlementCurrency) {
+    return "Please enter settlement currency.";
+  }
+
+  if (!textOnlyPattern.test(form.settlementCurrency)) {
+    return "Settlement currency should contain text only.";
+  }
+
+  if (
+    !form.settlementAmount ||
+    Number.isNaN(settlementAmount) ||
+    settlementAmount <= 0
+  ) {
+    return "Settlement amount must be a positive number.";
+  }
 
   return "";
 }

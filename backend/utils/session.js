@@ -173,19 +173,49 @@ export const storeLastSession = async (
 ) => {
   if (!userId || !session) return;
 
+  const incomingStartedAt = session.startedAt || session.createdAt;
+  const incomingLastActiveAt = session.lastActiveAt || incomingStartedAt;
+
   const lastSession = {
     sessionId: session.sessionId,
     userId: session.userId,
     email: session.email,
     role: session.role,
+
+    startedAt: incomingStartedAt,
     createdAt: session.createdAt,
     lastActiveAt: session.lastActiveAt,
     endedAt: new Date().toISOString(),
+
     reason,
     deviceInfo: session.deviceInfo || null,
   };
 
-  await getRedis().set(getLastSessionKey(userId), JSON.stringify(lastSession));
+  const redis = getRedis();
+  const lastSessionKey = getLastSessionKey(userId);
+  const existingRaw = await redis.get(lastSessionKey);
+  const existingSession = existingRaw ? safeJsonParse(existingRaw) : null;
+
+  if (existingSession) {
+    const existingTime = new Date(
+      existingSession.startedAt ||
+        existingSession.createdAt ||
+        existingSession.lastActiveAt ||
+        0,
+    ).getTime();
+
+    const incomingTime = new Date(
+      incomingStartedAt || incomingLastActiveAt || 0,
+    ).getTime();
+
+    if (!Number.isNaN(existingTime) && !Number.isNaN(incomingTime)) {
+      if (incomingTime < existingTime) {
+        return;
+      }
+    }
+  }
+
+  await redis.set(lastSessionKey, JSON.stringify(lastSession));
 };
 
 export const getLastSession = async (userId) => {

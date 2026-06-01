@@ -2,6 +2,16 @@ import Badge from "../UI/Badge";
 
 import { formatDate, formatNumber } from "../../utils/appUtils";
 
+function getPeriodLabel(row) {
+  if (row.matchedStartDate && row.matchedEndDate) {
+    return `${formatDate(row.matchedStartDate)} → ${formatDate(
+      row.matchedEndDate,
+    )}`;
+  }
+
+  return `${formatDate(row.startDate)} → ${formatDate(row.endDate)}`;
+}
+
 export default function WiresheetRow({ row, getStatusVariant }) {
   return (
     <tr className="table-row-hover">
@@ -18,7 +28,7 @@ export default function WiresheetRow({ row, getStatusVariant }) {
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface-variant">
-        {formatDate(row.startDate)} → {formatDate(row.endDate)}
+        {getPeriodLabel(row)}
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm font-bold text-on-surface">
@@ -34,7 +44,7 @@ export default function WiresheetRow({ row, getStatusVariant }) {
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-sm">
-        <Badge variant={getStatusVariant(row.status)} textSize="11px">
+        <Badge variant={getStatusVariant?.(row.status)} textSize="11px">
           {row.status || "-"}
         </Badge>
       </td>

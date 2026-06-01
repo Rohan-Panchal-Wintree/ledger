@@ -18,6 +18,7 @@ export default function Modal({
   closeOnBackdrop = false,
   className = "",
   bodyClassName = "",
+  allowBodyOverflow = false,
 }) {
   if (!open) return null;
 
@@ -29,7 +30,9 @@ export default function Modal({
       />
 
       <div
-        className={`modal-box max-h-[88vh] w-11/12 overflow-hidden rounded-[2rem] bg-surface-container-lowest p-0 ${
+        className={`modal-box max-h-[88vh] w-11/12 ${
+          allowBodyOverflow ? "overflow-visible" : "overflow-hidden"
+        } rounded-[2rem] bg-surface-container-lowest p-0 ${
           modalSizes[size] || modalSizes.lg
         } ${className}`}
       >
@@ -58,7 +61,9 @@ export default function Modal({
         </div>
 
         <div
-          className={`max-h-[62vh] overflow-y-auto px-7 py-6 ${bodyClassName}`}
+          className={`max-h-[62vh] px-7 py-6 ${
+            allowBodyOverflow ? "overflow-visible" : "overflow-y-auto"
+          } ${bodyClassName}`}
         >
           {children}
         </div>

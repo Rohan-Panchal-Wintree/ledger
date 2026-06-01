@@ -1,4 +1,5 @@
 import axios from "axios";
+
 import {
   ACQUIRER_URL,
   DASHBOARD_URL,
@@ -13,6 +14,7 @@ import {
   USERS_URL,
   SHEETS_URL,
 } from "./config";
+
 import { decryptData, encryptData } from "./utils/cryptoUtils";
 import { decryptApiResponse } from "./utils/apiEncryption";
 
@@ -31,29 +33,32 @@ async function getStoredAuth() {
 }
 
 async function saveStoredAuth(auth) {
-  if (!auth?.user) return;
+  if (!auth) return;
 
   const encryptedAuth = await encryptData(auth);
+
   localStorage.setItem(AUTH_STORAGE_KEY, encryptedAuth);
 }
 
-async function getCsrfTokenFromStorage() {
-  const auth = await getStoredAuth();
-  return auth?.csrfToken || null;
-}
-
-function shouldAttachCsrf(method) {
+function shouldAttachAuthHeaders(method) {
   return ["post", "put", "patch", "delete"].includes(method?.toLowerCase());
 }
 
-async function attachCsrfHeader(config) {
-  if (!shouldAttachCsrf(config.method)) return config;
+async function attachAuthHeaders(config) {
+  if (!shouldAttachAuthHeaders(config.method)) return config;
 
-  const csrfToken = await getCsrfTokenFromStorage();
+  const auth = await getStoredAuth();
+  const csrfToken = auth?.csrfToken || null;
+  const sessionId = auth?.sessionId || null;
+
+  config.headers = config.headers ?? {};
 
   if (csrfToken) {
-    config.headers = config.headers ?? {};
     config.headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  if (sessionId) {
+    config.headers["X-Session-Id"] = sessionId;
   }
 
   return config;
@@ -64,7 +69,7 @@ const refreshApi = axios.create({
   withCredentials: true,
 });
 
-refreshApi.interceptors.request.use(attachCsrfHeader);
+refreshApi.interceptors.request.use(attachAuthHeaders);
 
 let refreshPromise = null;
 
@@ -77,11 +82,17 @@ async function refreshSession() {
 
         const nextAuth = {
           user: response.data?.user || previousAuth?.user,
-          csrfToken: response.data?.csrfToken || previousAuth?.csrfToken,
+          sessionId: response.data?.sessionId || previousAuth?.sessionId,
+          csrfToken: response.data?.csrfToken,
           responseKey: response.data?.responseKey || previousAuth?.responseKey,
         };
 
-        if (!nextAuth.user || !nextAuth.csrfToken || !nextAuth.responseKey) {
+        if (
+          !nextAuth.user ||
+          !nextAuth.sessionId ||
+          !nextAuth.csrfToken ||
+          !nextAuth.responseKey
+        ) {
           throw new Error("Refresh response missing auth data");
         }
 
@@ -112,43 +123,7 @@ function createApiInstance(baseURL) {
     withCredentials: true,
   });
 
-  // instance.interceptors.request.use(attachCsrfHeader);
-
-  // instance.interceptors.response.use(
-  //   (response) => response,
-  //   async (error) => {
-  //     const originalRequest = error.config;
-
-  //     if (
-  //       error.response?.status !== 401 ||
-  //       !originalRequest ||
-  //       originalRequest._retry ||
-  //       isAuthRoute(originalRequest.url)
-  //     ) {
-  //       return Promise.reject(error);
-  //     }
-
-  //     originalRequest._retry = true;
-
-  //     try {
-  //       await refreshSession();
-
-  //       originalRequest.headers = originalRequest.headers ?? {};
-
-  //       const csrfToken = await getCsrfTokenFromStorage();
-
-  //       if (shouldAttachCsrf(originalRequest.method) && csrfToken) {
-  //         originalRequest.headers["X-CSRF-Token"] = csrfToken;
-  //       }
-
-  //       return instance(originalRequest);
-  //     } catch (refreshError) {
-  //       localStorage.removeItem(AUTH_STORAGE_KEY);
-  //       window.dispatchEvent(new Event("auth:expired"));
-  //       return Promise.reject(refreshError);
-  //     }
-  //   },
-  // );
+  instance.interceptors.request.use(attachAuthHeaders);
 
   instance.interceptors.response.use(
     async (response) => {
@@ -165,6 +140,7 @@ function createApiInstance(baseURL) {
 
       return response;
     },
+
     async (error) => {
       const originalRequest = error.config;
 
@@ -182,18 +158,13 @@ function createApiInstance(baseURL) {
       try {
         await refreshSession();
 
-        originalRequest.headers = originalRequest.headers ?? {};
-
-        const csrfToken = await getCsrfTokenFromStorage();
-
-        if (shouldAttachCsrf(originalRequest.method) && csrfToken) {
-          originalRequest.headers["X-CSRF-Token"] = csrfToken;
-        }
+        await attachAuthHeaders(originalRequest);
 
         return instance(originalRequest);
       } catch (refreshError) {
         localStorage.removeItem(AUTH_STORAGE_KEY);
         window.dispatchEvent(new Event("auth:expired"));
+
         return Promise.reject(refreshError);
       }
     },

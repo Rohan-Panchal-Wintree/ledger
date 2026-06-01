@@ -93,7 +93,6 @@ export default function UploadIssueRow({ row, onEdit }) {
             type="button"
             variant="secondary"
             size="sm"
-            rounded="full"
             leftIcon={<Pencil className="h-4 w-4" />}
             onClick={() => onEdit(row)}
           >

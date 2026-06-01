@@ -3,11 +3,11 @@ import { RefreshCcw } from "lucide-react";
 
 import Button from "../UI/Button";
 import DataTable from "../UI/DataTable";
+import Spinner from "../UI/Spinner";
 
 import UploadIssueRow from "./UploadIssueRow";
 
 import { uploadIssueColumns } from "./uploadIssueConstants";
-import Spinner from "../UI/Spinner";
 
 export default function UploadIssuesSection({
   rows = [],
@@ -28,6 +28,7 @@ export default function UploadIssuesSection({
     return [...rows].sort((a, b) => {
       if (a.status === "invalid" && b.status !== "invalid") return -1;
       if (a.status !== "invalid" && b.status === "invalid") return 1;
+
       return 0;
     });
   }, [rows]);
@@ -42,45 +43,32 @@ export default function UploadIssuesSection({
   if (!rows.length) return null;
 
   return (
-    <section
-      ref={sectionRef}
-      className="overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-container-lowest"
-    >
-      <div className="flex flex-col gap-2 border-b border-outline-variant/10 px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-on-surface">
-              {title}
-            </h2>
+    <section ref={sectionRef} className="space-y-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-on-surface">
+            {title}
+          </h2>
 
-            <p className="mt-1 text-sm text-on-surface-variant">
-              {description}
-            </p>
+          <p className="mt-1 text-sm text-on-surface-variant">{description}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-full bg-surface-container-low px-4 py-2 text-xs font-bold uppercase tracking-wider text-on-surface">
+            {meta.total || 0} {(meta.total || 0) === 1 ? "Issue" : "Issues"}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-outline-variant/10 bg-surface-container-low px-4 py-2 text-xs font-bold uppercase tracking-wider text-on-surface">
-              {meta.total} {meta.total === 1 ? "Issue" : "Issues"}
-            </div>
-
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              rounded="full"
-              onClick={onReconcile}
-              disabled={isReconciling}
-            >
-              {isReconciling ? (
-                <Spinner type="xs" color="white" />
-              ) : (
-                <>
-                  <RefreshCcw className="w-4 h-4" />
-                  Reconcile
-                </>
-              )}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            leftIcon={<RefreshCcw className="h-4 w-4" />}
+            loading={isReconciling}
+            disabled={isReconciling}
+            onClick={onReconcile}
+          >
+            Reconcile
+          </Button>
         </div>
       </div>
 
@@ -103,11 +91,12 @@ export default function UploadIssuesSection({
           />
         ))}
       </DataTable>
-      {isFetching && rows.length > 0 && (
-        <div className="flex items-center justify-center gap-3 border-t border-outline-variant/10 bg-surface-container-low/30 px-8 py-4">
+
+      {isFetching && rows.length > 0 ? (
+        <div className="flex justify-center py-2">
           <Spinner type="sm" />
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

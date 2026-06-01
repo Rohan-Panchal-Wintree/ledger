@@ -1,27 +1,92 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { profileApi } from "../api";
 
-export const getProfilePreferences = async () => {
-  const response = await profileApi.get("/preferences");
+export const profileQueryKeys = {
+  all: ["profile"],
 
-  return response.data;
+  preferences: () => [...profileQueryKeys.all, "preferences"],
+
+  sessions: () => [...profileQueryKeys.all, "sessions"],
 };
 
-export const updateProfilePreferences = async (pushNotifications) => {
+function extractResponseData(response, fallback) {
+  return response?.data ?? fallback;
+}
+
+async function getProfilePreferencesApi() {
+  const response = await profileApi.get("/preferences");
+
+  return extractResponseData(response, {
+    notificationPreferences: {
+      pushNotifications: false,
+    },
+  });
+}
+
+async function updateProfilePreferencesApi(pushNotifications) {
   const response = await profileApi.patch("/preferences", {
     pushNotifications,
   });
 
-  return response.data;
-};
+  return extractResponseData(response, {});
+}
 
-export const getProfileSessions = async () => {
+async function getProfileSessionsApi() {
   const response = await profileApi.get("/sessions");
 
-  return response.data;
-};
+  return extractResponseData(response, {
+    sessions: [],
+    lastSession: null,
+  });
+}
 
-export const terminateProfileSession = async (sessionId) => {
+async function terminateProfileSessionApi(sessionId) {
   const response = await profileApi.delete(`/sessions/${sessionId}`);
 
-  return response.data;
-};
+  return extractResponseData(response, {});
+}
+
+export function useProfilePreferences() {
+  return useQuery({
+    queryKey: profileQueryKeys.preferences(),
+    queryFn: getProfilePreferencesApi,
+  });
+}
+
+export function useProfileSessions() {
+  return useQuery({
+    queryKey: profileQueryKeys.sessions(),
+    queryFn: getProfileSessionsApi,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+}
+
+export function useUpdateProfilePreferences() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateProfilePreferencesApi,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: profileQueryKeys.preferences(),
+      });
+    },
+  });
+}
+
+export function useTerminateProfileSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: terminateProfileSessionApi,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: profileQueryKeys.sessions(),
+      });
+    },
+  });
+}

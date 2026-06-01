@@ -1,26 +1,29 @@
-import {
-  Landmark,
-  Plus,
-  Search,
-  MoreVertical,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { Landmark, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
-import ConfirmDialog from "../component/dashboard/ConfirmDialog";
-import EntityFormModal from "../component/dashboard/EntityFormModal";
+import AcquirerRow from "../component/acquirers/AcquirerRow";
+import EntityForm from "../component/acquirers/EntityForm";
+
+import Button from "../component/UI/Button";
+import DataTable from "../component/UI/DataTable";
+import DeleteModal from "../component/UI/DeleteModal";
+import Modal from "../component/UI/Modal";
+import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
+import StatCard from "../component/UI/StatCard";
 
 import { selectCurrentUser } from "../store/slices/Auth.slice";
+
 import {
   useAcquirers,
   useCreateAcquirer,
   useDeleteAcquirer,
   useUpdateAcquirer,
 } from "../queries/acquirerQueries";
+
+import { getErrorMessage } from "../utils/appUtils";
 
 const initialAcquirerValues = {
   name: "",
@@ -35,18 +38,12 @@ const acquirerFields = [
   },
 ];
 
-function formatDate(value) {
-  if (!value) return "-";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
-}
+const acquirerColumns = [
+  { key: "acquirer", label: "Acquirer" },
+  { key: "createdAt", label: "Created" },
+  { key: "updatedAt", label: "Updated" },
+  { key: "actions", label: "Actions", align: "right" },
+];
 
 function validateAcquirer(values) {
   const errors = { name: "" };
@@ -59,15 +56,6 @@ function validateAcquirer(values) {
   }
 
   return errors;
-}
-
-function getErrorMessage(error, fallbackMessage) {
-  return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallbackMessage
-  );
 }
 
 export default function Acquirers() {
@@ -248,9 +236,6 @@ export default function Acquirers() {
   const safePage = Math.min(page, totalPages || 1);
   const paginatedAcquirers = visibleAcquirers;
 
-  const showingFrom = total ? (safePage - 1) * pageSize + 1 : 0;
-  const showingTo = Math.min(safePage * pageSize, total);
-
   const stats = [
     {
       label: "Total Acquirers",
@@ -265,9 +250,9 @@ export default function Acquirers() {
       icon: Search,
     },
     {
-      label: "Access Level",
-      value: canManageAcquirers ? "Edit" : "View",
-      helper: "Based on your role",
+      label: "Latest Added",
+      value: acquirers[0]?.name || "-",
+      helper: "Most recent acquirer",
       icon: Landmark,
     },
   ];
@@ -289,27 +274,15 @@ export default function Acquirers() {
       ) : null} */}
 
       <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-        {stats.map(({ label, value, helper, icon: Icon }) => (
-          <div
+        {stats.map(({ label, value, helper, icon }) => (
+          <StatCard
             key={label}
-            className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6"
-          >
-            <div className="flex items-start justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                {label}
-              </span>
-              <Icon className="text-primary" size={20} />
-            </div>
-
-            <div className="mt-8">
-              <div className="text-4xl font-extrabold tracking-tight text-on-surface">
-                {value}
-              </div>
-              <p className="mt-2 text-xs font-medium text-on-surface-variant">
-                {helper}
-              </p>
-            </div>
-          </div>
+            label={label}
+            value={value}
+            helper={helper}
+            icon={icon}
+            className="p-6"
+          />
         ))}
       </section>
 
@@ -324,213 +297,95 @@ export default function Acquirers() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
-              size={16}
-            />
-            <input
-              type="text"
-              placeholder="Search acquirers..."
-              value={searchValue}
-              onChange={(event) => {
-                setSearchValue(event.target.value);
-                setPage(1);
-              }}
-              className="w-full rounded-full border-none bg-surface-container-low py-2.5 pl-10 pr-4 text-sm text-on-surface outline-none transition-all focus:ring-2 focus:ring-primary/20 sm:w-80"
-            />
-          </div>
+          <SearchInput
+            value={searchValue}
+            placeholder="Search acquirers..."
+            className="w-full sm:w-80"
+            onChange={(event) => {
+              setSearchValue(event.target.value);
+              setPage(1);
+            }}
+          />
 
-          <button
+          <Button
             type="button"
             onClick={openCreateForm}
             disabled={!canManageAcquirers}
-            className="flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-content transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+            leftIcon={<Plus size={16} />}
           >
-            <Plus size={16} />
             Add Acquirer
-          </button>
+          </Button>
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
-        <div className="flex items-center justify-between border-b border-outline-variant/5 px-8 py-6">
-          <h3 className="text-xl font-bold tracking-tight text-on-surface">
-            Acquirer Records
-          </h3>
-        </div>
+      <DataTable
+        title="Acquirer Records"
+        columns={acquirerColumns}
+        totalItems={total}
+        itemLabel="acquirers"
+        page={safePage}
+        isLoading={isFetching}
+        isEmpty={paginatedAcquirers.length === 0}
+        emptyTitle="No acquirers found."
+        emptyDescription="Try adjusting your search."
+        onPageChange={setPage}
+        onRowsPerPageChange={(value) => {
+          setPageSize(value);
+          setPage(1);
+        }}
+      >
+        {paginatedAcquirers.map((acquirer) => (
+          <AcquirerRow
+            key={acquirer._id}
+            acquirer={acquirer}
+            canManageAcquirers={canManageAcquirers}
+            isDeletePending={isDeletePending}
+            onEdit={openEditForm}
+            onDelete={setDeleteTarget}
+          />
+        ))}
+      </DataTable>
 
-        <div className="overflow-x-auto scrollbar-hide">
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-surface-container-low/50">
-              <tr>
-                <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  Acquirer
-                </th>
-                <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  Created
-                </th>
-                <th className="whitespace-nowrap px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  Updated
-                </th>
-                <th className="whitespace-nowrap px-8 py-4 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-outline-variant/5">
-              {paginatedAcquirers.length ? (
-                paginatedAcquirers.map((acquirer) => (
-                  <tr
-                    key={acquirer._id}
-                    className="group transition-all duration-200 hover:bg-surface-container-low/45"
-                  >
-                    <td className="whitespace-nowrap px-8 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/8">
-                          <Landmark className="text-primary" size={16} />
-                        </div>
-
-                        <div className="min-w-0">
-                          <span className="block truncate text-sm font-bold text-on-surface">
-                            {acquirer.name || "-"}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-                      {formatDate(acquirer.createdAt)}
-                    </td>
-
-                    <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-                      {formatDate(acquirer.updatedAt)}
-                    </td>
-
-                    <td className="whitespace-nowrap px-8 py-4 text-right">
-                      <div className="dropdown dropdown-left dropdown-end relative z-30">
-                        <button
-                          type="button"
-                          tabIndex={0}
-                          disabled={!canManageAcquirers}
-                          className="btn btn-ghost btn-circle btn-sm text-on-surface-variant hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <MoreVertical size={18} />
-                        </button>
-
-                        <ul
-                          tabIndex={0}
-                          className="dropdown-content menu z-20 w-44 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-2"
-                        >
-                          <li>
-                            <button
-                              type="button"
-                              onClick={() => openEditForm(acquirer)}
-                              disabled={!canManageAcquirers}
-                              className="flex items-center gap-2 rounded-lg text-sm font-semibold text-on-surface"
-                            >
-                              <Pencil size={15} />
-                              Edit
-                            </button>
-                          </li>
-
-                          <li>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(acquirer)}
-                              disabled={!canManageAcquirers || isDeletePending}
-                              className="flex items-center gap-2 rounded-lg text-sm font-semibold text-error"
-                            >
-                              <Trash2 size={15} />
-                              Delete
-                            </button>
-                          </li>
-                        </ul>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-8 py-12 text-center text-sm font-medium text-on-surface-variant"
-                  >
-                    No acquirers found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-col gap-4 bg-surface-container-low/30 px-8 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <div>
-              Showing {showingFrom ? `${showingFrom}-${showingTo}` : "0"} of{" "}
-              {total} acquirers
-            </div>
-
-            <label className="flex items-center gap-2">
-              <span>Rows</span>
-              <select
-                value={pageSize}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setPage(1);
-                }}
-                className="rounded-full bg-surface-container px-3 py-2 text-xs font-bold text-on-surface outline-none"
-              >
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span>
-              Page {showingFrom ? safePage : 0} of {total ? totalPages : 0}
-            </span>
-
-            <button
-              type="button"
-              onClick={() => setPage(Math.max(1, safePage - 1))}
-              disabled={safePage === 1 || !total}
-              className="rounded-full px-4 py-2 transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Previous
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-              disabled={safePage === totalPages || !total}
-              className="rounded-full bg-primary px-4 py-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <EntityFormModal
+      <Modal
         open={isFormOpen}
         title={formMode === "edit" ? "Edit Acquirer" : "Create Acquirer"}
         description="Acquirer changes use the dedicated CRUD endpoints from your backend."
-        fields={acquirerFields}
-        values={formValues}
-        errors={formErrors}
-        mode={formMode}
+        size="md"
         onClose={closeForm}
-        onChange={handleFieldChange}
-        onSubmit={handleSubmitAcquirer}
-        isSubmitting={isSubmitting}
-        isLoading={false}
-      />
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeForm}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
 
-      <ConfirmDialog
+            <Button
+              type="submit"
+              form="acquirer-form"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+            >
+              {formMode === "edit" ? "Update" : "Create"}
+            </Button>
+          </>
+        }
+      >
+        <EntityForm
+          formId="acquirer-form"
+          fields={acquirerFields}
+          values={formValues}
+          errors={formErrors}
+          onChange={handleFieldChange}
+          onSubmit={handleSubmitAcquirer}
+          isLoading={false}
+        />
+      </Modal>
+
+      <DeleteModal
         open={Boolean(deleteTarget)}
         title="Delete Acquirer?"
         description={`This will permanently remove ${

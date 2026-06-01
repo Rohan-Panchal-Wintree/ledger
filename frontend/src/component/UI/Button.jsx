@@ -3,6 +3,7 @@ import Spinner from "./Spinner";
 export default function Button({
   children,
   type = "button",
+  form,
   variant = "primary",
   size = "md",
   fullWidth = false,
@@ -35,6 +36,7 @@ export default function Button({
   return (
     <button
       type={type}
+      form={form}
       disabled={disabled || loading}
       onClick={onClick}
       className={`

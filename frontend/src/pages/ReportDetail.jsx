@@ -7,6 +7,7 @@ import {
   ReceiptText,
 } from "lucide-react";
 
+import Accordion from "../component/UI/Accordion";
 import Button from "../component/UI/Button";
 import DataTable from "../component/UI/DataTable";
 import EmptyState from "../component/UI/EmptyState";
@@ -140,107 +141,88 @@ function MerchantAccordion({ merchant }) {
   const settlementTotal = sumCurrencyValues(merchant.settlement);
 
   return (
-    <div className="collapse collapse-arrow overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-lowest">
-      <input type="checkbox" />
-
-      <div className="collapse-title px-6 py-5">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="rounded-2xl bg-surface-container-low p-3">
-              <Building2 className="h-5 w-5 text-primary" />
-            </div>
-
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-bold text-on-surface">
-                {merchant.merchantName || "-"}
-              </h3>
-
-              <p className="mt-1 text-sm text-on-surface-variant">
-                MID: {merchant.mid || "-"}
-              </p>
-            </div>
+    <Accordion
+      title={merchant.merchantName || "-"}
+      subtitle={`MID: ${merchant.mid || "-"}`}
+      icon={<Building2 className="h-5 w-5 text-primary" />}
+      meta={
+        <div className="grid grid-cols-2 gap-5 lg:flex lg:items-center lg:gap-10">
+          <div className="text-left lg:text-right">
+            <p className="text-xs uppercase tracking-wide text-on-surface-variant">
+              Transactions
+            </p>
+            <p className="mt-1 text-sm font-bold text-on-surface">
+              {merchant.transactions?.length || 0}
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-5 pr-8 lg:flex lg:items-center lg:gap-10">
-            <div className="text-left lg:text-right">
-              <p className="text-xs uppercase tracking-wide text-on-surface-variant">
-                Transactions
-              </p>
-              <p className="mt-1 text-sm font-bold text-on-surface">
-                {merchant.transactions?.length || 0}
-              </p>
-            </div>
+          <div className="text-left lg:text-right">
+            <p className="text-xs uppercase tracking-wide text-on-surface-variant">
+              Received
+            </p>
+            <p className="mt-1 text-sm font-bold text-on-surface">
+              {formatNumber(receivedTotal)}
+            </p>
+          </div>
 
-            <div className="text-left lg:text-right">
-              <p className="text-xs uppercase tracking-wide text-on-surface-variant">
-                Received
-              </p>
-              <p className="mt-1 text-sm font-bold text-on-surface">
-                {formatNumber(receivedTotal)}
-              </p>
-            </div>
+          <div className="text-left lg:text-right">
+            <p className="text-xs uppercase tracking-wide text-on-surface-variant">
+              Paid
+            </p>
+            <p className="mt-1 text-sm font-bold text-on-surface">
+              {formatNumber(paidTotal)}
+            </p>
+          </div>
 
-            <div className="text-left lg:text-right">
-              <p className="text-xs uppercase tracking-wide text-on-surface-variant">
-                Paid
-              </p>
-              <p className="mt-1 text-sm font-bold text-on-surface">
-                {formatNumber(paidTotal)}
-              </p>
-            </div>
-
-            <div className="text-left lg:text-right">
-              <p className="text-xs uppercase tracking-wide text-on-surface-variant">
-                Settlement
-              </p>
-              <p className="mt-1 text-sm font-bold text-primary">
-                {formatNumber(settlementTotal)}
-              </p>
-            </div>
+          <div className="text-left lg:text-right">
+            <p className="text-xs uppercase tracking-wide text-on-surface-variant">
+              Settlement
+            </p>
+            <p className="mt-1 text-sm font-bold text-primary">
+              {formatNumber(settlementTotal)}
+            </p>
           </div>
         </div>
-      </div>
+      }
+    >
+      <div className="space-y-8 pt-2">
+        <div className="grid gap-5 xl:grid-cols-3">
+          <SummaryCard
+            title="Received Breakdown"
+            icon={CreditCard}
+            data={merchant.received}
+          />
 
-      <div className="collapse-content border-t border-outline-variant/10 bg-surface-lowest px-6 pb-6">
-        <div className="space-y-8 pt-6">
-          <div className="grid gap-5 xl:grid-cols-3">
-            <SummaryCard
-              title="Received Breakdown"
-              icon={CreditCard}
-              data={merchant.received}
-            />
+          <SummaryCard
+            title="Paid Against Processing"
+            icon={Landmark}
+            data={merchant.paidAgainstProcessing}
+          />
 
-            <SummaryCard
-              title="Paid Against Processing"
-              icon={Landmark}
-              data={merchant.paidAgainstProcessing}
-            />
-
-            <SummaryCard
-              title="Settlement Breakdown"
-              icon={ReceiptText}
-              data={merchant.settlement}
-            />
-          </div>
-
-          <DataTable
-            columns={transactionColumns}
-            totalItems={merchant.transactions?.length || 0}
-            isEmpty={!merchant.transactions?.length}
-            emptyTitle="No transactions found"
-            emptyDescription="No transaction data exists for this merchant."
-            showFooter={false}
-          >
-            {(merchant.transactions || []).map((transaction, index) => (
-              <TransactionRow
-                key={`${merchant.mid}-${transaction.paymentDate}-${index}`}
-                row={transaction}
-              />
-            ))}
-          </DataTable>
+          <SummaryCard
+            title="Settlement Breakdown"
+            icon={ReceiptText}
+            data={merchant.settlement}
+          />
         </div>
+
+        <DataTable
+          columns={transactionColumns}
+          totalItems={merchant.transactions?.length || 0}
+          isEmpty={!merchant.transactions?.length}
+          emptyTitle="No transactions found"
+          emptyDescription="No transaction data exists for this merchant."
+          showFooter={false}
+        >
+          {(merchant.transactions || []).map((transaction, index) => (
+            <TransactionRow
+              key={`${merchant.mid}-${transaction.paymentDate}-${index}`}
+              row={transaction}
+            />
+          ))}
+        </DataTable>
       </div>
-    </div>
+    </Accordion>
   );
 }
 
@@ -299,6 +281,7 @@ export default function ReportDetail({ data, onBack }) {
                 onClick={onBack}
                 className=""
               />
+
               <div>
                 <h1 className="mt-5 text-2xl font-extrabold tracking-tight text-on-surface">
                   {data.bank} Detailed Report

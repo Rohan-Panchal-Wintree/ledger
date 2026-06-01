@@ -1,16 +1,10 @@
-import { Building2, MoreVertical, Pencil, Trash2 } from "lucide-react";
-
-import Badge from "../UI/Badge";
+import { Landmark, MoreVertical, Pencil, Trash2 } from "lucide-react";
 
 import { formatDate } from "../../utils/appUtils";
 
-function getStatusVariant(status) {
-  return status?.toLowerCase() === "active" ? "DP" : "secondary";
-}
-
-export default function MerchantRow({
-  merchant,
-  canManageMerchants,
+export default function AcquirerRow({
+  acquirer,
+  canManageAcquirers,
   isDeletePending,
   onEdit,
   onDelete,
@@ -20,33 +14,23 @@ export default function MerchantRow({
       <td className="whitespace-nowrap px-8 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/8">
-            <Building2 className="text-primary" size={16} />
+            <Landmark className="text-primary" size={16} />
           </div>
 
           <div className="min-w-0">
             <span className="block truncate text-sm font-bold text-on-surface">
-              {merchant.merchantName || "-"}
-            </span>
-
-            <span className="mt-1 block text-[11px] font-medium uppercase tracking-wide text-on-surface-variant/75">
-              {merchant.merchantTag || "No tag added"}
+              {acquirer.name || "-"}
             </span>
           </div>
         </div>
       </td>
 
-      <td className="whitespace-nowrap px-8 py-4 text-center">
-        <Badge variant={getStatusVariant(merchant.status)}>
-          {merchant.status || "unknown"}
-        </Badge>
+      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+        {formatDate(acquirer.createdAt)}
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-        {formatDate(merchant.createdAt)}
-      </td>
-
-      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
-        {formatDate(merchant.updatedAt)}
+        {formatDate(acquirer.updatedAt)}
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right">
@@ -54,7 +38,7 @@ export default function MerchantRow({
           <button
             type="button"
             tabIndex={0}
-            disabled={!canManageMerchants}
+            disabled={!canManageAcquirers}
             className="btn btn-ghost btn-circle btn-sm text-on-surface-variant hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
           >
             <MoreVertical size={18} />
@@ -67,8 +51,8 @@ export default function MerchantRow({
             <li>
               <button
                 type="button"
-                onClick={() => onEdit?.(merchant)}
-                disabled={!canManageMerchants}
+                onClick={() => onEdit?.(acquirer)}
+                disabled={!canManageAcquirers}
                 className="flex items-center gap-2 rounded-lg text-sm font-semibold text-on-surface"
               >
                 <Pencil size={15} />
@@ -79,8 +63,8 @@ export default function MerchantRow({
             <li>
               <button
                 type="button"
-                onClick={() => onDelete?.(merchant)}
-                disabled={!canManageMerchants || isDeletePending}
+                onClick={() => onDelete?.(acquirer)}
+                disabled={!canManageAcquirers || isDeletePending}
                 className="flex items-center gap-2 rounded-lg text-sm font-semibold text-error"
               >
                 <Trash2 size={15} />

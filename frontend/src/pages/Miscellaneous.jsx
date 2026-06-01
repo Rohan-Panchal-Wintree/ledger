@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Banknote, FileText, Plus, WalletCards } from "lucide-react";
+import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -9,10 +9,13 @@ import {
   useUpdateMiscellaneousPayment,
 } from "../queries/miscellaneousQueries";
 
+import { useAcquirers } from "../queries/acquirerQueries";
+import { useMerchants } from "../queries/merchantQueries";
+import { usePaymentSheets } from "../queries/sheetsQueries";
+
 import {
   buildMiscellaneousPayload,
   filterMiscellaneousEntries,
-  getMiscellaneousSummary,
   mapMiscellaneousEntryToForm,
   miscellaneousInitialForm,
   validateMiscellaneousForm,
@@ -21,14 +24,18 @@ import {
 import { formatDate, formatNumber, getErrorMessage } from "../utils/appUtils";
 
 import Button from "../component/UI/Button";
+import DeleteModal from "../component/UI/DeleteModal";
 import EmptyState from "../component/UI/EmptyState";
 import Modal from "../component/UI/Modal";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
-import StatCard from "../component/UI/StatCard";
 
 import MiscellaneousEntryForm from "../component/miscellaneous/MiscellaneousEntryForm";
 import MiscellaneousEntryRow from "../component/miscellaneous/MiscellaneousEntryRow";
+
+function getEntryGroupKey(entry) {
+  return entry.paymentSheetDateLabel || formatDate(entry.paymentSheetDate);
+}
 
 export default function Miscellaneous() {
   // Page state
@@ -40,6 +47,21 @@ export default function Miscellaneous() {
 
   // Queries
   const miscellaneousQuery = useMiscellaneousPayments();
+
+  const paymentSheetsQuery = usePaymentSheets({
+    page: 1,
+    limit: 1000,
+  });
+
+  const merchantsQuery = useMerchants({
+    page: 1,
+    limit: 1000,
+  });
+
+  const acquirersQuery = useAcquirers({
+    page: 1,
+    limit: 1000,
+  });
 
   const createMutation = useCreateMiscellaneousPayment();
   const updateMutation = useUpdateMiscellaneousPayment();
@@ -72,17 +94,100 @@ export default function Miscellaneous() {
   }, [entries, searchQuery]);
 
   // Summary
-  const summary = useMemo(() => {
-    return getMiscellaneousSummary(filteredEntries);
+  const paymentSheetOptions = useMemo(() => {
+    return (paymentSheetsQuery.data?.data || [])
+      .filter((sheet) => sheet.fileName)
+      .map((sheet) => ({
+        label: sheet.fileName,
+        value: sheet.fileName,
+        paymentDate: sheet.paymentDate || "",
+      }));
+  }, [paymentSheetsQuery.data]);
+
+  const merchantOptions = useMemo(() => {
+    return (merchantsQuery.data?.items || [])
+      .filter((merchant) => merchant.merchantName)
+      .map((merchant) => ({
+        label: merchant.merchantName,
+        value: merchant.merchantName,
+        mid: merchant.mid,
+      }));
+  }, [merchantsQuery.data]);
+
+  const acquirerOptions = useMemo(() => {
+    return (acquirersQuery.data?.items || [])
+      .filter((acquirer) => acquirer.name)
+      .map((acquirer) => ({
+        label: acquirer.name,
+        value: acquirer.name,
+      }));
+  }, [acquirersQuery.data]);
+
+  const groupedEntries = useMemo(() => {
+    return filteredEntries.reduce((groups, entry) => {
+      const groupKey = getEntryGroupKey(entry);
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+
+      groups[groupKey].push(entry);
+
+      return groups;
+    }, {});
   }, [filteredEntries]);
 
   // Update form field
-  const handleFormChange = useCallback((field, value) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  }, []);
+  const handleFormChange = useCallback(
+    (field, value) => {
+      setForm((prev) => {
+        if (field === "entryType") {
+          return {
+            ...prev,
+            entryType: value,
+            ...(value === "agent"
+              ? {
+                  merchantName: "",
+                  mid: "",
+                  bankLabel: "",
+                }
+              : {}),
+          };
+        }
+
+        if (field === "paymentSheetDateLabel") {
+          const selectedSheet = paymentSheetOptions.find(
+            (option) => option.value === value,
+          );
+
+          return {
+            ...prev,
+            paymentSheetDateLabel: value,
+            paymentSheetDate:
+              selectedSheet?.paymentDate || prev.paymentSheetDate,
+          };
+        }
+
+        if (field === "merchantName") {
+          const selectedMerchant = merchantOptions.find(
+            (option) => option.value === value,
+          );
+
+          return {
+            ...prev,
+            merchantName: value,
+            mid: selectedMerchant?.mid || "",
+          };
+        }
+
+        return {
+          ...prev,
+          [field]: value,
+        };
+      });
+    },
+    [paymentSheetOptions, merchantOptions],
+  );
 
   // Open create modal
   const openCreateModal = useCallback(() => {
@@ -167,30 +272,6 @@ export default function Miscellaneous() {
 
   return (
     <div className="w-full bg-background text-on-background">
-      {/* Summary cards */}
-      <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <StatCard
-          label="Total Entries"
-          value={summary.totalEntries}
-          helper="Miscellaneous payment records"
-          icon={FileText}
-        />
-
-        <StatCard
-          label="Processing Total"
-          value={formatNumber(summary.totalAmountPaid)}
-          helper="Total processing amount"
-          icon={WalletCards}
-        />
-
-        <StatCard
-          label="Settlement Total"
-          value={formatNumber(summary.totalSettlementAmount)}
-          helper="Total actual paid amount"
-          icon={Banknote}
-        />
-      </section>
-
       {/* Toolbar */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -217,7 +298,6 @@ export default function Miscellaneous() {
             size="md"
             leftIcon={<Plus size={16} />}
             onClick={openCreateModal}
-            className="rounded-full"
           >
             Add Entry
           </Button>
@@ -235,21 +315,44 @@ export default function Miscellaneous() {
           description="Add a new entry or adjust your search."
         />
       ) : (
-        <section className="flex flex-col">
-          {filteredEntries.map((entry, index) => (
-            <MiscellaneousEntryRow
-              key={entry._id}
-              entry={entry}
-              index={index}
-              totalEntries={filteredEntries.length}
-              formatNumber={formatNumber}
-              formatDate={formatDate}
-              onEdit={openEditModal}
-              onDelete={requestDelete}
-              isDeleting={
-                deleteMutation.isPending && deleteTarget?._id === entry._id
-              }
-            />
+        <section className="space-y-5">
+          {Object.entries(groupedEntries).map(([groupLabel, groupEntries]) => (
+            <div
+              key={groupLabel}
+              className="overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-container-lowest"
+            >
+              <div className="flex items-center justify-between border-b border-outline-variant/10 px-6 py-4">
+                <div>
+                  <h3 className="text-sm font-bold text-on-surface">
+                    {groupLabel}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    {groupEntries.length}{" "}
+                    {groupEntries.length === 1 ? "entry" : "entries"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col">
+                {groupEntries.map((entry, index) => (
+                  <MiscellaneousEntryRow
+                    key={entry._id}
+                    entry={entry}
+                    index={index}
+                    totalEntries={groupEntries.length}
+                    formatNumber={formatNumber}
+                    formatDate={formatDate}
+                    onEdit={openEditModal}
+                    onDelete={requestDelete}
+                    isDeleting={
+                      deleteMutation.isPending &&
+                      deleteTarget?._id === entry._id
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </section>
       )}
@@ -261,6 +364,7 @@ export default function Miscellaneous() {
         title={
           editingEntry ? "Edit Miscellaneous Entry" : "Add Miscellaneous Entry"
         }
+        description="Enter the miscellaneous payment details and settlement values."
         onClose={closeModal}
         footer={
           <>
@@ -268,53 +372,34 @@ export default function Miscellaneous() {
               variant="secondary"
               onClick={closeModal}
               disabled={isSaving}
-              className="rounded-full"
             >
               Cancel
             </Button>
 
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              loading={isSaving}
-              className="rounded-full"
-            >
+            <Button variant="primary" onClick={handleSubmit} loading={isSaving}>
               {editingEntry ? "Update" : "Create"}
             </Button>
           </>
         }
       >
-        <MiscellaneousEntryForm form={form} onChange={handleFormChange} />
+        <MiscellaneousEntryForm
+          form={form}
+          paymentSheetOptions={paymentSheetOptions}
+          merchantOptions={merchantOptions}
+          acquirerOptions={acquirerOptions}
+          onChange={handleFormChange}
+        />
       </Modal>
 
       {/* Delete modal */}
-      <Modal
+      <DeleteModal
         open={Boolean(deleteTarget)}
-        size="sm"
-        onClose={cancelDelete}
         title="Delete Entry?"
         description="This action cannot be undone. The miscellaneous entry will be permanently removed."
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={cancelDelete}
-              disabled={deleteMutation.isPending}
-              className="rounded-full"
-            >
-              Cancel
-            </Button>
-
-            <Button
-              variant="danger"
-              onClick={confirmDelete}
-              loading={deleteMutation.isPending}
-              className="rounded-full"
-            >
-              Delete
-            </Button>
-          </>
-        }
+        confirmLabel="Delete"
+        isLoading={deleteMutation.isPending}
+        onClose={cancelDelete}
+        onConfirm={confirmDelete}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import { createOtp, verifyOtp } from "../utils/otp.js";
 import {
   createAccessToken,
   createRefreshToken,
+  verifyAccessToken,
   verifyRefreshToken,
 } from "../utils/token.js";
 import {
@@ -168,6 +169,7 @@ export const verifyOtpLogin = async (req, res) => {
   return res.json({
     success: true,
     user: serializeUser(user),
+    sessionId: session.sessionId,
     csrfToken: session.csrfToken,
     responseKey,
   });
@@ -234,21 +236,98 @@ export const refreshToken = async (req, res) => {
   return res.json({
     success: true,
     user: serializeUser(user),
+    sessionId: session.sessionId,
     csrfToken: session.csrfToken,
     responseKey,
   });
 };
 
-export const logout = async (req, res) => {
-  try {
-    const refreshTokenValue = req.cookies?.refreshToken;
+const getRequestSessionId = (req) => {
+  return (
+    req.body?.sessionId ||
+    req.headers["x-session-id"] ||
+    req.headers["x-sessionid"] ||
+    null
+  );
+};
 
-    if (refreshTokenValue) {
+const getLogoutSessionTarget = async (req) => {
+  const requestedSessionId = getRequestSessionId(req);
+
+  if (requestedSessionId) {
+    const session = await getSession(requestedSessionId);
+
+    if (session?.userId) {
+      return {
+        userId: session.userId,
+        sessionId: requestedSessionId,
+      };
+    }
+  }
+
+  if (req.user?._id && req.session?.sessionId) {
+    return {
+      userId: req.user._id.toString(),
+      sessionId: req.session.sessionId,
+    };
+  }
+
+  const refreshTokenValue = req.cookies?.refreshToken;
+
+  if (refreshTokenValue) {
+    try {
       const payload = verifyRefreshToken(refreshTokenValue);
 
-      await deleteUserSession(payload.sub, payload.sid, "logout");
+      if (payload?.sub && payload?.sid) {
+        return {
+          userId: payload.sub,
+          sessionId: payload.sid,
+        };
+      }
+    } catch (error) {
+      console.error("Logout refresh token verification failed:", error.message);
+    }
+  }
+
+  const accessTokenValue = req.cookies?.accessToken;
+
+  if (accessTokenValue) {
+    try {
+      const payload = verifyAccessToken(accessTokenValue);
+
+      if (payload?.sub && payload?.sid) {
+        return {
+          userId: payload.sub,
+          sessionId: payload.sid,
+        };
+      }
+    } catch (error) {
+      console.error("Logout access token verification failed:", error.message);
+    }
+  }
+
+  return null;
+};
+
+export const logout = async (req, res) => {
+  let deletedSessionId = null;
+
+  try {
+    const sessionTarget = await getLogoutSessionTarget(req);
+
+    if (sessionTarget?.userId && sessionTarget?.sessionId) {
+      await deleteUserSession(
+        sessionTarget.userId,
+        sessionTarget.sessionId,
+        "logout",
+      );
+
+      deletedSessionId = sessionTarget.sessionId;
+    } else {
+      console.warn("Logout completed without a session target.");
     }
   } catch (error) {
+    console.error("Failed to delete logout session:", error);
   } finally {
     clearAuthCookies(res);
   }
@@ -256,5 +335,6 @@ export const logout = async (req, res) => {
   return res.json({
     success: true,
     message: "Logged out successfully",
+    deletedSessionId,
   });
 };

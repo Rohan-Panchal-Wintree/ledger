@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+
 import EmptyState from "./EmptyState";
 import Spinner from "./Spinner";
 
@@ -24,10 +25,13 @@ export default function DataTable({
   columns = [],
   children,
   isLoading = false,
+  isFetching = false,
   isEmpty = false,
   emptyTitle = "No data found.",
   emptyDescription = "",
+  emptyIcon,
   page = 1,
+  pageSize,
   totalItems = 0,
   onPageChange,
   onRowsPerPageChange,
@@ -35,10 +39,15 @@ export default function DataTable({
   itemLabel = "records",
   className = "",
 }) {
-  const [rowsPerPage, setRowsPerPage] = useState(readStoredRowsPerPage);
+  const [internalRowsPerPage, setInternalRowsPerPage] = useState(
+    readStoredRowsPerPage,
+  );
+
+  const rowsPerPage = pageSize || internalRowsPerPage;
 
   const totalPages = Math.max(1, Math.ceil(totalItems / rowsPerPage));
   const safePage = Math.min(page, totalPages);
+
   const showingFrom = totalItems > 0 ? (safePage - 1) * rowsPerPage + 1 : 0;
   const showingTo = Math.min(safePage * rowsPerPage, totalItems);
 
@@ -46,13 +55,14 @@ export default function DataTable({
   const isPreviousDisabled = !hasMultiplePages || safePage <= 1;
   const isNextDisabled = !hasMultiplePages || safePage >= totalPages;
 
-  useEffect(() => {
-    onRowsPerPageChange?.(rowsPerPage);
-  }, [rowsPerPage, onRowsPerPageChange]);
-
   const handleRowsPerPageChange = (value) => {
-    setRowsPerPage(value);
-    window.localStorage.setItem(TABLE_ROWS_STORAGE_KEY, String(value));
+    setInternalRowsPerPage(value);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TABLE_ROWS_STORAGE_KEY, String(value));
+    }
+
+    onRowsPerPageChange?.(value);
     onPageChange?.(1);
   };
 
@@ -75,8 +85,11 @@ export default function DataTable({
               </p>
             ) : null}
           </div>
+
+          {isFetching && !isLoading ? <Spinner type="sm" /> : null}
         </div>
       ) : null}
+
       <div className="overflow-x-auto scrollbar-hide">
         <table className="w-full border-collapse text-left">
           <thead className="bg-surface-container-low/50">
@@ -111,6 +124,7 @@ export default function DataTable({
                   <EmptyState
                     title={emptyTitle}
                     description={emptyDescription}
+                    icon={emptyIcon}
                     compact
                   />
                 </td>
@@ -123,8 +137,8 @@ export default function DataTable({
       </div>
 
       {showFooter ? (
-        <div className="flex items-center justify-between bg-surface-container-low/30 px-8 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 bg-surface-container-low/30 px-8 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div>
               Showing {showingFrom > 0 ? `${showingFrom}-${showingTo}` : "0"} of{" "}
               {totalItems} {itemLabel}

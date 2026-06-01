@@ -1,6 +1,6 @@
 import React from "react";
 import { UploadCloud, FileText, X, Bolt, Activity, Upload } from "lucide-react";
-import Spinner from "./UI/Spinner.jsx";
+import Spinner from "../UI/Spinner.jsx";
 
 export default function UploadFile({
   mode = "empty",

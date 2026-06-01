@@ -1,6 +1,6 @@
-import { ArrowRight, Landmark, MoreVertical } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowRight, Landmark } from "lucide-react";
 
+import Accordion from "../UI/Accordion";
 import Button from "../UI/Button";
 import EmptyState from "../UI/EmptyState";
 
@@ -172,98 +172,59 @@ function KpiStrip({ entry }) {
 
 function AcquirerCard({ entry, onViewFullReport }) {
   return (
-    <div className="collapse-arrow collapse overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
-      <input type="checkbox" />
+    <Accordion
+      title={entry.acquirer}
+      subtitle={`Period: ${entry.periodLabel}`}
+      icon={<Landmark className="h-5 w-5 text-primary" />}
+      meta={
+        <div className="text-right">
+          <p className="mb-0.5 text-[10px] uppercase tracking-widest text-on-surface-variant">
+            Settled
+          </p>
 
-      <div className="collapse-title p-5 lg:p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/10 bg-primary/5">
-              <Landmark className="h-5 w-5 text-primary" />
-            </div>
-
-            <div>
-              <h3 className="whitespace-nowrap text-base font-semibold text-on-surface">
-                {entry.acquirer}
-              </h3>
-
-              <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                <span className="text-xs text-on-surface-variant">
-                  Period: {entry.periodLabel}
-                </span>
-
-                <span className="rounded-full bg-primary/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-                  {entry.merchants.length} Active
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="hidden items-center gap-8 pr-8 md:flex">
-            <div className="text-right">
-              <p className="mb-0.5 text-[10px] uppercase tracking-widest text-on-surface-variant">
-                Settled
-              </p>
-
-              <p className="whitespace-nowrap text-sm font-semibold tabular-nums text-on-surface">
-                {formatNumber(entry.totalSettlement)}
-              </p>
-            </div>
-          </div>
+          <p className="whitespace-nowrap text-sm font-semibold tabular-nums text-on-surface">
+            {formatNumber(entry.totalSettlement)}
+          </p>
         </div>
-      </div>
+      }
+    >
+      <div className="space-y-6">
+        <KpiStrip entry={entry} />
 
-      <div className="collapse-content px-5 pb-5 lg:px-6 lg:pb-6">
         <div className="space-y-6">
-          <KpiStrip entry={entry} />
+          <div className="space-y-4">
+            <h4 className="px-1 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Top Currency Distribution
+            </h4>
 
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <h4 className="px-1 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                Top Currency Distribution
-              </h4>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <CurrencyPanel
-                  title="Received"
-                  values={entry.received}
-                  tone="primary"
-                />
-
-                <CurrencyPanel
-                  title="Paid"
-                  values={entry.paidAgainstProcessing}
-                  tone="secondary"
-                />
-
-                <CurrencyPanel
-                  title="Settlement"
-                  values={entry.settlement}
-                  tone="neutral"
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <CurrencyPanel title="Received" values={entry.received} />
+              <CurrencyPanel
+                title="Paid"
+                values={entry.paidAgainstProcessing}
+              />
+              <CurrencyPanel title="Settlement" values={entry.settlement} />
             </div>
-
-            <MerchantPreview
-              merchants={entry.merchants}
-              acquirer={entry.acquirer}
-            />
           </div>
 
-          <div className="flex justify-end border-t border-outline-variant/10 pt-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              rounded="full"
-              rightIcon={<ArrowRight className="h-4 w-4" />}
-              onClick={() => onViewFullReport(entry.originalBankData)}
-            >
-              View full report
-            </Button>
-          </div>
+          <MerchantPreview
+            merchants={entry.merchants}
+            acquirer={entry.acquirer}
+          />
+        </div>
+
+        <div className="flex justify-end border-t border-outline-variant/10 pt-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            rightIcon={<ArrowRight className="h-4 w-4" />}
+            onClick={() => onViewFullReport(entry.originalBankData)}
+          >
+            View full report
+          </Button>
         </div>
       </div>
-    </div>
+    </Accordion>
   );
 }
 

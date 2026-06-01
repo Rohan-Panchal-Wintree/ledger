@@ -7,146 +7,26 @@ import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
 import Tabs from "../component/UI/Tabs";
+import PageHeader from "../component/UI/PageHeader";
 
 import PaymentSheetRow from "../component/sheets/PaymentSheetRow";
 import WiresheetRow from "../component/sheets/WiresheetRow";
 
 import { usePaymentSheets, useWiresheets } from "../queries/sheetsQueries";
 
-import { formatDate, getErrorMessage } from "../utils/appUtils";
-
-const DEFAULT_META = {
-  total: 0,
-  page: 1,
-  limit: 20,
-  totalPages: 0,
-};
-
-const EMPTY_DATE_RANGE = {
-  startDate: "",
-  endDate: "",
-};
-
-const SHEET_TABS = [
-  {
-    label: "Wiresheet",
-    value: "wiresheet",
-    icon: Landmark,
-  },
-  {
-    label: "Payment Sheet",
-    value: "payment-sheet",
-    icon: CreditCard,
-  },
-];
-
-const wiresheetColumns = [
-  { key: "wiresheetName", label: "Wiresheet Name" },
-  { key: "acquirerName", label: "Acquirer" },
-  { key: "period", label: "Period" },
-  { key: "totalPayable", label: "Payable", align: "right" },
-  { key: "totalPaid", label: "Paid", align: "right" },
-  { key: "totalBalance", label: "Balance", align: "right" },
-  { key: "status", label: "Status" },
-  { key: "uploadedAt", label: "Uploaded At" },
-  { key: "uploadedBy", label: "Uploaded By" },
-];
-
-const paymentSheetColumns = [
-  { key: "fileName", label: "File Name" },
-  { key: "paymentDate", label: "Payment Date" },
-  { key: "successfulPayments", label: "Successful", align: "right" },
-  { key: "invalidCount", label: "Invalid", align: "right" },
-  { key: "unmatchedCount", label: "Unmatched", align: "right" },
-  { key: "totalRows", label: "Total Rows", align: "right" },
-  { key: "totalPaid", label: "Total Paid", align: "right" },
-  { key: "totalSettlement", label: "Settlement", align: "right" },
-  { key: "uploadedAt", label: "Uploaded At" },
-  { key: "uploadedBy", label: "Uploaded By" },
-];
-
-const getDefaultPageSize = () => {
-  if (typeof window === "undefined") return 20;
-
-  const storedValue = Number(
-    window.localStorage.getItem("global-table-rows-per-page"),
-  );
-
-  return [10, 20, 25, 50, 100].includes(storedValue) ? storedValue : 20;
-};
-
-const normalizeSearchText = (value) =>
-  String(value || "")
-    .toLowerCase()
-    .trim();
-
-const toApiDate = (value) => {
-  if (!value) return undefined;
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-
-  return date.toISOString().slice(0, 10);
-};
-
-const filterWiresheetsBySearch = (items, searchTerm) => {
-  const searchValue = normalizeSearchText(searchTerm);
-
-  if (!searchValue) return items;
-
-  return items.filter((item) => {
-    const searchableValues = [
-      item.wiresheetName,
-      item.acquirerName,
-      item.status,
-      formatDate(item.startDate),
-      formatDate(item.endDate),
-      formatDate(item.uploadedAt),
-      item.uploadedBy?.name,
-      item.uploadedBy?.email,
-    ];
-
-    return searchableValues
-      .map(normalizeSearchText)
-      .some((value) => value.includes(searchValue));
-  });
-};
-
-const filterPaymentSheetsBySearch = (items, searchTerm) => {
-  const searchValue = normalizeSearchText(searchTerm);
-
-  if (!searchValue) return items;
-
-  return items.filter((item) => {
-    const searchableValues = [
-      item.fileName,
-      item.paymentDate,
-      formatDate(item.paymentDate),
-      formatDate(item.uploadedAt),
-      item.uploadedBy?.name,
-      item.uploadedBy?.email,
-    ];
-
-    return searchableValues
-      .map(normalizeSearchText)
-      .some((value) => value.includes(searchValue));
-  });
-};
-
-const getStatusVariant = (status) => {
-  if (status === "settled") return "DP";
-  if (status === "partially_paid") return "secondary";
-  if (status === "pending") return "outline";
-
-  return "default";
-};
+import { getErrorMessage } from "../utils/appUtils";
+import {
+  DEFAULT_SHEETS_META,
+  EMPTY_DATE_RANGE,
+  SHEET_TABS,
+  filterPaymentSheetsBySearch,
+  filterWiresheetsBySearch,
+  getDefaultSheetsPageSize,
+  getStatusVariant,
+  paymentSheetColumns,
+  toApiDate,
+  wiresheetColumns,
+} from "../utils/sheetsUtils";
 
 export default function Sheets() {
   const [activeTab, setActiveTab] = useState("wiresheet");
@@ -161,7 +41,7 @@ export default function Sheets() {
   const [appliedDateRange, setAppliedDateRange] = useState(EMPTY_DATE_RANGE);
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(getDefaultPageSize);
+  const [limit, setLimit] = useState(getDefaultSheetsPageSize);
 
   const isWiresheetTab = activeTab === "wiresheet";
 
@@ -202,10 +82,10 @@ export default function Sheets() {
   const activeQuery = isWiresheetTab ? wiresheetsQuery : paymentSheetsQuery;
 
   const wiresheets = wiresheetsQuery.data?.data || [];
-  const wiresheetMeta = wiresheetsQuery.data?.meta || DEFAULT_META;
+  const wiresheetMeta = wiresheetsQuery.data?.meta || DEFAULT_SHEETS_META;
 
   const paymentSheets = paymentSheetsQuery.data?.data || [];
-  const paymentSheetMeta = paymentSheetsQuery.data?.meta || DEFAULT_META;
+  const paymentSheetMeta = paymentSheetsQuery.data?.meta || DEFAULT_SHEETS_META;
 
   const filteredWiresheets = useMemo(
     () => filterWiresheetsBySearch(wiresheets, searchTerm),
@@ -264,7 +144,14 @@ export default function Sheets() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchTerm, appliedDate, appliedDateRange, dateMode, limit]);
+  }, [
+    activeTab,
+    searchTerm,
+    appliedDate,
+    appliedDateRange.startDate,
+    appliedDateRange.endDate,
+    dateMode,
+  ]);
 
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
@@ -319,6 +206,14 @@ export default function Sheets() {
     handleClearDateFilter();
   };
 
+  console.log({
+    activeTab,
+    page,
+    limit,
+    queryFilters,
+    activeMeta,
+  });
+
   const renderDatePicker = () => {
     const isRangeDatePicker = isWiresheetTab || dateMode === "range";
 
@@ -360,7 +255,6 @@ export default function Sheets() {
       <PaymentSheetRow
         key={`${row.fileName}-${row.paymentDate}-${row.uploadedAt}-${index}`}
         row={row}
-        getStatusVariant={getStatusVariant}
       />
     ));
   };
@@ -375,18 +269,11 @@ export default function Sheets() {
 
   return (
     <div className="w-full bg-background text-on-background">
-      <div className="mb-6 rounded-2xl bg-surface-lowest px-5 py-5">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-on-surface">
-            Sheets
-          </h1>
-
-          <p className="mt-1 text-sm text-on-surface-variant">
-            Review uploaded wiresheets and payment sheets with search, upload
-            date filters, and pagination.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Sheets"
+        description="Review uploaded wiresheets and payment sheets with search, date filters, and pagination."
+        className="mb-6"
+      />
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <Tabs

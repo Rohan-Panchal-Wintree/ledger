@@ -1,5 +1,3 @@
-import { CheckCircle2, AlertTriangle, CircleHelp } from "lucide-react";
-
 import { formatDate, formatNumber } from "../../utils/appUtils";
 
 export default function PaymentSheetRow({ row }) {
@@ -23,19 +21,19 @@ export default function PaymentSheetRow({ row }) {
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm">
         <span className="inline-flex items-center justify-end gap-1.5 rounded-full bg-green-500/10 px-3 py-1.5 font-bold text-green-600">
-          {row.successfulPayments}
+          {row.successfulPayments ?? 0}
         </span>
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm">
         <span className="inline-flex items-center justify-end gap-1.5 rounded-full bg-red-400/10 px-3 py-1.5 font-bold text-red-600">
-          {row.invalidCount}
+          {row.invalidCount ?? 0}
         </span>
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm">
         <span className="inline-flex items-center justify-end gap-1.5 rounded-full bg-yellow-400/10 px-3 py-1.5 font-bold text-yellow-600">
-          {row.unmatchedCount}
+          {row.unmatchedCount ?? 0}
         </span>
       </td>
 

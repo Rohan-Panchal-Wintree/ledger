@@ -55,12 +55,7 @@ router.post(
   asyncHandler(refreshToken),
 );
 
-router.post(
-  "/logout",
-  csrfMiddleware,
-  validateRequest(refreshSchema, "cookies"),
-  asyncHandler(logout),
-);
+router.post("/logout", csrfMiddleware, asyncHandler(logout));
 
 // ROUTES - END
 

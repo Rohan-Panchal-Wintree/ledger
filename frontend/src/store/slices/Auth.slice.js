@@ -36,6 +36,7 @@ export const verifyOtp = createAsyncThunk(
       });
 
       const user = response.data?.user;
+      const sessionId = response.data?.sessionId;
       const csrfToken = response.data?.csrfToken;
       const responseKey = response.data?.responseKey;
 
@@ -45,6 +46,7 @@ export const verifyOtp = createAsyncThunk(
 
       const encryptedAuth = await encryptData({
         user,
+        sessionId,
         csrfToken,
         responseKey,
       });
@@ -53,6 +55,7 @@ export const verifyOtp = createAsyncThunk(
 
       return {
         user,
+        sessionId,
       };
     } catch (error) {
       return rejectWithValue(
@@ -76,6 +79,7 @@ export const getUserFromStorage = createAsyncThunk(
 
       return {
         user: auth?.user || null,
+        sessionId: auth?.sessionId || null,
       };
     } catch (error) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -89,9 +93,23 @@ export const getUserFromStorage = createAsyncThunk(
 
 export const logoutUser = createAsyncThunk(
   "auth/logoutUser",
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      await authApi.post("/logout");
+      const sessionId = getState().auth.sessionId;
+
+      await authApi.post(
+        "/logout",
+        {
+          sessionId,
+        },
+        {
+          headers: sessionId
+            ? {
+                "x-session-id": sessionId,
+              }
+            : undefined,
+        },
+      );
 
       localStorage.removeItem(AUTH_STORAGE_KEY);
 
@@ -108,6 +126,7 @@ export const logoutUser = createAsyncThunk(
 
 const initialState = {
   currentUser: null,
+  sessionId: null,
   loading: false,
   error: null,
   otpSent: false,
@@ -134,6 +153,7 @@ const authSlice = createSlice({
 
     clearAuthState: (state) => {
       state.currentUser = null;
+      state.sessionId = null;
       state.loading = false;
       state.error = null;
       state.otpSent = false;
@@ -168,6 +188,7 @@ const authSlice = createSlice({
       .addCase(verifyOtp.fulfilled, (state, action) => {
         state.loading = false;
         state.currentUser = action.payload.user;
+        state.sessionId = action.payload.sessionId || null;
         state.error = null;
         state.otpSent = false;
         state.otpEmail = null;
@@ -183,10 +204,12 @@ const authSlice = createSlice({
       .addCase(getUserFromStorage.fulfilled, (state, action) => {
         state.loading = false;
         state.currentUser = action.payload?.user || null;
+        state.sessionId = action.payload?.sessionId || null;
       })
       .addCase(getUserFromStorage.rejected, (state, action) => {
         state.loading = false;
         state.currentUser = null;
+        state.sessionId = null;
         state.error = action.payload;
       })
 
@@ -196,6 +219,7 @@ const authSlice = createSlice({
       })
       .addCase(logoutUser.fulfilled, (state) => {
         state.currentUser = null;
+        state.sessionId = null;
         state.loading = false;
         state.error = null;
         state.otpSent = false;
@@ -203,6 +227,7 @@ const authSlice = createSlice({
       })
       .addCase(logoutUser.rejected, (state, action) => {
         state.currentUser = null;
+        state.sessionId = null;
         state.loading = false;
         state.error = action.payload || "Logout failed";
         state.otpSent = false;
@@ -217,6 +242,7 @@ export const { setCurrentUser, clearAuthError, resetOtpState, clearAuthState } =
 export default authSlice.reducer;
 
 export const selectCurrentUser = (state) => state.auth.currentUser;
+export const selectSessionId = (state) => state.auth.sessionId;
 export const selectIsAuthenticated = (state) =>
   Boolean(state.auth.currentUser?.email);
 export const selectAuthLoading = (state) => state.auth.loading;

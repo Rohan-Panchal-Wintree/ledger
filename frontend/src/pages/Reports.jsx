@@ -1,17 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  FileSpreadsheet,
+  FileText,
+} from "lucide-react";
 
+import Badge from "../component/UI/Badge";
 import Button from "../component/UI/Button";
-import DatePicker from "../component/UI/DatePicker";
+import PageHeader from "../component/UI/PageHeader";
 import Spinner from "../component/UI/Spinner";
 
 import AcquirerBreakdownSection from "../component/reports/AcquirerBreakdownSection";
+import ReportDateSelector from "../component/reports/ReportDateSelector";
 import ReportDetail from "./ReportDetail";
 import ReportSidebar from "../component/reports/ReportSidebar";
 import ReportSummaryCards from "../component/reports/ReportSummaryCards";
 
-import { usePaymentDayReport, useReportDates } from "../queries/reportQueries";
+import {
+  exportBankReportsExcel,
+  exportBankReportsPdf,
+  usePaymentDayReport,
+} from "../queries/reportQueries";
 
 import { getErrorMessage } from "../utils/appUtils";
 
@@ -35,15 +47,27 @@ function getTransactionCount(banks = []) {
   );
 }
 
+function downloadBlobFile(blob, filename) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+}
+
 export default function Reports() {
-  const [selectedDate, setSelectedDate] = useState("");
   const [appliedDate, setAppliedDate] = useState("");
   const [selectedBankReport, setSelectedBankReport] = useState(null);
+  const [downloadingType, setDownloadingType] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
   const reportParams = appliedDate ? { paymentDate: appliedDate } : {};
 
-  const reportDatesQuery = useReportDates();
   const paymentDayReportQuery = usePaymentDayReport(reportParams);
 
   const paymentDayReport = paymentDayReportQuery.data || {};
@@ -53,126 +77,141 @@ export default function Reports() {
   const loading = paymentDayReportQuery.isLoading;
   const isFetching = paymentDayReportQuery.isFetching;
 
-  const reportDateButtons = (reportDatesQuery.data || [])
-    .filter((date) => {
-      const parsedDate = new Date(date);
-      return !Number.isNaN(parsedDate.getTime()) && date <= today;
-    })
-    .sort((a, b) => new Date(b) - new Date(a))
-    .slice(0, 5);
-
-  const sortedReportDates = [...reportDateButtons].sort(
-    (a, b) => new Date(a) - new Date(b),
-  );
-
-  const earliestReportDate = sortedReportDates[0];
-  const latestReportDate = sortedReportDates[sortedReportDates.length - 1];
-
-  const reportPeriodLabel = appliedDate
-    ? new Date(appliedDate).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-    : earliestReportDate && latestReportDate
-      ? `${new Date(earliestReportDate).toLocaleDateString("en-GB", {
+  const reportViewData = useMemo(() => {
+    const reportPeriodLabel = appliedDate
+      ? new Date(appliedDate).toLocaleDateString("en-GB", {
           day: "2-digit",
           month: "short",
           year: "numeric",
-        })} → ${new Date(latestReportDate).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })}`
-      : "No period available";
+        })
+      : "All available reports";
 
-  const totalReceivedAllCurrencies =
-    reportSummary.totalReceived || sumObjectValues(reportSummary.received);
+    const receivedBreakdownByAcquirer = bankReports
+      .map((bank) => ({
+        originalBankData: bank,
+        acquirer: bank.bank || "Unknown Bank",
+        periodLabel: reportPeriodLabel,
 
-  const receivedBreakdownByAcquirer = bankReports
-    .map((bank) => ({
-      originalBankData: bank,
-      acquirer: bank.bank || "Unknown Bank",
-      periodLabel: reportPeriodLabel,
+        received: bank.summary?.received || {},
+        paidAgainstProcessing: bank.summary?.paidAgainstProcessing || {},
+        settlement: bank.summary?.settlement || {},
+        miscellaneous: bank.summary?.miscellaneous || {},
 
-      received: bank.summary?.received || {},
-      paidAgainstProcessing: bank.summary?.paidAgainstProcessing || {},
-      settlement: bank.summary?.settlement || {},
-      miscellaneous: bank.summary?.miscellaneous || {},
+        totalReceived: sumObjectValues(bank.summary?.received),
+        totalPaidAgainstProcessing: sumObjectValues(
+          bank.summary?.paidAgainstProcessing,
+        ),
+        totalSettlement: sumObjectValues(bank.summary?.settlement),
 
-      totalReceived: sumObjectValues(bank.summary?.received),
-      totalPaidAgainstProcessing: sumObjectValues(
-        bank.summary?.paidAgainstProcessing,
-      ),
-      totalSettlement: sumObjectValues(bank.summary?.settlement),
+        merchants: bank.merchants || [],
+      }))
+      .sort((a, b) => b.totalReceived - a.totalReceived);
 
-      merchants: bank.merchants || [],
-    }))
-    .sort((a, b) => b.totalReceived - a.totalReceived);
+    const totalTransactionCount = getTransactionCount(bankReports);
 
-  const totalTransactionCount = getTransactionCount(bankReports);
-  const statusCounts = reportSummary.statusCounts || {};
+    const statusCounts = reportSummary.statusCounts;
 
-  const statusBreakdownItems = [
-    {
-      label: "Completed",
-      value: statusCounts.settled || 0,
-      icon: CheckCircle2,
-      dotClass: "bg-success",
-      iconClass: "text-success",
-    },
-    {
-      label: "Partially Paid",
-      value: statusCounts.partially_paid || 0,
-      icon: AlertTriangle,
-      dotClass: "bg-warning",
-      iconClass: "text-warning",
-    },
-    {
-      label: "Pending",
-      value: statusCounts.pending || 0,
-      icon: Clock3,
-      dotClass: "bg-info",
-      iconClass: "text-info",
-    },
-  ];
+    const statusBreakdownItems = statusCounts
+      ? [
+          {
+            label: "Completed",
+            value: statusCounts.settled || 0,
+            icon: CheckCircle2,
+            dotClass: "bg-success",
+            iconClass: "text-success",
+          },
+          {
+            label: "Partially Paid",
+            value: statusCounts.partially_paid || 0,
+            icon: AlertTriangle,
+            dotClass: "bg-warning",
+            iconClass: "text-warning",
+          },
+          {
+            label: "Pending",
+            value: statusCounts.pending || 0,
+            icon: Clock3,
+            dotClass: "bg-info",
+            iconClass: "text-info",
+          },
+        ]
+      : [];
 
-  const currencyBreakdownItems = Object.entries(reportSummary.received || {})
-    .map(([currency, amount]) => ({
-      currency,
-      amount: Number(amount) || 0,
-    }))
-    .filter((item) => item.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
+    const currencyBreakdownItems = Object.entries(reportSummary.received || {})
+      .map(([currency, amount]) => ({
+        currency,
+        amount: Number(amount) || 0,
+      }))
+      .filter((item) => item.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
 
-  const highestCurrencyAmount = currencyBreakdownItems[0]?.amount || 0;
+    const highestCurrencyAmount = currencyBreakdownItems[0]?.amount || 0;
 
-  const handleReportDateClick = (date) => {
-    setSelectedDate(date);
+    const totalReceivedAllCurrencies = Number(reportSummary.totalReceived || 0);
+
+    return {
+      receivedBreakdownByAcquirer,
+      totalTransactionCount,
+      statusBreakdownItems,
+      currencyBreakdownItems,
+      highestCurrencyAmount,
+      totalReceivedAllCurrencies,
+    };
+  }, [appliedDate, bankReports, reportSummary]);
+
+  const {
+    receivedBreakdownByAcquirer,
+    totalTransactionCount,
+    statusBreakdownItems,
+    currencyBreakdownItems,
+    highestCurrencyAmount,
+    totalReceivedAllCurrencies,
+  } = reportViewData;
+
+  const handleApplyReportDate = (date) => {
     setAppliedDate(date);
     setSelectedBankReport(null);
   };
 
-  const handleGetReport = () => {
-    if (!selectedDate) return;
+  const getExportParams = () => ({
+    ...(appliedDate ? { paymentDate: appliedDate } : {}),
+  });
 
-    setAppliedDate(selectedDate);
-    setSelectedBankReport(null);
+  const handleDownloadExcel = async () => {
+    try {
+      setDownloadingType("excel");
+
+      const blob = await exportBankReportsExcel(getExportParams());
+
+      downloadBlobFile(blob, "bank-settlement-report.xlsx");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to download Excel report."));
+    } finally {
+      setDownloadingType(null);
+    }
   };
 
-  const handleClearDate = () => {
-    setSelectedDate("");
-    setAppliedDate("");
-    setSelectedBankReport(null);
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingType("pdf");
+
+      const blob = await exportBankReportsPdf(getExportParams());
+
+      downloadBlobFile(blob, "bank-settlement-report.pdf");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to download PDF report."));
+    } finally {
+      setDownloadingType(null);
+    }
   };
 
   useEffect(() => {
-    const error = reportDatesQuery.error || paymentDayReportQuery.error;
-
-    if (error) {
-      toast.error(getErrorMessage(error, "Failed to load reports."));
+    if (paymentDayReportQuery.error) {
+      toast.error(
+        getErrorMessage(paymentDayReportQuery.error, "Failed to load reports."),
+      );
     }
-  }, [reportDatesQuery.error, paymentDayReportQuery.error]);
+  }, [paymentDayReportQuery.error]);
 
   if (loading) {
     return (
@@ -193,79 +232,62 @@ export default function Reports() {
 
   return (
     <div className="w-full space-y-6 bg-surface p-4 md:p-6">
-      <div className="rounded-2xl bg-surface-lowest px-5 py-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-on-surface">
-              Payment Reports Overview
-            </h1>
-
-            <p className="mt-1 text-sm text-surface-variant">
-              A clean overview of received amounts, settlement totals, and
-              transaction status.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <div className="badge badge-outline border-base-300 bg-surface-low text-on-surface">
+      <PageHeader
+        title="Payment Reports Overview"
+        description="A clean overview of received amounts, settlement totals, and transaction status."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className="bg-surface-low px-3 py-1.5 text-xs"
+            >
               Transactions: {totalTransactionCount}
-            </div>
+            </Badge>
 
-            {appliedDate && (
-              <div className="badge badge-outline border-brand text-brand">
+            {appliedDate ? (
+              <Badge variant="DP" className="px-3 py-1.5 text-xs">
                 Date: {appliedDate}
-              </div>
-            )}
+              </Badge>
+            ) : null}
 
-            {isFetching && (
-              <div className="badge badge-outline border-brand text-brand">
+            {isFetching ? (
+              <Badge variant="DP" className="px-3 py-1.5 text-xs">
                 Updating...
-              </div>
-            )}
+              </Badge>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<FileSpreadsheet className="h-4 w-4" />}
+              loading={downloadingType === "excel"}
+              disabled={Boolean(downloadingType)}
+              onClick={handleDownloadExcel}
+            >
+              Excel
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<FileText className="h-4 w-4" />}
+              loading={downloadingType === "pdf"}
+              disabled={Boolean(downloadingType)}
+              onClick={handleDownloadPdf}
+            >
+              PDF
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="rounded-2xl bg-surface-lowest px-5 py-5">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-on-surface">
-              Select Report Date
-            </h2>
-
-            <p className="mt-1 text-sm text-surface-variant">
-              Choose a date or use one of the quick report date buttons.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <DatePicker
-              value={selectedDate}
-              max={today}
-              onChange={setSelectedDate}
-              onApply={handleGetReport}
-              onClear={handleClearDate}
-              applyDisabled={!selectedDate || isFetching}
-              showClear={Boolean(selectedDate || appliedDate)}
-            />
-
-            <div className="flex flex-wrap gap-2">
-              {reportDateButtons.map((date) => (
-                <Button
-                  key={date}
-                  type="button"
-                  onClick={() => handleReportDateClick(date)}
-                  variant={appliedDate === date ? "primary" : "secondary"}
-                  size="sm"
-                  rounded="full"
-                >
-                  {date}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <ReportDateSelector
+        appliedDate={appliedDate}
+        isFetching={isFetching}
+        onApplyDate={handleApplyReportDate}
+      />
 
       <ReportSummaryCards summary={reportSummary} />
 

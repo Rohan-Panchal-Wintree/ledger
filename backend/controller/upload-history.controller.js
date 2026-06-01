@@ -1,18 +1,41 @@
 import mongoose from "mongoose";
-import { Wiresheet } from "../models/wiresheet.model.js";
+
 import { Payment } from "../models/payment.model.js";
 import { UnmatchedPayment } from "../models/unmatchedPayment.model.js";
+import { Wiresheet } from "../models/wiresheet.model.js";
 
 const startOfDate = (value) => {
   const date = new Date(value);
+
   date.setUTCHours(0, 0, 0, 0);
+
   return date;
 };
 
 const endOfDate = (value) => {
   const date = new Date(value);
+
   date.setUTCHours(23, 59, 59, 999);
+
   return date;
+};
+
+const toDateKey = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString().slice(0, 10);
+};
+
+const addUtcDay = (date) => {
+  const nextDate = new Date(date);
+
+  nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+
+  return nextDate;
 };
 
 const buildDateFilter = ({ fromDate, toDate }) => {
@@ -20,10 +43,84 @@ const buildDateFilter = ({ fromDate, toDate }) => {
 
   const filter = {};
 
-  if (fromDate) filter.$gte = startOfDate(fromDate);
-  if (toDate) filter.$lte = endOfDate(toDate);
+  if (fromDate) {
+    filter.$gte = startOfDate(fromDate);
+  }
+
+  if (toDate) {
+    filter.$lte = endOfDate(toDate);
+  }
 
   return filter;
+};
+
+const buildWiresheetPeriodFilter = ({ fromDate, toDate }) => {
+  if (!fromDate && !toDate) return {};
+
+  const filter = {};
+
+  if (fromDate && toDate) {
+    filter.startDate = { $lte: endOfDate(toDate) };
+    filter.endDate = { $gte: startOfDate(fromDate) };
+
+    return filter;
+  }
+
+  if (fromDate) {
+    filter.endDate = { $gte: startOfDate(fromDate) };
+  }
+
+  if (toDate) {
+    filter.startDate = { $lte: endOfDate(toDate) };
+  }
+
+  return filter;
+};
+
+const getMatchedWiresheetPeriod = ({ item, fromDate, toDate }) => {
+  const itemStartDate = item.startDate ? startOfDate(item.startDate) : null;
+  const itemEndDate = item.endDate ? endOfDate(item.endDate) : null;
+
+  if (!itemStartDate || !itemEndDate) {
+    return {
+      matchedStartDate: null,
+      matchedEndDate: null,
+      matchedDates: [],
+    };
+  }
+
+  const filterStartDate = fromDate ? startOfDate(fromDate) : itemStartDate;
+  const filterEndDate = toDate ? endOfDate(toDate) : itemEndDate;
+
+  const matchedStartDate =
+    itemStartDate > filterStartDate ? itemStartDate : filterStartDate;
+
+  const matchedEndDate =
+    itemEndDate < filterEndDate ? itemEndDate : filterEndDate;
+
+  if (matchedStartDate > matchedEndDate) {
+    return {
+      matchedStartDate: null,
+      matchedEndDate: null,
+      matchedDates: [],
+    };
+  }
+
+  const matchedDates = [];
+
+  for (
+    let currentDate = startOfDate(matchedStartDate);
+    currentDate <= matchedEndDate;
+    currentDate = addUtcDay(currentDate)
+  ) {
+    matchedDates.push(toDateKey(currentDate));
+  }
+
+  return {
+    matchedStartDate: toDateKey(matchedStartDate),
+    matchedEndDate: toDateKey(matchedEndDate),
+    matchedDates,
+  };
 };
 
 const getPagination = (query) => {
@@ -44,13 +141,7 @@ export const listWiresheetUploads = async (req, res) => {
   const { fromDate, toDate } = req.query;
   const { page, limit, skip } = getPagination(req.query);
 
-  const createdAtFilter = buildDateFilter({ fromDate, toDate });
-
-  const query = {};
-
-  if (Object.keys(createdAtFilter).length) {
-    query.createdAt = createdAtFilter;
-  }
+  const query = buildWiresheetPeriodFilter({ fromDate, toDate });
 
   const [data, total] = await Promise.all([
     Wiresheet.find(query)
@@ -65,18 +156,31 @@ export const listWiresheetUploads = async (req, res) => {
 
   return res.json({
     success: true,
-    data: data.map((item) => ({
-      wiresheetId: item._id,
-      wiresheetName: item.wiresheetName,
-      acquirerName: item.acquirerId?.name || "",
-      startDate: item.startDate,
-      endDate: item.endDate,
-      totalPayable: item.totalPayable,
-      totalPaid: item.totalPaid,
-      totalBalance: item.totalBalance,
-      status: item.status,
-      uploadedAt: item.createdAt,
-    })),
+    data: data.map((item) => {
+      const matchedPeriod = getMatchedWiresheetPeriod({
+        item,
+        fromDate,
+        toDate,
+      });
+
+      return {
+        wiresheetId: item._id,
+        wiresheetName: item.wiresheetName,
+        acquirerName: item.acquirerId?.name || "",
+        startDate: item.startDate,
+        endDate: item.endDate,
+
+        matchedStartDate: matchedPeriod.matchedStartDate,
+        matchedEndDate: matchedPeriod.matchedEndDate,
+        matchedDates: matchedPeriod.matchedDates,
+
+        totalPayable: item.totalPayable,
+        totalPaid: item.totalPaid,
+        totalBalance: item.totalBalance,
+        status: item.status,
+        uploadedAt: item.createdAt,
+      };
+    }),
     meta: {
       total,
       page,
@@ -96,12 +200,12 @@ export const listPaymentSheetUploads = async (req, res) => {
   const { fromDate, toDate } = req.query;
   const { page, limit, skip } = getPagination(req.query);
 
-  const createdAtFilter = buildDateFilter({ fromDate, toDate });
+  const paidToMerchantDateFilter = buildDateFilter({ fromDate, toDate });
 
   const match = {};
 
-  if (Object.keys(createdAtFilter).length) {
-    match.createdAt = createdAtFilter;
+  if (Object.keys(paidToMerchantDateFilter).length) {
+    match.paidToMerchantDate = paidToMerchantDateFilter;
   }
 
   const paymentUploads = await Payment.aggregate([
