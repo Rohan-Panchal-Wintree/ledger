@@ -89,13 +89,12 @@ function invalidateMiscellaneousQueries(queryClient) {
 }
 
 // List query
-export function useMiscellaneousPayments(params = {}) {
+export function useMiscellaneousPayments(params = {}, options = {}) {
   return useQuery({
     queryKey: miscellaneousQueryKeys.list(params),
-
     queryFn: () => fetchMiscellaneousPaymentsApi(params),
-
     placeholderData: (previousData) => previousData,
+    enabled: options.enabled ?? true,
   });
 }
 

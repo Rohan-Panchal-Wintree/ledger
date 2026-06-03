@@ -141,8 +141,54 @@ const normalizePayload = async (payload) => {
   };
 };
 
-export const listMiscellaneousPayments = async (_req, res) => {
-  const entries = await MiscellaneousPayment.find()
+export const listMiscellaneousPayments = async (req, res) => {
+  const { paymentSheetDate, search, entryType, bankLabel } = req.query;
+
+  const filters = {};
+
+  if (paymentSheetDate) {
+    const startOfDay = new Date(paymentSheetDate);
+    const endOfDay = new Date(paymentSheetDate);
+
+    if (Number.isNaN(startOfDay.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment sheet date",
+      });
+    }
+
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    filters.paymentSheetDate = {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    };
+  }
+
+  if (entryType) {
+    filters.entryType = entryType;
+  }
+
+  if (bankLabel) {
+    filters.bankLabel = bankLabel;
+  }
+
+  if (search) {
+    const searchRegex = new RegExp(String(search).trim(), "i");
+
+    filters.$or = [
+      { merchantName: searchRegex },
+      { bankLabel: searchRegex },
+      { mid: searchRegex },
+      { processingCurrency: searchRegex },
+      { settlementCurrency: searchRegex },
+      { paymentSheetDateLabel: searchRegex },
+      { notes: searchRegex },
+    ];
+  }
+
+  const entries = await MiscellaneousPayment.find(filters)
     .populate("merchantId", "merchantName")
     .populate({
       path: "merchantMappingId",

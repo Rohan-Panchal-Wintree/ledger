@@ -185,15 +185,46 @@ export const updateMiscellaneousPaymentSchema = miscellaneousBaseSchema
     message: "At least one field is required",
   });
 
-export const dashboardPeriodSchema = z.object({
-  paymentDate: z.string().optional(),
-  acquirer: z.string().optional(),
-  merchantName: z.string().optional(),
-  mid: z.string().optional(),
-  status: z.enum(["pending", "partially_paid", "settled"]).optional(),
-  paymentMethod: z.enum(["CRYPTO", "WIRE", "UNKNOWN"]).optional(),
-  settlementCurrency: z.string().optional(),
-});
+export const dashboardPeriodSchema = z
+  .object({
+    paymentDate: z.string().optional(),
+    fromDate: z.string().optional(),
+    toDate: z.string().optional(),
+    acquirer: z.string().optional(),
+    merchantName: z.string().optional(),
+    mid: z.string().optional(),
+    status: z.enum(["pending", "partially_paid", "settled"]).optional(),
+    paymentMethod: z.enum(["CRYPTO", "WIRE", "UNKNOWN"]).optional(),
+    settlementCurrency: z.string().optional(),
+  })
+  .refine(
+    (payload) => {
+      if (!payload.fromDate && !payload.toDate) return true;
+      return Boolean(payload.fromDate && payload.toDate);
+    },
+    {
+      message: "Both fromDate and toDate are required for date range.",
+      path: ["toDate"],
+    },
+  )
+  .refine(
+    (payload) => {
+      if (!payload.fromDate || !payload.toDate) return true;
+
+      const fromDate = new Date(payload.fromDate);
+      const toDate = new Date(payload.toDate);
+
+      if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+        return false;
+      }
+
+      return fromDate <= toDate;
+    },
+    {
+      message: "fromDate cannot be after toDate.",
+      path: ["fromDate"],
+    },
+  );
 
 export const reportBankSchema = z.object({
   paymentDate: z.string().optional(),

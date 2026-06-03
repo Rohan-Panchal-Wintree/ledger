@@ -135,7 +135,7 @@ function KpiStrip({ entry }) {
     <div className="flex overflow-hidden rounded-lg border border-outline-variant/5 bg-surface-container-low">
       <div className="flex-1 p-5 text-center">
         <p className="mb-1 text-xs font-medium uppercase tracking-wider text-on-surface-variant">
-          Total Received
+          Wiresheet Received All
         </p>
 
         <p className="whitespace-nowrap text-lg font-semibold tabular-nums text-primary">
@@ -159,7 +159,7 @@ function KpiStrip({ entry }) {
 
       <div className="flex-1 p-5 text-center">
         <p className="mb-1 text-xs font-medium uppercase tracking-wider text-on-surface-variant">
-          Total Settlement
+          Total Settlement All
         </p>
 
         <p className="whitespace-nowrap text-lg font-semibold tabular-nums text-on-surface">
@@ -198,7 +198,7 @@ function AcquirerCard({ entry, onViewFullReport }) {
             </h4>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <CurrencyPanel title="Received" values={entry.received} />
+              <CurrencyPanel title="Wiresheet" values={entry.received} />
               <CurrencyPanel
                 title="Paid"
                 values={entry.paidAgainstProcessing}

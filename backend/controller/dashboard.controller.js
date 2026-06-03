@@ -22,6 +22,25 @@ const getDateRange = (paymentDate) => ({
   $lte: endOfDate(paymentDate),
 });
 
+const getDashboardDateRange = (filters = {}) => {
+  if (filters.paymentDate) {
+    return getDateRange(filters.paymentDate);
+  }
+
+  if (filters.fromDate && filters.toDate) {
+    return {
+      $gte: startOfDate(filters.fromDate),
+      $lte: endOfDate(filters.toDate),
+    };
+  }
+
+  return null;
+};
+
+const hasDashboardDateFilter = (filters = {}) => {
+  return Boolean(filters.paymentDate || (filters.fromDate && filters.toDate));
+};
+
 const getDisplayCurrency = (currency, paymentMethod) => {
   if (paymentMethod === "CRYPTO" && currency === "USD") return "USDT";
   return currency || "UNKNOWN";
@@ -39,7 +58,6 @@ const miscLabels = {
 };
 
 const getLatestPaymentDate = async () => {
-  // 1. Latest matched payment
   const latestPayment = await Payment.findOne({
     paidToMerchantDate: { $ne: null },
   })
@@ -53,7 +71,6 @@ const getLatestPaymentDate = async () => {
     };
   }
 
-  // 2. Latest unmatched payment
   const latestUnmatched = await UnmatchedPayment.findOne({
     paidToMerchantDate: { $ne: null },
   })
@@ -67,7 +84,6 @@ const getLatestPaymentDate = async () => {
     };
   }
 
-  // 3. Latest wiresheet fallback
   const latestWiresheet = await Wiresheet.findOne()
     .sort({ createdAt: -1 })
     .lean();
@@ -84,6 +100,8 @@ const getLatestPaymentDate = async () => {
 
 const getLedgerRowsDirect = async ({
   paymentDate,
+  fromDate,
+  toDate,
   acquirer,
   merchantName,
   mid,
@@ -91,9 +109,13 @@ const getLedgerRowsDirect = async ({
   paymentMethod,
   settlementCurrency,
 }) => {
-  const paymentDateMatch = paymentDate
-    ? { paidToMerchantDate: getDateRange(paymentDate) }
-    : {};
+  const dateRange = getDashboardDateRange({
+    paymentDate,
+    fromDate,
+    toDate,
+  });
+
+  const paymentDateMatch = dateRange ? { paidToMerchantDate: dateRange } : {};
 
   const payments = await Payment.find(paymentDateMatch)
     .populate({
@@ -175,9 +197,7 @@ const getLedgerRowsDirect = async ({
     };
   });
 
-  const miscMatch = paymentDate
-    ? { paymentSheetDate: getDateRange(paymentDate) }
-    : {};
+  const miscMatch = dateRange ? { paymentSheetDate: dateRange } : {};
 
   const miscPayments = await MiscellaneousPayment.find(miscMatch)
     .populate("merchantId", "merchantName merchantTag")
@@ -245,8 +265,9 @@ const getLedgerRowsDirect = async ({
     if (
       merchantName &&
       !row.merchantName?.toLowerCase().includes(merchantName.toLowerCase())
-    )
+    ) {
       return false;
+    }
     if (mid && row.mid !== mid) return false;
     if (status && row.status !== status) return false;
     if (paymentMethod && row.paymentMethod !== paymentMethod) return false;
@@ -397,22 +418,22 @@ const buildSummary = ({ rows, unmatchedPayments, wiresheets }) => {
   return summary;
 };
 
-const buildDashboardPayload = async (filters) => {
+const buildDashboardPayload = async (filters = {}) => {
   const rows = await getLedgerRowsDirect(filters);
+  const dateRange = getDashboardDateRange(filters);
 
-  const unmatchedPayments = await UnmatchedPayment.find(
-    filters.paymentDate
-      ? {
-          status: { $in: ["invalid", "unmatched"] },
-          $or: [
-            { paidToMerchantDate: getDateRange(filters.paymentDate) },
-            { paymentDate: getDateRange(filters.paymentDate) },
-          ],
-        }
-      : {
-          status: { $in: ["invalid", "unmatched"] },
-        },
-  )
+  const unmatchedPaymentFilters = {
+    status: { $in: ["invalid", "unmatched"] },
+  };
+
+  if (dateRange) {
+    unmatchedPaymentFilters.$or = [
+      { paidToMerchantDate: dateRange },
+      { paymentDate: dateRange },
+    ];
+  }
+
+  const unmatchedPayments = await UnmatchedPayment.find(unmatchedPaymentFilters)
     .sort({ createdAt: -1 })
     .lean();
 
@@ -423,6 +444,9 @@ const buildDashboardPayload = async (filters) => {
 
   return {
     paymentDate: filters.paymentDate || null,
+    fromDate: filters.fromDate || null,
+    toDate: filters.toDate || null,
+    isRange: hasDashboardDateFilter(filters) && !filters.paymentDate,
     summary: buildSummary({ rows, unmatchedPayments, wiresheets }),
     groupedData: buildGroupedData(rows),
     transactions: rows,
@@ -451,6 +475,9 @@ export const getDashboardLatest = async (_req, res) => {
       data: {
         dashboardSource: null,
         paymentDate: null,
+        fromDate: null,
+        toDate: null,
+        isRange: false,
         summary: {},
         groupedData: [],
         transactions: [],
@@ -472,6 +499,7 @@ export const getDashboardLatest = async (_req, res) => {
     },
   });
 };
+
 export const getDashboardByPeriod = async (req, res) => {
   const data = await buildDashboardPayload(req.query);
 

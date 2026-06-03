@@ -1,21 +1,27 @@
-import React, { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Shield } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
+import toast from "react-hot-toast";
+
 import {
+  clearAuthError,
   sendOtp,
   verifyOtp,
   selectAuthLoading,
   selectAuthError,
-  selectOtpSent,
   selectCurrentUser,
 } from "../store/slices/Auth.slice.js";
 
-// currentUser: null,
-// loading: false,
-// error: null,
-// otpSent: false,
-// otpEmail: null,
+import Button from "../component/UI/Button";
+import FormField from "../component/UI/FormField";
+
+const OTP_LENGTH = 6;
+const emptyOtp = Array.from({ length: OTP_LENGTH }, () => "");
+
+function normalizeEmail(email) {
+  return email.trim().toLowerCase();
+}
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,98 +29,115 @@ export default function Login() {
 
   const loading = useSelector(selectAuthLoading);
   const error = useSelector(selectAuthError);
-  const otpSent = useSelector(selectOtpSent);
   const currentUser = useSelector(selectCurrentUser);
 
-  const [step, setStep] = React.useState("email");
-  const [email, setEmail] = React.useState("");
-  const [otp, setOtp] = React.useState(["", "", "", "", "", ""]);
+  const [step, setStep] = useState("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState(emptyOtp);
 
-  // Already logged in user redirect
+  const otpInputRefs = useRef([]);
+
+  const normalizedEmail = normalizeEmail(email);
+  const otpCode = otp.join("");
+  const isOtpComplete = otpCode.length === OTP_LENGTH;
+
   useEffect(() => {
-    if (!currentUser) return;
-
-    if (currentUser.role === ("admin" || "merchant")) {
+    if (currentUser?.email) {
       navigate("/dashboard", { replace: true });
-      return;
     }
   }, [currentUser, navigate]);
 
-  const handleEmailSubmit = async (e) => {
-    e.preventDefault();
-    if (!email.trim()) return;
+  useEffect(() => {
+    dispatch(clearAuthError());
+  }, [dispatch, step]);
 
-    const resultAction = await dispatch(sendOtp(email.trim().toLowerCase()));
+  const handleEmailSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!normalizedEmail) return;
+
+    const resultAction = await dispatch(sendOtp(normalizedEmail));
 
     if (sendOtp.fulfilled.match(resultAction)) {
       setStep("otp");
+      setOtp(emptyOtp);
+
+      window.requestAnimationFrame(() => {
+        otpInputRefs.current[0]?.focus();
+      });
     }
   };
 
   const handleOtpChange = (index, value) => {
     if (!/^\d?$/.test(value)) return;
 
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
+    setOtp((prevOtp) => {
+      const nextOtp = [...prevOtp];
+      nextOtp[index] = value;
+      return nextOtp;
+    });
 
-    if (value && index < 5) {
-      document.getElementById(`otp-${index + 1}`)?.focus();
+    if (value && index < OTP_LENGTH - 1) {
+      otpInputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handleOtpKeyDown = (index, e) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      document.getElementById(`otp-${index - 1}`)?.focus();
+  const handleOtpKeyDown = (index, event) => {
+    if (event.key === "Backspace" && !otp[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pasteData = e.clipboardData.getData("text").trim();
+  const handleOtpPaste = (event) => {
+    event.preventDefault();
 
-    if (!/^\d{6}$/.test(pasteData)) return;
+    const pastedCode = event.clipboardData.getData("text").trim();
 
-    setOtp(pasteData.split(""));
-    document.getElementById("otp-5")?.focus();
+    if (!new RegExp(`^\\d{${OTP_LENGTH}}$`).test(pastedCode)) return;
+
+    setOtp(pastedCode.split(""));
+
+    window.requestAnimationFrame(() => {
+      otpInputRefs.current[OTP_LENGTH - 1]?.focus();
+    });
   };
 
-  const handleOtpSubmit = async (e) => {
-    e.preventDefault();
-    const code = otp.join("");
+  const handleOtpSubmit = async (event) => {
+    event.preventDefault();
 
-    if (code.length !== 6) {
-      alert("Please enter a valid 6-digit code");
+    if (!isOtpComplete) {
+      toast.error("Please enter a valid 6-digit code.");
       return;
     }
 
     const resultAction = await dispatch(
       verifyOtp({
-        email: email.trim().toLowerCase(),
-        otp: code,
+        email: normalizedEmail,
+        otp: otpCode,
       }),
     );
 
     if (verifyOtp.fulfilled.match(resultAction)) {
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     }
   };
 
   const handleBackToEmail = () => {
     setStep("email");
-    setOtp(["", "", "", "", "", ""]);
+    setOtp(emptyOtp);
+    dispatch(clearAuthError());
   };
 
   return (
     <div className="min-h-screen bg-surface-container-low text-on-background">
       <main className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-        {/* Left Form Section */}
         <section className="flex min-h-screen items-center justify-center bg-surface-container-lowest px-6 py-10 md:px-12">
           <div className="w-full max-w-md">
             <header className="mb-10 flex items-center justify-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
                 <Shield className="h-5 w-5" />
               </div>
+
               <h1 className="text-2xl font-semibold text-on-surface">
                 PayGate
               </h1>
@@ -127,36 +150,39 @@ export default function Login() {
                     <h2 className="mb-2 text-2xl font-bold text-on-surface">
                       Welcome back
                     </h2>
+
                     <p className="text-sm text-on-surface-variant">
-                      Sign in to your settlement dashboard
+                      Sign in to your settlement dashboard.
                     </p>
                   </div>
 
                   <form onSubmit={handleEmailSubmit} className="space-y-6">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-on-surface">
-                        Email address
-                      </label>
-
+                    <FormField label="Email address" required>
                       <input
                         type="email"
                         required
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(event) => setEmail(event.target.value)}
                         placeholder="you@company.com"
-                        className="w-full rounded-full border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                        className="form-input rounded-full mb-2"
                       />
-                    </div>
+                    </FormField>
 
-                    {error && <p className="text-sm text-red-600">{error}</p>}
+                    {error ? (
+                      <p className="text-sm font-medium text-error">{error}</p>
+                    ) : null}
 
-                    <button
+                    <Button
                       type="submit"
-                      disabled={loading}
-                      className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
+                      variant="primary"
+                      size="lg"
+                      rounded="full"
+                      loading={loading}
+                      disabled={loading || !normalizedEmail}
+                      className="w-full"
                     >
-                      {loading ? "Sending..." : "Continue"}
-                    </button>
+                      Continue
+                    </Button>
                   </form>
                 </>
               ) : (
@@ -165,10 +191,11 @@ export default function Login() {
                     <h2 className="mb-2 text-2xl font-bold text-on-surface">
                       Enter verification code
                     </h2>
+
                     <p className="text-sm text-on-surface-variant">
                       We sent a 6-digit code to{" "}
                       <span className="font-medium text-on-surface">
-                        {email}
+                        {normalizedEmail}
                       </span>
                     </p>
                   </div>
@@ -176,47 +203,61 @@ export default function Login() {
                   <form onSubmit={handleOtpSubmit} className="space-y-6">
                     <div
                       className="flex justify-center gap-2"
-                      onPaste={handlePaste}
+                      onPaste={handleOtpPaste}
                     >
                       {otp.map((digit, index) => (
                         <input
                           key={index}
-                          id={`otp-${index}`}
+                          ref={(element) => {
+                            otpInputRefs.current[index] = element;
+                          }}
                           type="text"
-                          maxLength="1"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={1}
                           value={digit}
-                          onChange={(e) =>
-                            handleOtpChange(index, e.target.value)
+                          onChange={(event) =>
+                            handleOtpChange(index, event.target.value)
                           }
-                          onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                          className={`h-14 w-12 rounded-lg border ${digit ? "border-primary" : "border-outline-variant/20"} bg-surface-container-low text-center text-xl font-semibold text-on-surface outline-none focus:ring-2 focus:ring-primary/20`}
+                          onKeyDown={(event) => handleOtpKeyDown(index, event)}
+                          className={`h-14 w-12 rounded-lg border bg-surface-container-low text-center text-xl font-semibold text-on-surface outline-none focus:ring-2 focus:ring-primary/20 ${
+                            digit
+                              ? "border-primary"
+                              : "border-outline-variant/20"
+                          }`}
                         />
                       ))}
                     </div>
 
-                    {error && (
-                      <p className="text-center text-sm text-red-600">
+                    {error ? (
+                      <p className="text-center text-sm font-medium text-error">
                         {error}
                       </p>
-                    )}
+                    ) : null}
 
-                    <button
+                    <Button
                       type="submit"
-                      disabled={loading}
-                      className="w-full rounded-full bg-primary py-3 font-semibold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-70"
+                      variant="primary"
+                      size="lg"
+                      rounded="full"
+                      loading={loading}
+                      disabled={loading || !isOtpComplete}
+                      className="w-full"
                     >
-                      {loading ? "Verifying..." : "Verify & Sign in"}
-                    </button>
+                      Verify & Sign in
+                    </Button>
                   </form>
 
-                  <div className="mt-6 space-y-2 text-center">
-                    <button
+                  <div className="mt-6 text-center">
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={handleBackToEmail}
-                      className="text-sm text-on-surface-variant hover:text-on-surface"
+                      disabled={loading}
                     >
                       Use a different email
-                    </button>
+                    </Button>
                   </div>
                 </>
               )}
@@ -224,7 +265,6 @@ export default function Login() {
           </div>
         </section>
 
-        {/* Right Image Section */}
         <section className="hidden min-h-screen bg-white lg:block">
           <div className="h-full overflow-hidden bg-surface-container-lowest">
             <img

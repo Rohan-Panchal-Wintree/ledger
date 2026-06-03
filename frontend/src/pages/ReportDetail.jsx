@@ -16,7 +16,7 @@ import { formatDate, formatNumber } from "../utils/appUtils";
 
 const transactionColumns = [
   { key: "period", label: "Period" },
-  { key: "received", label: "Received", align: "right" },
+  { key: "wiresheet", label: "Wiresheet", align: "right" },
   { key: "paid", label: "Paid", align: "right" },
   { key: "settlement", label: "Settlement", align: "right" },
   { key: "method", label: "Method" },
@@ -158,7 +158,7 @@ function MerchantAccordion({ merchant }) {
 
           <div className="text-left lg:text-right">
             <p className="text-xs uppercase tracking-wide text-on-surface-variant">
-              Received
+              Wiresheet
             </p>
             <p className="mt-1 text-sm font-bold text-on-surface">
               {formatNumber(receivedTotal)}
@@ -188,7 +188,7 @@ function MerchantAccordion({ merchant }) {
       <div className="space-y-8 pt-2">
         <div className="grid gap-5 xl:grid-cols-3">
           <SummaryCard
-            title="Received Breakdown"
+            title="Wiresheet Received"
             icon={CreditCard}
             data={merchant.received}
           />
@@ -298,7 +298,7 @@ export default function ReportDetail({ data, onBack }) {
 
         <section className="grid gap-4 xl:grid-cols-5">
           <MetricCard
-            label="Total Received"
+            label="Wiresheet Received"
             value={formatNumber(totalReceived)}
             highlight
           />
@@ -324,19 +324,19 @@ export default function ReportDetail({ data, onBack }) {
 
           <div className="grid gap-5 xl:grid-cols-3">
             <SummaryCard
-              title="Received"
+              title="All Wiresheet Received"
               icon={CreditCard}
               data={data.summary?.received}
             />
 
             <SummaryCard
-              title="Paid Against Processing"
+              title="All Paid Against Processing"
               icon={Landmark}
               data={data.summary?.paidAgainstProcessing}
             />
 
             <SummaryCard
-              title="Settlement"
+              title="All Settlement"
               icon={ReceiptText}
               data={data.summary?.settlement}
             />

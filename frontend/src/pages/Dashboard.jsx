@@ -1,10 +1,4 @@
-import {
-  SlidersHorizontal,
-  Landmark,
-  CircleUserRound,
-  ArrowRightLeft,
-  Banknote,
-} from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
@@ -16,215 +10,36 @@ import {
 import { useMiscellaneousPayments } from "../queries/miscellaneousQueries";
 import { selectCurrentUser } from "../store/slices/Auth.slice";
 
-import Badge from "../component/UI/Badge";
 import Button from "../component/UI/Button";
 import DataTable from "../component/UI/DataTable";
 import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
-import StatCard from "../component/UI/StatCard";
 import Tabs from "../component/UI/Tabs";
 
-import FilterModal from "../component/FilterModal";
+import Modal from "../component/UI/Modal";
+import DashboardFilterForm from "../component/dashboard/DashboardFilterForm";
 import GroupedMerchantView from "../component/dashboard/GroupedMerchantView";
 import DashboardTransactionRow from "../component/dashboard/DashboardTransactionRow";
 import DashboardMiscellaneousRow from "../component/dashboard/DashboardMiscellaneousRow";
+import DashboardSummarySection from "../component/dashboard/DashboardSummarySection";
 
 import { formatNumber, formatDate, getErrorMessage } from "../utils/appUtils";
+import {
+  DASHBOARD_FILTERS_STORAGE_KEY,
+  DEFAULT_VISIBLE_COLUMNS,
+  FILTERABLE_COLUMNS,
+  createDefaultFilters,
+  formatDashboardAmount,
+  getPartnerValue,
+  getSearchableTransactionValues,
+  hasActiveDataFilters,
+  miscellaneousTableColumns,
+  readSavedFilters,
+  today,
+} from "../utils/dashboardUtils";
 
-const today = new Date().toISOString().slice(0, 10);
-const DASHBOARD_FILTERS_STORAGE_KEY = "dashboard-filters";
-
-const statusClasses = {
-  settled: "bg-green-500/10 text-green-600",
-  pending: "bg-orange-400/10 text-orange-600",
-  partially_paid: "bg-yellow-400/10 text-yellow-600",
-};
-
-const DEFAULT_VISIBLE_COLUMNS = [
-  "acquirer",
-  "merchantName",
-  "startDate",
-  "endDate",
-  "processingCurrency",
-  "receivedAmount",
-  "paidAmount",
-  "settlementPaidAmount",
-  "settlementCurrency",
-  "rate",
-  "balance",
-  "status",
-];
-
-const FILTERABLE_COLUMNS = [
-  { key: "acquirer", label: "Bank (Acquirer)" },
-  { key: "merchantName", label: "Merchant" },
-  { key: "startDate", label: "Start Date" },
-  { key: "endDate", label: "End Date" },
-  { key: "processingCurrency", label: "Proc. Currency" },
-  { key: "receivedAmount", label: "Received" },
-  { key: "paidAmount", label: "Paid In Amount" },
-  { key: "settlementPaidAmount", label: "Actual Paid" },
-  { key: "settlementCurrency", label: "Settle Currency" },
-  { key: "rate", label: "Rate" },
-  { key: "balance", label: "Balance" },
-  { key: "status", label: "Status" },
-];
-
-const miscellaneousTableColumns = [
-  { key: "type", label: "Type" },
-  { key: "merchant", label: "Merchant" },
-  { key: "bank", label: "Bank" },
-  { key: "mid", label: "MID" },
-  { key: "currency", label: "Currency" },
-  { key: "amountPaid", label: "Amount Paid", align: "right" },
-  { key: "settlement", label: "Settlement", align: "right" },
-  { key: "notes", label: "Notes" },
-];
-
-function createDefaultFilters() {
-  return {
-    startDate: "",
-    endDate: "",
-    minAmount: "",
-    maxAmount: "",
-    merchants: [],
-    acquirers: [],
-    processingCurrencies: [],
-    settlementCurrencies: [],
-    partners: [],
-    statuses: [],
-    visibleColumns: DEFAULT_VISIBLE_COLUMNS,
-  };
-}
-
-function readSavedFilters() {
-  if (typeof window === "undefined") return createDefaultFilters();
-
-  try {
-    const savedFilters = window.localStorage.getItem(
-      DASHBOARD_FILTERS_STORAGE_KEY,
-    );
-
-    if (!savedFilters) return createDefaultFilters();
-
-    return {
-      ...createDefaultFilters(),
-      ...JSON.parse(savedFilters),
-    };
-  } catch {
-    return createDefaultFilters();
-  }
-}
-
-function getPartnerValue(merchantTag) {
-  const normalizedTag = String(merchantTag || "").toLowerCase();
-
-  if (normalizedTag.includes("transactworld")) return "transactworld";
-  if (normalizedTag.includes("dreamz")) return "dreamzpay";
-
-  return "";
-}
-
-function hasActiveDataFilters(filters) {
-  return Boolean(
-    filters.startDate ||
-    filters.endDate ||
-    filters.minAmount ||
-    filters.maxAmount ||
-    filters.merchants.length ||
-    filters.acquirers.length ||
-    filters.processingCurrencies.length ||
-    filters.settlementCurrencies.length ||
-    filters.partners.length ||
-    filters.statuses.length,
-  );
-}
-
-function getSearchableDateParts(value) {
-  if (!value) return [];
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return [String(value)];
-  }
-
-  return [
-    date.toISOString(),
-    date.toISOString().slice(0, 10),
-    date.toLocaleDateString("en-GB"),
-    date.toLocaleDateString("en-US"),
-  ];
-}
-
-function getSearchableTransactionValues(transaction) {
-  return [
-    transaction.acquirer,
-    transaction.bank,
-    transaction.balance,
-    transaction.endDate,
-    transaction.lastPaidToMerchantDate,
-    transaction.lastPaymentBank,
-    transaction.lastPaymentRate,
-    transaction.lastSettlementAmount,
-    transaction.merchant,
-    transaction.merchantName,
-    transaction.merchantTag,
-    transaction.mid,
-    transaction.paid,
-    transaction.amountPaid,
-    transaction.payable,
-    transaction.amount,
-    transaction.paymentMethod,
-    transaction.processingCurrency,
-    transaction.settlementCurrency,
-    transaction.startDate,
-    transaction.status,
-    ...getSearchableDateParts(transaction.startDate),
-    ...getSearchableDateParts(transaction.endDate),
-    ...getSearchableDateParts(transaction.lastPaidToMerchantDate),
-  ]
-    .filter((value) => value !== undefined && value !== null && value !== "")
-    .map((value) => String(value).toLowerCase());
-}
-
-function formatAmount(amount, currency = "EUR") {
-  const num = Number(amount);
-  if (Number.isNaN(num)) return "0.00";
-
-  if (currency === "USDT") {
-    return `USDT ${num.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  }
-
-  const currencyLocaleMap = {
-    INR: "en-IN",
-    USD: "en-US",
-    EUR: "en-US",
-    GBP: "en-GB",
-    CAD: "en-CA",
-    AUD: "en-AU",
-    JPY: "ja-JP",
-  };
-
-  return num.toLocaleString(currencyLocaleMap[currency] || "en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function getMerchantShortName(name) {
-  if (!name) return "-";
-  if (name.includes("Transactworld")) return "TW";
-  if (name.includes("Dreamzpay")) return "DP";
-
-  return name;
-}
+const DASHBOARD_FILTER_FORM_ID = "dashboard-filter-form";
 
 export default function Dashboard() {
   const currentUser = useSelector(selectCurrentUser);
@@ -238,26 +53,43 @@ export default function Dashboard() {
 
   // Filter/date state
   const [filters, setFilters] = useState(readSavedFilters);
-  const [selectedReportDate, setSelectedReportDate] = useState("");
-  const [appliedReportDate, setAppliedReportDate] = useState("");
 
-  const isMiscellaneousEnabled = Boolean(appliedReportDate);
+  const [reportDateMode, setReportDateMode] = useState("single");
+  const [selectedReportPeriod, setSelectedReportPeriod] = useState({
+    paymentDate: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [appliedReportPeriod, setAppliedReportPeriod] = useState({
+    paymentDate: "",
+    fromDate: "",
+    toDate: "",
+  });
+
+  const hasSelectedSingleDate = Boolean(selectedReportPeriod.paymentDate);
+
+  const hasSelectedRange = Boolean(
+    selectedReportPeriod.startDate && selectedReportPeriod.endDate,
+  );
+
+  const hasAppliedReportPeriod = Boolean(
+    appliedReportPeriod.paymentDate ||
+    (appliedReportPeriod.fromDate && appliedReportPeriod.toDate),
+  );
+
+  const isMiscellaneousEnabled = Boolean(appliedReportPeriod.paymentDate);
 
   // Dashboard queries
   const latestDashboardQuery = useDashboardLatest({
-    enabled: !appliedReportDate,
+    enabled: !hasAppliedReportPeriod,
   });
 
-  const periodDashboardQuery = useDashboardByPeriod(
-    {
-      paymentDate: appliedReportDate,
-    },
-    {
-      enabled: Boolean(appliedReportDate),
-    },
-  );
+  const periodDashboardQuery = useDashboardByPeriod({
+    ...appliedReportPeriod,
+    enabled: hasAppliedReportPeriod,
+  });
 
-  const activeDashboardQuery = appliedReportDate
+  const activeDashboardQuery = hasAppliedReportPeriod
     ? periodDashboardQuery
     : latestDashboardQuery;
 
@@ -265,31 +97,10 @@ export default function Dashboard() {
   const transactions = dashboardData.transactions || [];
   const dashboardSummary = dashboardData.summary || {};
 
-  const amountSummarySections = [
-    {
-      title: "Received",
-      totalLabel: "Wiresheet Received",
-      totalValue: dashboardSummary.totalReceived || 0,
-      values: dashboardSummary.received || {},
-    },
-    {
-      title: "Paid Against Processing",
-      totalLabel: "Total Paid",
-      totalValue: dashboardSummary.totalPaidAgainstProcessing || 0,
-      values: dashboardSummary.paidAgainstProcessing || {},
-    },
-    {
-      title: "Settlement",
-      totalLabel: "Total Settlement",
-      totalValue: dashboardSummary.totalSettlementAmount || 0,
-      values: dashboardSummary.settlement || {},
-    },
-  ];
-
   // Miscellaneous query
   const miscellaneousQuery = useMiscellaneousPayments(
     {
-      paymentSheetDate: appliedReportDate,
+      paymentSheetDate: appliedReportPeriod.paymentDate,
     },
     {
       enabled: isMiscellaneousEnabled,
@@ -327,6 +138,38 @@ export default function Dashboard() {
       }));
   }, [transactions]);
 
+  const processingCurrencyOptions = useMemo(() => {
+    return [
+      ...new Set(
+        transactions
+          .map((item) => item.processingCurrency || item.receivedCurrency)
+          .filter(Boolean),
+      ),
+    ]
+      .sort((left, right) => left.localeCompare(right))
+      .map((currency) => ({
+        label: currency,
+        value: currency,
+      }));
+  }, [transactions]);
+
+  const settlementCurrencyOptions = useMemo(() => {
+    return [
+      ...new Set(
+        transactions
+          .map(
+            (item) => item.settlementDisplayCurrency || item.settlementCurrency,
+          )
+          .filter(Boolean),
+      ),
+    ]
+      .sort((left, right) => left.localeCompare(right))
+      .map((currency) => ({
+        label: currency,
+        value: currency,
+      }));
+  }, [transactions]);
+
   const partnerOptions = useMemo(
     () => [
       { label: "Transactworld", value: "transactworld" },
@@ -344,18 +187,18 @@ export default function Dashboard() {
       const transactionStartDate = transaction.startDate
         ? new Date(transaction.startDate)
         : null;
-
       const transactionEndDate = transaction.endDate
         ? new Date(transaction.endDate)
         : null;
-
-      const payableAmount =
-        Number(transaction.receivedAmount ?? transaction.payable) || 0;
-
       const merchantName =
         transaction.merchantName || transaction.merchant || "";
-
       const acquirerName = transaction.acquirer || transaction.bank || "";
+      const processingCurrency =
+        transaction.processingCurrency || transaction.receivedCurrency || "";
+      const settlementCurrency =
+        transaction.settlementDisplayCurrency ||
+        transaction.settlementCurrency ||
+        "";
       const partnerValue = getPartnerValue(transaction.merchantTag);
 
       if (
@@ -380,14 +223,6 @@ export default function Dashboard() {
         }
       }
 
-      if (filters.minAmount && payableAmount < Number(filters.minAmount)) {
-        return false;
-      }
-
-      if (filters.maxAmount && payableAmount > Number(filters.maxAmount)) {
-        return false;
-      }
-
       if (
         filters.merchants.length > 0 &&
         !filters.merchants.includes(merchantName)
@@ -404,17 +239,14 @@ export default function Dashboard() {
 
       if (
         filters.processingCurrencies.length > 0 &&
-        !filters.processingCurrencies.includes(transaction.processingCurrency)
+        !filters.processingCurrencies.includes(processingCurrency)
       ) {
         return false;
       }
 
       if (
         filters.settlementCurrencies.length > 0 &&
-        !filters.settlementCurrencies.includes(
-          transaction.settlementDisplayCurrency ||
-            transaction.settlementCurrency,
-        )
+        !filters.settlementCurrencies.includes(settlementCurrency)
       ) {
         return false;
       }
@@ -492,28 +324,6 @@ export default function Dashboard() {
     }));
   }, [visibleColumns]);
 
-  // Summary data
-  const statusBreakdownItems = useMemo(
-    () => [
-      {
-        label: "Completed",
-        value: dashboardSummary.settledCount || 0,
-        dotClassName: "bg-green-500",
-      },
-      {
-        label: "Partially Paid",
-        value: dashboardSummary.partiallyPaidCount || 0,
-        dotClassName: "bg-orange-400",
-      },
-      {
-        label: "Pending",
-        value: dashboardSummary.pendingCount || 0,
-        dotClassName: "bg-yellow-400",
-      },
-    ],
-    [dashboardSummary],
-  );
-
   // Handlers
   const handleApplyFilters = (nextFilters) => {
     setFilters({
@@ -536,122 +346,73 @@ export default function Dashboard() {
   };
 
   const handleGetReport = () => {
-    setAppliedReportDate(selectedReportDate);
+    if (reportDateMode === "single") {
+      if (!selectedReportPeriod.paymentDate) return;
+
+      setAppliedReportPeriod({
+        paymentDate: selectedReportPeriod.paymentDate,
+        fromDate: "",
+        toDate: "",
+      });
+    } else {
+      if (!selectedReportPeriod.startDate || !selectedReportPeriod.endDate) {
+        return;
+      }
+
+      setAppliedReportPeriod({
+        paymentDate: "",
+        fromDate: selectedReportPeriod.startDate,
+        toDate: selectedReportPeriod.endDate,
+      });
+
+      setActiveView("table");
+    }
+
     setCurrentPage(1);
   };
 
   const handleClearReportDate = () => {
-    setSelectedReportDate("");
-    setAppliedReportDate("");
+    setSelectedReportPeriod({
+      paymentDate: "",
+      startDate: "",
+      endDate: "",
+    });
+
+    setAppliedReportPeriod({
+      paymentDate: "",
+      fromDate: "",
+      toDate: "",
+    });
+
     setCurrentPage(1);
     setActiveView("table");
   };
 
-  const renderCellContent = (item, columnKey) => {
-    switch (columnKey) {
-      case "acquirer":
-        return (
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/6 transition-transform duration-200 group-hover:scale-105">
-              <Landmark className="text-primary" size={16} />
-            </div>
+  const handleReportDateModeChange = (nextMode) => {
+    setReportDateMode(nextMode);
 
-            <div className="min-w-0">
-              <span className="block truncate text-sm font-bold text-on-surface">
-                {item.acquirer || "-"}
-              </span>
-            </div>
-          </div>
-        );
+    setSelectedReportPeriod({
+      paymentDate: "",
+      startDate: "",
+      endDate: "",
+    });
+  };
 
-      case "merchantName":
-        return (
-          <div
-            className="flex items-center justify-between gap-2 text-sm font-bold text-on-surface capitalize"
-            title={item.merchantName}
-          >
-            <div className="min-w-0">
-              <span className="block truncate max-w-37.5 font-semibold text-on-surface">
-                {item.merchantName || "-"}
-              </span>
+  const handleReportDateChange = (nextValue) => {
+    if (reportDateMode === "single") {
+      setSelectedReportPeriod((prev) => ({
+        ...prev,
+        paymentDate: nextValue,
+      }));
 
-              <span className="mt-1 block text-[11px] font-medium uppercase tracking-wide text-on-surface-variant/75">
-                MID {item.mid || "-"}
-              </span>
-            </div>
-
-            <Badge
-              variant={getMerchantShortName(item.merchantTag)}
-              className="ml-2 shrink-0"
-            >
-              {getMerchantShortName(item.merchantTag)}
-            </Badge>
-          </div>
-        );
-
-      case "startDate":
-      case "endDate":
-        return formatDate(item[columnKey]);
-
-      case "processingCurrency":
-        return (
-          <span className="rounded-full bg-primary/8 px-3 py-1.5 font-bold tracking-wide text-primary">
-            {item.processingCurrency || "-"}
-          </span>
-        );
-
-      case "settlementCurrency":
-        return (
-          <span className="rounded-full bg-surface-container px-3 py-1.5 font-bold tracking-wide text-on-surface">
-            {item.settlementDisplayCurrency || item.settlementCurrency || "-"}
-          </span>
-        );
-
-      case "rate":
-        return (
-          <span className="rounded-full bg-primary/8 px-3 py-1.5 font-bold uppercase tracking-widest text-primary">
-            {Number(item.lastPaymentRate || 0).toFixed(2)}
-          </span>
-        );
-
-      case "receivedAmount":
-        return formatAmount(
-          item.receivedAmount || 0,
-          item.receivedCurrency || item.processingCurrency || "EUR",
-        );
-
-      case "paidAmount":
-        return formatAmount(
-          item.paidAmount || 0,
-          item.processingCurrency || item.receivedCurrency || "EUR",
-        );
-
-      case "settlementPaidAmount":
-        return formatAmount(
-          item.settlementPaidAmount || 0,
-          item.settlementDisplayCurrency || item.settlementCurrency || "EUR",
-        );
-
-      case "balance":
-        return formatAmount(
-          item.balance || 0,
-          item.processingCurrency || item.receivedCurrency || "EUR",
-        );
-
-      case "status":
-        return (
-          <span
-            className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-              statusClasses[item.status] || statusClasses.pending
-            }`}
-          >
-            {String(item.status || "pending").replace(/_/g, " ")}
-          </span>
-        );
-
-      default:
-        return item[columnKey] || "-";
+      return;
     }
+
+    setSelectedReportPeriod((prev) => ({
+      ...prev,
+      startDate: nextValue.startDate || "",
+      endDate: nextValue.endDate || "",
+    }));
   };
 
   // Persist filters
@@ -671,6 +432,25 @@ export default function Dashboard() {
     }
   }, [dashboardError]);
 
+  const isReportApplyDisabled =
+    isFetching ||
+    (reportDateMode === "single" ? !hasSelectedSingleDate : !hasSelectedRange);
+
+  const datePickerValue =
+    reportDateMode === "single"
+      ? selectedReportPeriod.paymentDate
+      : {
+          startDate: selectedReportPeriod.startDate,
+          endDate: selectedReportPeriod.endDate,
+        };
+
+  const showDateClear = Boolean(
+    selectedReportPeriod.paymentDate ||
+    selectedReportPeriod.startDate ||
+    selectedReportPeriod.endDate ||
+    hasAppliedReportPeriod,
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center p-8 text-on-surface">
@@ -681,111 +461,23 @@ export default function Dashboard() {
 
   return (
     <div className="w-full bg-background text-on-background">
-      <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-4">
-        <div className="group md:col-span-2 flex flex-col justify-between rounded-lg bg-linear-to-br from-primary to-primary-container p-8 text-white transition-all duration-300">
-          <div className="flex items-start justify-between">
-            <span className="text-xs font-bold uppercase tracking-widest text-white/70">
-              Total Amount Paid
-            </span>
+      <DashboardSummarySection summary={dashboardSummary} />
 
-            <Banknote className="text-white/50" size={20} />
-          </div>
-
-          <div className="mt-8 rounded-2xl border border-white/12 bg-white/8 p-5 backdrop-blur-xs">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {amountSummarySections.map((section) => (
-                <div key={section.title} className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
-                    {section.totalLabel}
-                  </p>
-
-                  <p className="mt-1 truncate text-xl font-extrabold tracking-tight text-white">
-                    {formatNumber(section.totalValue)}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="my-4 h-px bg-white/10" />
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {amountSummarySections.map((section) => (
-                <div
-                  key={`${section.title}-breakdown`}
-                  className="min-w-0 rounded-md bg-white/6 px-3 py-2"
-                >
-                  <div className="space-y-1.5">
-                    {Object.entries(section.values || {}).length > 0 ? (
-                      Object.entries(section.values || {}).map(
-                        ([currency, amount]) => (
-                          <div
-                            key={`${section.title}-${currency}`}
-                            className="flex items-center justify-between gap-3"
-                          >
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-                              {currency}
-                            </span>
-
-                            <span className="truncate text-right text-xs font-extrabold text-white">
-                              {formatNumber(amount)}
-                            </span>
-                          </div>
-                        ),
-                      )
-                    ) : (
-                      <div className="text-xs font-semibold text-white/60">
-                        -
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <StatCard
-            label="Unmatched Count"
-            value={dashboardSummary.unmatchedCount || 0}
-            helper="Pending reconciliation rows"
-            icon={CircleUserRound}
-            className="p-8"
-          />
-
-          <StatCard
-            label="Transaction count"
-            value={dashboardSummary.totalTransactions || 0}
-            icon={ArrowRightLeft}
-            className="p-8"
-          />
-        </div>
-
-        <div className="rounded-lg bg-surface-container-low p-4">
-          <div className="flex flex-col gap-4">
-            {statusBreakdownItems.map((item) => (
-              <div
-                key={item.label}
-                className="flex flex-1 flex-col justify-center rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-5 transition-colors"
-              >
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    {item.label}
-                  </span>
-
-                  <div
-                    className={`h-2 w-2 rounded-full ${item.dotClassName}`}
-                  />
-                </div>
-
-                <div className="text-3xl font-extrabold text-on-surface">
-                  {item.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <div className="flex justify-end">
+        <DatePicker
+          mode={reportDateMode}
+          allowModeSwitch
+          value={datePickerValue}
+          max={today}
+          onModeChange={handleReportDateModeChange}
+          onChange={handleReportDateChange}
+          onApply={handleGetReport}
+          onClear={handleClearReportDate}
+          applyDisabled={isReportApplyDisabled}
+          showClear={showDateClear}
+          className="w-full justify-start sm:w-fit"
+        />
+      </div>
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <Tabs
@@ -803,16 +495,6 @@ export default function Dashboard() {
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <DatePicker
-            value={selectedReportDate}
-            max={today}
-            onChange={setSelectedReportDate}
-            onApply={handleGetReport}
-            onClear={handleClearReportDate}
-            applyDisabled={!selectedReportDate || isFetching}
-            showClear={Boolean(selectedReportDate || appliedReportDate)}
-          />
-
           <SearchInput
             value={searchQuery}
             placeholder="Search transactions..."
@@ -824,7 +506,7 @@ export default function Dashboard() {
           />
 
           <Button
-            variant="secondary"
+            variant={hasAppliedFilters ? "primary" : "secondary"}
             active={hasAppliedFilters}
             size="md"
             leftIcon={<SlidersHorizontal size={16} />}
@@ -841,6 +523,7 @@ export default function Dashboard() {
           title="Final Payment Report"
           columns={transactionTableColumns}
           page={safeCurrentPage}
+          pageSize={rowsPerPage}
           totalItems={filteredTransactions.length}
           itemLabel="transactions"
           isEmpty={paginatedTransactions.length === 0}
@@ -859,21 +542,20 @@ export default function Dashboard() {
               index={index}
               startIndex={startIndex}
               visibleColumns={visibleColumns}
-              renderCellContent={renderCellContent}
             />
           ))}
         </DataTable>
       ) : activeView === "group" ? (
         <GroupedMerchantView
           transactions={filteredTransactions}
-          formatAmount={formatAmount}
+          formatAmount={formatDashboardAmount}
           formatDate={formatDate}
           formatPlainNumber={formatNumber}
         />
       ) : (
         <DataTable
           title="Miscellaneous Payments"
-          description={`Showing miscellaneous entries for ${appliedReportDate}`}
+          description={`Showing miscellaneous entries for ${appliedReportPeriod.paymentDate}`}
           columns={miscellaneousTableColumns}
           isLoading={miscellaneousLoading}
           isEmpty={miscellaneousPayments.length === 0}
@@ -891,21 +573,51 @@ export default function Dashboard() {
         </DataTable>
       )}
 
-      <FilterModal
-        isOpen={isFilterModalOpen}
+      <Modal
+        open={isFilterModalOpen}
+        title="Filter Transactions"
+        description="Refine the dashboard dataset according to your preference."
+        size="xl"
         onClose={() => setIsFilterModalOpen(false)}
-        filters={filters}
-        onApply={handleApplyFilters}
-        onReset={handleResetFilters}
-        options={{
-          transactions,
-          merchants: merchantOptions,
-          acquirers: acquirerOptions,
-          partners: partnerOptions,
-          columns: FILTERABLE_COLUMNS,
-        }}
-        isAdmin={currentUser?.role === "admin"}
-      />
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleResetFilters}
+            >
+              Reset
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsFilterModalOpen(false)}
+            >
+              Cancel
+            </Button>
+
+            <Button type="submit" form={DASHBOARD_FILTER_FORM_ID}>
+              Apply Filters
+            </Button>
+          </>
+        }
+      >
+        <DashboardFilterForm
+          formId={DASHBOARD_FILTER_FORM_ID}
+          filters={filters}
+          onApply={handleApplyFilters}
+          options={{
+            merchants: merchantOptions,
+            acquirers: acquirerOptions,
+            partners: partnerOptions,
+            processingCurrencies: processingCurrencyOptions,
+            settlementCurrencies: settlementCurrencyOptions,
+            columns: FILTERABLE_COLUMNS,
+          }}
+          isAdmin={currentUser?.role === "admin"}
+        />
+      </Modal>
     </div>
   );
 }

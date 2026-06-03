@@ -5,12 +5,23 @@ export default function Accordion({
   meta,
   children,
   className = "",
+  open,
+  defaultOpen = false,
+  onToggle,
 }) {
+  const isControlled = typeof open === "boolean";
+
   return (
     <div
       className={`collapse collapse-arrow overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest ${className}`}
     >
-      <input type="checkbox" />
+      <input
+        type="checkbox"
+        checked={isControlled ? open : undefined}
+        defaultChecked={!isControlled ? defaultOpen : undefined}
+        onChange={(event) => onToggle?.(event.target.checked)}
+        readOnly={isControlled && !onToggle}
+      />
 
       <div className="collapse-title table-row-hover px-5 py-5 lg:px-6">
         <div className="flex items-center justify-between gap-4 pr-8">

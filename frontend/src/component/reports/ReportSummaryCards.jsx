@@ -79,7 +79,7 @@ function CurrencyList({ title, items = {} }) {
 export default function ReportSummaryCards({ summary = {} }) {
   const metricCards = [
     {
-      label: "Total Received",
+      label: "Wiresheet Received All",
       value: summary.totalReceived,
       icon: Landmark,
       highlighted: true,
@@ -117,7 +117,7 @@ export default function ReportSummaryCards({ summary = {} }) {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <CurrencyList
-          title="Received from all currencies"
+          title="Wiresheet Recieved all currencies"
           items={summary.received}
         />
 
@@ -127,7 +127,7 @@ export default function ReportSummaryCards({ summary = {} }) {
         />
 
         <CurrencyList
-          title="All settlement by currency"
+          title="All currencies settlement"
           items={summary.settlement}
         />
       </div>

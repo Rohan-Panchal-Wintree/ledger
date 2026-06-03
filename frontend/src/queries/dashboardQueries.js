@@ -4,10 +4,14 @@ import { dashboardApi } from "../api";
 export const dashboardQueryKeys = {
   all: ["dashboard"],
   latest: () => [...dashboardQueryKeys.all, "latest"],
-  byPeriod: ({ paymentDate }) => [
+  byPeriod: ({ paymentDate, fromDate, toDate }) => [
     ...dashboardQueryKeys.all,
     "period",
-    { paymentDate },
+    {
+      paymentDate,
+      fromDate,
+      toDate,
+    },
   ],
   wiresheetUploads: () => [...dashboardQueryKeys.all, "wiresheet-uploads"],
 };
@@ -30,16 +34,32 @@ async function fetchDashboardLatestApi() {
 }
 
 // Fetch transactions according to the date
-async function fetchDashboardByPeriodApi({ paymentDate }) {
+async function fetchDashboardByPeriodApi({
+  paymentDate = "",
+  fromDate = "",
+  toDate = "",
+} = {}) {
+  const params = {};
+
+  if (paymentDate) {
+    params.paymentDate = paymentDate;
+  }
+
+  if (fromDate && toDate) {
+    params.fromDate = fromDate;
+    params.toDate = toDate;
+  }
+
   const response = await dashboardApi.get("/", {
-    params: {
-      paymentDate,
-    },
+    params,
   });
 
   return (
     response?.data?.data || {
       paymentDate: paymentDate || null,
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+      isRange: Boolean(fromDate && toDate),
       summary: {},
       groupedData: [],
       transactions: [],
@@ -66,11 +86,28 @@ export function useDashboardLatest({ enabled = true } = {}) {
   });
 }
 
-export function useDashboardByPeriod({ paymentDate, enabled = true }) {
+export function useDashboardByPeriod({
+  paymentDate = "",
+  fromDate = "",
+  toDate = "",
+  enabled = true,
+}) {
+  const hasSingleDate = Boolean(paymentDate);
+  const hasDateRange = Boolean(fromDate && toDate);
+
   return useQuery({
-    queryKey: dashboardQueryKeys.byPeriod({ paymentDate }),
-    queryFn: () => fetchDashboardByPeriodApi({ paymentDate }),
-    enabled: enabled && Boolean(paymentDate),
+    queryKey: dashboardQueryKeys.byPeriod({
+      paymentDate,
+      fromDate,
+      toDate,
+    }),
+    queryFn: () =>
+      fetchDashboardByPeriodApi({
+        paymentDate,
+        fromDate,
+        toDate,
+      }),
+    enabled: enabled && (hasSingleDate || hasDateRange),
     placeholderData: (previousData) => previousData,
   });
 }
