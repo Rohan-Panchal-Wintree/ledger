@@ -11,6 +11,8 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1057.0",
+    "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -20,6 +22,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.0",
     "multer": "^2.1.1",
+    "multer-s3": "^3.0.1",
     "nodemailer": "^8.0.7",
     "pdfkit": "^0.18.0",
     "rate-limit-redis": "^5.0.0",

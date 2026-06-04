@@ -1,8 +1,18 @@
+import { encryptResponse } from "../utils/encryption.js";
+
 export const notFoundHandler = (req, res, _next) => {
-	return res.status(404).json({
+	const payload = {
 		success: false,
 		message: `Route not found: ${req.method} ${req.originalUrl}`,
-	});
+	};
+
+	if (res.locals?.responseEncryptionKey) {
+		return res
+			.status(404)
+			.json(encryptResponse(payload, res.locals.responseEncryptionKey));
+	}
+
+	return res.status(404).json(payload);
 };
 
 export const errorHandler = (err, _req, res, _next) => {
@@ -15,11 +25,19 @@ export const errorHandler = (err, _req, res, _next) => {
 		});
 	}
 
-	return res.status(statusCode).json({
+	const payload = {
 		success: false,
 		message:
 			process.env.NODE_ENV === "production" && statusCode === 500
 				? "Internal server error"
 				: err.message || "Internal server error",
-	});
+	};
+
+	if (res.locals?.responseEncryptionKey) {
+		return res
+			.status(statusCode)
+			.json(encryptResponse(payload, res.locals.responseEncryptionKey));
+	}
+
+	return res.status(statusCode).json(payload);
 };
