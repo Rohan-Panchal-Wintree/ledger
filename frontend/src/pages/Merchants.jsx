@@ -59,6 +59,7 @@ const merchantFields = [
 
 const merchantColumns = [
   { key: "merchant", label: "Merchant" },
+  { key: "mid", label: "MID" },
   { key: "status", label: "Status", align: "center" },
   { key: "createdAt", label: "Created" },
   { key: "updatedAt", label: "Updated" },

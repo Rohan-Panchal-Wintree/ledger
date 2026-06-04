@@ -160,10 +160,6 @@ export default function Profile() {
                 </h1>
 
                 <p className="mt-2 text-sm text-on-surface-variant">{email}</p>
-
-                <p className="mt-2 inline-flex rounded-full bg-primary/8 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
-                  {role}
-                </p>
               </div>
             </div>
 

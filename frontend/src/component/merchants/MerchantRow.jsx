@@ -35,6 +35,10 @@ export default function MerchantRow({
         </div>
       </td>
 
+      <td className="whitespace-nowrap px-8 py-4 text-sm font-medium text-on-surface-variant">
+        {merchant.mid || "-"}
+      </td>
+
       <td className="whitespace-nowrap px-8 py-4 text-center">
         <Badge variant={getStatusVariant(merchant.status)}>
           {merchant.status || "unknown"}

@@ -19,6 +19,7 @@ import { decryptData, encryptData } from "./utils/cryptoUtils";
 import { decryptApiResponse } from "./utils/apiEncryption";
 
 const AUTH_STORAGE_KEY = "pg_user";
+const LOGIN_PATH = "/login";
 
 async function getStoredAuth() {
   const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -40,13 +41,76 @@ async function saveStoredAuth(auth) {
   localStorage.setItem(AUTH_STORAGE_KEY, encryptedAuth);
 }
 
+function expireAuth() {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  window.dispatchEvent(new Event("auth:expired"));
+
+  if (window.location.pathname !== LOGIN_PATH) {
+    window.location.assign(LOGIN_PATH);
+  }
+}
+
 function shouldAttachAuthHeaders(method) {
   return ["post", "put", "patch", "delete"].includes(method?.toLowerCase());
+}
+
+function isAuthRoute(url = "") {
+  return (
+    url.includes("/refresh") ||
+    url.includes("/verify-otp") ||
+    url.includes("/request-otp") ||
+    url.includes("/logout")
+  );
+}
+
+function isInvalidCsrfError(error) {
+  const status = error.response?.status;
+  const message = String(error.response?.data?.message || "").toLowerCase();
+
+  return status === 403 && message.includes("csrf");
+}
+
+function isMissingOrInvalidSessionError(error) {
+  const status = error.response?.status;
+  const message = String(error.response?.data?.message || "").toLowerCase();
+
+  return (
+    status === 401 &&
+    (message.includes("session expired") ||
+      message.includes("session") ||
+      message.includes("authentication required") ||
+      message.includes("invalid access token"))
+  );
 }
 
 async function attachAuthHeaders(config) {
   if (!shouldAttachAuthHeaders(config.method)) return config;
 
+  if (isAuthRoute(config.url)) return config;
+
+  const auth = await getStoredAuth();
+  const csrfToken = auth?.csrfToken || null;
+  const sessionId = auth?.sessionId || null;
+
+  if (!csrfToken || !sessionId) {
+    expireAuth();
+
+    return Promise.reject(new Error("Missing authentication session."));
+  }
+
+  config.headers = config.headers ?? {};
+  config.headers["X-CSRF-Token"] = csrfToken;
+  config.headers["X-Session-Id"] = sessionId;
+
+  return config;
+}
+
+const refreshApi = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+});
+
+refreshApi.interceptors.request.use(async (config) => {
   const auth = await getStoredAuth();
   const csrfToken = auth?.csrfToken || null;
   const sessionId = auth?.sessionId || null;
@@ -62,14 +126,7 @@ async function attachAuthHeaders(config) {
   }
 
   return config;
-}
-
-const refreshApi = axios.create({
-  baseURL: API_URL,
-  withCredentials: true,
 });
-
-refreshApi.interceptors.request.use(attachAuthHeaders);
 
 let refreshPromise = null;
 
@@ -108,15 +165,6 @@ async function refreshSession() {
   return refreshPromise;
 }
 
-function isAuthRoute(url = "") {
-  return (
-    url.includes("/refresh") ||
-    url.includes("/verify-otp") ||
-    url.includes("/request-otp") ||
-    url.includes("/logout")
-  );
-}
-
 function createApiInstance(baseURL) {
   const instance = axios.create({
     baseURL,
@@ -132,6 +180,7 @@ function createApiInstance(baseURL) {
 
       if (response.data?.encrypted === true) {
         if (!responseKey) {
+          expireAuth();
           throw new Error("Missing response decryption key");
         }
 
@@ -143,6 +192,19 @@ function createApiInstance(baseURL) {
 
     async (error) => {
       const originalRequest = error.config;
+
+      if (isInvalidCsrfError(error)) {
+        expireAuth();
+        return Promise.reject(error);
+      }
+
+      if (
+        isAuthRoute(originalRequest?.url) &&
+        isMissingOrInvalidSessionError(error)
+      ) {
+        expireAuth();
+        return Promise.reject(error);
+      }
 
       if (
         error.response?.status !== 401 ||
@@ -162,8 +224,7 @@ function createApiInstance(baseURL) {
 
         return instance(originalRequest);
       } catch (refreshError) {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-        window.dispatchEvent(new Event("auth:expired"));
+        expireAuth();
 
         return Promise.reject(refreshError);
       }

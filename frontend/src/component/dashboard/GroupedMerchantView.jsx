@@ -139,12 +139,12 @@ export default function GroupedMerchantView({
             meta={
               <div className="grid grid-cols-3 gap-3 md:min-w-105">
                 <SummaryCard
-                  label="All Received"
+                  label="Wiresheet"
                   value={formatPlainNumber(merchant.totalReceived)}
                 />
 
                 <SummaryCard
-                  label="All Actual Paid"
+                  label="Actual Paid"
                   value={formatPlainNumber(merchant.totalActualPaid)}
                 />
 
@@ -210,19 +210,19 @@ export default function GroupedMerchantView({
 
                       <div className="grid gap-3 sm:grid-cols-2">
                         <SummaryCard
-                          label="Received Total"
+                          label="Wiresheet Total All Curr"
                           value={formatPlainNumber(
                             activeAcquirer.totalReceived,
                           )}
                         />
 
                         <SummaryCard
-                          label="Settled Amount"
+                          label="Settled Amount All Curr"
                           value={formatPlainNumber(activeAcquirer.totalPaidIn)}
                         />
 
                         <SummaryCard
-                          label="Actual Paid"
+                          label="Actual Paid (unconverted)"
                           value={formatPlainNumber(
                             activeAcquirer.totalActualPaid,
                           )}
@@ -274,7 +274,7 @@ export default function GroupedMerchantView({
                         <Wallet className="text-primary" size={18} />
 
                         <h4 className="text-base font-bold text-on-surface">
-                          Received Currencies
+                          Wiresheet Received Currencies
                         </h4>
                       </div>
 
@@ -290,7 +290,7 @@ export default function GroupedMerchantView({
                         <CircleDollarSign className="text-primary" size={18} />
 
                         <h4 className="text-base font-bold text-on-surface">
-                          Paid Currencies
+                          Settlement Currencies
                         </h4>
                       </div>
 

@@ -25,9 +25,12 @@ import {
   SidebarHeader,
   useSidebar,
 } from "./UI/Sidebar";
+import FloatingTooltip from "./UI/FloatingTooltip";
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser, selectCurrentUser } from "../store/slices/Auth.slice";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect } from "react";
+
+const SIDEBAR_STORAGE_KEY = "SIDEBAR_STORAGE_KEY";
 
 export function AppSidebar() {
   const dispatch = useDispatch();
@@ -36,9 +39,7 @@ export function AppSidebar() {
   const { open, setOpen } = useSidebar();
 
   useEffect(() => {
-    const savedSidebarState = window.localStorage.getItem(
-      "SIDEBAR_STORAGE_KEY",
-    );
+    const savedSidebarState = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
 
     if (savedSidebarState !== null) {
       setOpen(savedSidebarState === "true");
@@ -46,7 +47,7 @@ export function AppSidebar() {
   }, [setOpen]);
 
   useEffect(() => {
-    window.localStorage.setItem("SIDEBAR_STORAGE_KEY", String(open));
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(open));
   }, [open]);
 
   const sidebarItems = [
@@ -137,16 +138,19 @@ export function AppSidebar() {
 
                 return (
                   <SidebarMenuItem key={item.path}>
-                    <NavLink to={item.path}>
-                      {({ isActive }) => (
-                        <SidebarMenuButton isActive={isActive}>
-                          <Icon className="h-4 w-4 shrink-0" />
-                          {open && (
-                            <span className="truncate">{item.name}</span>
-                          )}
-                        </SidebarMenuButton>
-                      )}
-                    </NavLink>
+                    <FloatingTooltip label={item.name} disabled={open}>
+                      <NavLink to={item.path}>
+                        {({ isActive }) => (
+                          <SidebarMenuButton isActive={isActive}>
+                            <Icon className="h-4 w-4 shrink-0" />
+
+                            {open ? (
+                              <span className="truncate">{item.name}</span>
+                            ) : null}
+                          </SidebarMenuButton>
+                        )}
+                      </NavLink>
+                    </FloatingTooltip>
                   </SidebarMenuItem>
                 );
               })}
@@ -156,12 +160,21 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-outline-variant/20 p-3">
-        <div className="flex items-center gap-3 rounded-lg bg-surface-container-low p-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
-            {currentUser?.email?.[0]?.toUpperCase() || "U"}
-          </div>
+        <div
+          className={`flex items-center rounded-lg bg-surface-container-low p-2 ${
+            open ? "gap-3" : "justify-center"
+          }`}
+        >
+          <FloatingTooltip
+            label={`${currentUser?.email || "User"} · ${currentUser?.role || ""}`}
+            disabled={open}
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
+              {currentUser?.email?.[0]?.toUpperCase() || "U"}
+            </div>
+          </FloatingTooltip>
 
-          {open && (
+          {open ? (
             <>
               <div className="min-w-0 flex-1">
                 <p
@@ -170,12 +183,14 @@ export function AppSidebar() {
                 >
                   {currentUser?.email}
                 </p>
+
                 <p className="text-xs capitalize text-on-surface-variant">
                   {currentUser?.role}
                 </p>
               </div>
 
               <button
+                type="button"
                 onClick={() => dispatch(logoutUser())}
                 className="rounded-full p-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
                 title="Logout"
@@ -183,7 +198,7 @@ export function AppSidebar() {
                 <LogOut className="h-4 w-4" />
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </SidebarFooter>
     </Sidebar>
