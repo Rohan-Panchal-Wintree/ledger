@@ -6,13 +6,13 @@ services:
       - ./backend/.env
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8991:8080"
+      - "127.0.0.1:8991:8989"
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_LOCAL_URL: https://ledger.wintreetech.com
+        VITE_LOCAL_URL: http://13.203.167.238
     restart: unless-stopped
     ports:
       - "127.0.0.1:8081:80"

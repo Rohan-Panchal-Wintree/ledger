@@ -4,6 +4,7 @@ export const allowedOrigins = [
 	"http://localhost:5173",
 	"https://crm.wintreetech.com",
 	"http://crm.wintreetech.com",
+	"http://13.203.167.238",
 ];
 
 // SINGLE VARIABLE MIDDLEWARES
