@@ -28,27 +28,12 @@ import {
 import FloatingTooltip from "./UI/FloatingTooltip";
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser, selectCurrentUser } from "../store/slices/Auth.slice";
-import { useEffect } from "react";
-
-const SIDEBAR_STORAGE_KEY = "SIDEBAR_STORAGE_KEY";
 
 export function AppSidebar() {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
 
-  const { open, setOpen } = useSidebar();
-
-  useEffect(() => {
-    const savedSidebarState = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-
-    if (savedSidebarState !== null) {
-      setOpen(savedSidebarState === "true");
-    }
-  }, [setOpen]);
-
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(open));
-  }, [open]);
+  const { open } = useSidebar();
 
   const sidebarItems = [
     {

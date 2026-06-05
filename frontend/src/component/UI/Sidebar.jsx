@@ -7,6 +7,18 @@ function cn(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
+const SIDEBAR_STORAGE_KEY = "SIDEBAR_STORAGE_KEY";
+
+function getStoredSidebarState(defaultOpen) {
+  if (typeof window === "undefined") return defaultOpen;
+
+  const savedSidebarState = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+
+  if (savedSidebarState === null) return defaultOpen;
+
+  return savedSidebarState === "true";
+}
+
 function useSidebar() {
   const context = React.useContext(SidebarContext);
 
@@ -18,11 +30,17 @@ function useSidebar() {
 }
 
 function SidebarProvider({ children, defaultOpen = true }) {
-  const [open, setOpen] = React.useState(defaultOpen);
+  const [open, setOpen] = React.useState(() =>
+    getStoredSidebarState(defaultOpen),
+  );
 
   const toggleSidebar = () => {
     setOpen((prev) => !prev);
   };
+
+  React.useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(open));
+  }, [open]);
 
   return (
     <SidebarContext.Provider value={{ open, setOpen, toggleSidebar }}>
