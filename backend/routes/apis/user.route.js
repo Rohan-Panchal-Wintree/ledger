@@ -3,10 +3,10 @@ import { middlewares } from "../../middlewares/index.js";
 import { asyncHandler, validateRequest } from "../../utils/ManagedVariables.js";
 
 import {
-	listUsers,
-	createUser,
-	updateUser,
-	deleteUser,
+  listUsers,
+  createUser,
+  updateUser,
+  deleteUser,
 } from "../../controller/user.controller.js";
 
 import { createUserSchema, updateUserSchema } from "../../utils/Validation.js";

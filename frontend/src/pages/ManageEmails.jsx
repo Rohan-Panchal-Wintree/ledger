@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { Mail, Plus, ShieldCheck, Store } from "lucide-react";
 
 import Button from "../component/UI/Button";
-import DataTable from "../component/UI/DataTable";
+import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DeleteModal from "../component/UI/DeleteModal";
 import Modal from "../component/UI/Modal";
 import PageHeader from "../component/UI/PageHeader";
@@ -57,7 +57,7 @@ export default function ManageEmails() {
   const [formData, setFormData] = useState(emptyForm);
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(readStoredRowsPerPage);
 
   const usersQuery = useUsers();
   const createUserMutation = useCreateUser();
@@ -276,7 +276,6 @@ export default function ManageEmails() {
         emptyDescription="Users will appear here once they are added."
         emptyIcon={Mail}
         page={safePage}
-        pageSize={pageSize}
         meta={{
           total: filteredUsers.length,
           page: safePage,

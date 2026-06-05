@@ -186,17 +186,8 @@ export default function Sheets() {
   };
 
   const handlePageSizeChange = (nextLimit) => {
-    const normalizedLimit = Number(nextLimit);
-
-    setLimit(normalizedLimit);
+    setLimit(Number(nextLimit));
     setPage(1);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "global-table-rows-per-page",
-        String(normalizedLimit),
-      );
-    }
   };
 
   const handleApplyDateFilter = () => {
@@ -341,7 +332,6 @@ export default function Sheets() {
         emptyIcon={emptyState.icon}
         page={page}
         meta={activeMeta}
-        pageSize={limit}
         onPageChange={setPage}
         onRowsPerPageChange={handlePageSizeChange}
         isFetching={activeQuery.isFetching}
