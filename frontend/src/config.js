@@ -17,4 +17,3 @@ export const INVALID_URL = `${BASE_API_URL}/invalid`;
 export const MISCELLANEOUS_PAYMENT_URL = `${BASE_API_URL}/miscellaneous-payments`;
 export const PROFILE_URL = `${BASE_API_URL}/profile`;
 export const USERS_URL = `${BASE_API_URL}/users`;
-export const SETTLEMENT_UPLOADS = `${BASE_API_URL}/settlement-uploads`;

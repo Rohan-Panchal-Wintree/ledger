@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { settlementUploads, sheetsApi } from "../api";
+import { sheetsApi } from "../api";
 
 export const sheetsQueryKeys = {
   all: ["sheets"],
