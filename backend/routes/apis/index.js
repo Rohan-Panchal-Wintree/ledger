@@ -12,7 +12,6 @@ import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
 import uploadsRoutes from "./uploads-history.routes.js";
 import profileRoutes from "./profile.routes.js";
-import settlementUploadRoutes from "./settlement-upload.routes.js";
 import { middlewares } from "../../middlewares/index.js";
 import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
 import { enableEncryptedResponses } from "../../middlewares/encryptedResponse.middleware.js";
@@ -41,12 +40,7 @@ router.use(
 );
 router.use("/dashboard", enableEncryptedResponses, dashboardRoutes);
 router.use("/reports", reportsRoutes);
-router.use("/uploads", enableEncryptedResponses, uploadsRoutes);
+router.use("/uploads", uploadsRoutes);
 router.use("/profile", profileRoutes);
-router.use(
-	"/settlement-uploads",
-	enableEncryptedResponses,
-	settlementUploadRoutes,
-);
 
 export default router;
