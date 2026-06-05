@@ -90,10 +90,14 @@ export default function Sheets() {
 
   const activeQuery = isWiresheetTab ? wiresheetsQuery : paymentSheetsQuery;
 
-  const wiresheets = wiresheetsQuery.data?.data || [];
+  const wiresheets = (wiresheetsQuery.data?.data || []).filter(
+    (row) => row.type === "wiresheet",
+  );
   const wiresheetMeta = wiresheetsQuery.data?.meta || DEFAULT_SHEETS_META;
 
-  const paymentSheets = paymentSheetsQuery.data?.data || [];
+  const paymentSheets = (paymentSheetsQuery.data?.data || []).filter(
+    (row) => row.type === "payment_sheet",
+  );
   const paymentSheetMeta = paymentSheetsQuery.data?.meta || DEFAULT_SHEETS_META;
 
   const filteredWiresheets = useMemo(
@@ -254,13 +258,13 @@ export default function Sheets() {
     if (isWiresheetTab) {
       return activeRows.map((row) => (
         <WiresheetRow
-          key={row.wiresheetId}
+          key={row.id}
           row={row}
           getStatusVariant={getStatusVariant}
           canDownload={canDownloadSheets}
           onDownload={() =>
             handleDownloadSheet({
-              id: row.wiresheetId,
+              id: row.id,
               fileName: row.wiresheetName,
             })
           }
@@ -275,7 +279,7 @@ export default function Sheets() {
         canDownload={canDownloadSheets}
         onDownload={() =>
           handleDownloadSheet({
-            id: row.paymentSheetId,
+            id: row.id,
             fileName: row.fileName,
           })
         }

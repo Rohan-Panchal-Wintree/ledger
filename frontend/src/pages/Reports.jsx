@@ -168,6 +168,8 @@ export default function Reports() {
     totalReceivedAllCurrencies,
   } = reportViewData;
 
+  const hasReportData = totalTransactionCount > 0;
+
   const handleApplyReportDate = (date) => {
     setAppliedDate(date);
     setSelectedBankReport(null);
@@ -262,7 +264,8 @@ export default function Reports() {
               size="sm"
               leftIcon={<FileSpreadsheet className="h-4 w-4" />}
               loading={downloadingType === "excel"}
-              disabled={Boolean(downloadingType)}
+              disabled={Boolean(downloadingType) || !hasReportData}
+              title={!hasReportData ? "No report data available" : undefined}
               onClick={handleDownloadExcel}
             >
               Excel
@@ -274,7 +277,8 @@ export default function Reports() {
               size="sm"
               leftIcon={<FileText className="h-4 w-4" />}
               loading={downloadingType === "pdf"}
-              disabled={Boolean(downloadingType)}
+              disabled={Boolean(downloadingType) || !hasReportData}
+              title={!hasReportData ? "No report data available" : undefined}
               onClick={handleDownloadPdf}
             >
               PDF

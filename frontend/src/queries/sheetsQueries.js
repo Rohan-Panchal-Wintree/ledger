@@ -74,8 +74,6 @@ async function getWiresheetsApi(filters = {}) {
     params: buildQueryParams(filters),
   });
 
-  console.log("wiresheets", response);
-
   return extractResponsePayload(response);
 }
 
@@ -83,8 +81,6 @@ async function getPaymentSheetsApi(filters = {}) {
   const response = await sheetsApi.get("/payment-sheets", {
     params: buildQueryParams(filters),
   });
-
-  console.log("payment sheet", response);
 
   return extractResponsePayload(response);
 }
@@ -94,7 +90,7 @@ export async function downloadSheetUpload(id, fileName) {
     throw new Error("Missing upload id.");
   }
 
-  const response = await settlementUploads.post(`/${id}/download`);
+  const response = await sheetsApi.post(`/${id}/download`);
 
   const downloadUrl = response?.data?.data?.downloadUrl;
 
