@@ -1,4 +1,9 @@
-export const BASE_API_URL = `${import.meta.env.VITE_LOCAL_URL}/api/v1`;
+const URL =
+  import.meta.env.VITE_ENV === "local"
+    ? import.meta.env.VITE_LOCAL_URL
+    : import.meta.env.VITE_PROD_URL;
+
+export const BASE_API_URL = `${URL}/api/v1`;
 
 export const API_URL = `${BASE_API_URL}/auth`;
 export const DASHBOARD_URL = `${BASE_API_URL}/dashboard`;
