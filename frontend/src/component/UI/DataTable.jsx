@@ -7,7 +7,7 @@ const TABLE_ROWS_STORAGE_KEY = "global-table-rows-per-page";
 const DEFAULT_ROWS_PER_PAGE = 50;
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
-function readStoredRowsPerPage() {
+export function readStoredRowsPerPage() {
   if (typeof window === "undefined") return DEFAULT_ROWS_PER_PAGE;
 
   const storedValue = Number(

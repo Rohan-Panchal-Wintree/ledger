@@ -1,4 +1,7 @@
+import { Download } from "lucide-react";
+
 import Badge from "../UI/Badge";
+import Button from "../UI/Button";
 
 import { formatDate, formatNumber } from "../../utils/appUtils";
 
@@ -12,7 +15,12 @@ function getPeriodLabel(row) {
   return `${formatDate(row.startDate)} → ${formatDate(row.endDate)}`;
 }
 
-export default function WiresheetRow({ row, getStatusVariant }) {
+export default function WiresheetRow({
+  row,
+  getStatusVariant,
+  canDownload = false,
+  onDownload,
+}) {
   return (
     <tr className="table-row-hover">
       <td className="whitespace-nowrap px-8 py-4">
@@ -56,6 +64,18 @@ export default function WiresheetRow({ row, getStatusVariant }) {
       <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface-variant">
         {row.uploadedBy?.name || row.uploadedBy?.email || "-"}
       </td>
+
+      {canDownload ? (
+        <td className="whitespace-nowrap px-8 py-4 text-right">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<Download className="h-4 w-4" />}
+            onClick={onDownload}
+          />
+        </td>
+      ) : null}
     </tr>
   );
 }

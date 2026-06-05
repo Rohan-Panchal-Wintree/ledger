@@ -11,7 +11,7 @@ import { useMiscellaneousPayments } from "../queries/miscellaneousQueries";
 import { selectCurrentUser } from "../store/slices/Auth.slice";
 
 import Button from "../component/UI/Button";
-import DataTable from "../component/UI/DataTable";
+import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
@@ -47,7 +47,7 @@ export default function Dashboard() {
   // UI state
   const [activeView, setActiveView] = useState("table");
   const [searchQuery, setSearchQuery] = useState("");
-  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [rowsPerPage, setRowsPerPage] = useState(readStoredRowsPerPage);
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
@@ -523,7 +523,6 @@ export default function Dashboard() {
           title="Final Payment Report"
           columns={transactionTableColumns}
           page={safeCurrentPage}
-          pageSize={rowsPerPage}
           totalItems={filteredTransactions.length}
           itemLabel="transactions"
           isEmpty={paginatedTransactions.length === 0}
@@ -531,6 +530,7 @@ export default function Dashboard() {
           emptyDescription="Try adjusting your search or filters."
           onPageChange={setCurrentPage}
           onRowsPerPageChange={(value) => {
+            console.log("value from the dashboard.jsx", value);
             setRowsPerPage(value);
             setCurrentPage(1);
           }}

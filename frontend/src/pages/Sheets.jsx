@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { CreditCard, Landmark } from "lucide-react";
 
@@ -12,7 +13,11 @@ import PageHeader from "../component/UI/PageHeader";
 import PaymentSheetRow from "../component/sheets/PaymentSheetRow";
 import WiresheetRow from "../component/sheets/WiresheetRow";
 
-import { usePaymentSheets, useWiresheets } from "../queries/sheetsQueries";
+import {
+  downloadSheetUpload,
+  usePaymentSheets,
+  useWiresheets,
+} from "../queries/sheetsQueries";
 
 import { getErrorMessage } from "../utils/appUtils";
 import {
@@ -27,6 +32,7 @@ import {
   toApiDate,
   wiresheetColumns,
 } from "../utils/sheetsUtils";
+import { selectCurrentUser } from "../store/slices/Auth.slice";
 
 export default function Sheets() {
   const [activeTab, setActiveTab] = useState("wiresheet");
@@ -43,6 +49,9 @@ export default function Sheets() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(getDefaultSheetsPageSize);
 
+  const currentUser = useSelector(selectCurrentUser);
+
+  const canDownloadSheets = currentUser?.role === "admin";
   const isWiresheetTab = activeTab === "wiresheet";
 
   const dateFilters = useMemo(() => {
@@ -103,7 +112,16 @@ export default function Sheets() {
 
   const activeMeta = isWiresheetTab ? wiresheetMeta : paymentSheetMeta;
 
-  const activeColumns = isWiresheetTab ? wiresheetColumns : paymentSheetColumns;
+  const activeColumns = useMemo(() => {
+    const baseColumns = isWiresheetTab ? wiresheetColumns : paymentSheetColumns;
+
+    if (!canDownloadSheets) return baseColumns;
+
+    return [
+      ...baseColumns,
+      { key: "actions", label: "Actions", align: "right" },
+    ];
+  }, [canDownloadSheets, isWiresheetTab]);
 
   const emptyState = isWiresheetTab
     ? {
@@ -168,17 +186,8 @@ export default function Sheets() {
   };
 
   const handlePageSizeChange = (nextLimit) => {
-    const normalizedLimit = Number(nextLimit);
-
-    setLimit(normalizedLimit);
+    setLimit(Number(nextLimit));
     setPage(1);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "global-table-rows-per-page",
-        String(normalizedLimit),
-      );
-    }
   };
 
   const handleApplyDateFilter = () => {
@@ -206,13 +215,14 @@ export default function Sheets() {
     handleClearDateFilter();
   };
 
-  console.log({
-    activeTab,
-    page,
-    limit,
-    queryFilters,
-    activeMeta,
-  });
+  const handleDownloadSheet = async ({ id, fileName }) => {
+    try {
+      await downloadSheetUpload(id, fileName);
+      toast.success("Download started.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to download sheet."));
+    }
+  };
 
   const renderDatePicker = () => {
     const isRangeDatePicker = isWiresheetTab || dateMode === "range";
@@ -247,6 +257,13 @@ export default function Sheets() {
           key={row.wiresheetId}
           row={row}
           getStatusVariant={getStatusVariant}
+          canDownload={canDownloadSheets}
+          onDownload={() =>
+            handleDownloadSheet({
+              id: row.wiresheetId,
+              fileName: row.wiresheetName,
+            })
+          }
         />
       ));
     }
@@ -255,6 +272,13 @@ export default function Sheets() {
       <PaymentSheetRow
         key={`${row.fileName}-${row.paymentDate}-${row.uploadedAt}-${index}`}
         row={row}
+        canDownload={canDownloadSheets}
+        onDownload={() =>
+          handleDownloadSheet({
+            id: row.paymentSheetId,
+            fileName: row.fileName,
+          })
+        }
       />
     ));
   };
@@ -308,7 +332,6 @@ export default function Sheets() {
         emptyIcon={emptyState.icon}
         page={page}
         meta={activeMeta}
-        pageSize={limit}
         onPageChange={setPage}
         onRowsPerPageChange={handlePageSizeChange}
         isFetching={activeQuery.isFetching}

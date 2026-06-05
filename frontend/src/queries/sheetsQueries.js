@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { sheetsApi } from "../api";
+import { settlementUploads, sheetsApi } from "../api";
 
 export const sheetsQueryKeys = {
   all: ["sheets"],
@@ -45,10 +45,36 @@ function buildQueryParams({ page = 1, limit = 20, fromDate, toDate } = {}) {
   return params;
 }
 
+function getDownloadFileNameFromUrl(url, fallback = "download.xlsx") {
+  try {
+    const pathname = new URL(url).pathname;
+    const fileName = pathname.split("/").pop();
+
+    return decodeURIComponent(fileName || fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function triggerBrowserDownload(url, fileName) {
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener noreferrer";
+  anchor.target = "_blank";
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 async function getWiresheetsApi(filters = {}) {
   const response = await sheetsApi.get("/wiresheets", {
     params: buildQueryParams(filters),
   });
+
+  console.log("wiresheets", response);
 
   return extractResponsePayload(response);
 }
@@ -58,7 +84,30 @@ async function getPaymentSheetsApi(filters = {}) {
     params: buildQueryParams(filters),
   });
 
+  console.log("payment sheet", response);
+
   return extractResponsePayload(response);
+}
+
+export async function downloadSheetUpload(id, fileName) {
+  if (!id) {
+    throw new Error("Missing upload id.");
+  }
+
+  const response = await settlementUploads.post(`/${id}/download`);
+
+  const downloadUrl = response?.data?.data?.downloadUrl;
+
+  if (!downloadUrl) {
+    throw new Error("Download link not available.");
+  }
+
+  triggerBrowserDownload(
+    downloadUrl,
+    fileName || getDownloadFileNameFromUrl(downloadUrl),
+  );
+
+  return downloadUrl;
 }
 
 export function useWiresheets(filters = {}) {

@@ -1,16 +1,20 @@
+import { Download } from "lucide-react";
+
+import Button from "../UI/Button";
+
 import { formatDate, formatNumber } from "../../utils/appUtils";
 
-export default function PaymentSheetRow({ row }) {
+export default function PaymentSheetRow({
+  row,
+  canDownload = false,
+  onDownload,
+}) {
   return (
     <tr className="table-row-hover">
       <td className="whitespace-nowrap px-8 py-4">
         <div>
           <p className="text-sm font-bold text-on-surface">
             {row.fileName || "-"}
-          </p>
-
-          <p className="mt-1 text-xs text-on-surface-variant">
-            Uploaded {formatDate(row.uploadedAt)}
           </p>
         </div>
       </td>
@@ -56,6 +60,18 @@ export default function PaymentSheetRow({ row }) {
       <td className="whitespace-nowrap px-8 py-4 text-sm text-on-surface-variant">
         {row.uploadedBy?.name || row.uploadedBy?.email || "-"}
       </td>
+
+      {canDownload ? (
+        <td className="whitespace-nowrap px-8 py-4 text-right">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<Download className="h-4 w-4" />}
+            onClick={onDownload}
+          />
+        </td>
+      ) : null}
     </tr>
   );
 }
