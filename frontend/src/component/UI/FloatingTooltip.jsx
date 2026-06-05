@@ -98,7 +98,7 @@ export default function FloatingTooltip({
         ? createPortal(
             <div
               role="tooltip"
-              className="pointer-events-none fixed z-9999 whitespace-nowrap rounded-lg bg-on-surface px-3 py-2 text-xs font-bold text-surface-container-lowest shadow-lg"
+              className="pointer-events-none fixed z-9999 whitespace-nowrap rounded-lg bg-on-surface px-3 py-2 text-xs font-bold text-surface-container-lowest"
               style={position}
             >
               {label}
