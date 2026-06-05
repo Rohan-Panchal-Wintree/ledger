@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8991:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_LOCAL_URL: https://ledger.wintreetech.com
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    depends_on:
+      - backend
