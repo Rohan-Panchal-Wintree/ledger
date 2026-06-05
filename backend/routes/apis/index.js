@@ -35,18 +35,18 @@ router.use("/merchant-accounts", merchantAccountRoutes);
 router.use("/wiresheets", enableEncryptedResponses, wiresheetRoutes);
 router.use("/payments", enableEncryptedResponses, paymentRoutes);
 router.use(
-	"/miscellaneous-payments",
-	enableEncryptedResponses,
-	miscellaneousPaymentRoutes,
+  "/miscellaneous-payments",
+  enableEncryptedResponses,
+  miscellaneousPaymentRoutes,
 );
 router.use("/dashboard", enableEncryptedResponses, dashboardRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/uploads", enableEncryptedResponses, uploadsRoutes);
 router.use("/profile", profileRoutes);
 router.use(
-	"/settlement-uploads",
-	enableEncryptedResponses,
-	settlementUploadRoutes,
+  "/settlement-uploads",
+  enableEncryptedResponses,
+  settlementUploadRoutes,
 );
 
 export default router;
