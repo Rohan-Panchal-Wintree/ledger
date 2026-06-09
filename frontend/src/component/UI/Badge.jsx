@@ -11,10 +11,12 @@ function Badge({
 
   const variants = {
     default: "border-transparent bg-blue-600 text-white",
-    secondary: "border-transparent bg-gray-200 text-gray-800",
+    secondary:
+      "border-transparent bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-100",
     destructive: "border-transparent bg-red-500 text-white",
-    outline: "border-gray-300 text-gray-800",
-    TW: "border-transparent bg-orange-200 text-orange-600",
+    outline:
+      "border-gray-300 text-gray-800 dark:border-gray-600 dark:text-gray-100",
+    TW: "border-transparent bg-orange-200 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300",
     DP: "border-transparent bg-primary/10 text-primary",
   };
 

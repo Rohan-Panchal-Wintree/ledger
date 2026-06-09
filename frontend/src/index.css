@@ -108,6 +108,9 @@
   --radius-2xl: 1.25rem;
   --radius-3xl: 1.5rem;
 
+  /* Divider */
+  --color-divider: #e5e7eb;
+
   /* Backward-compatible aliases for current design */
   --color-surface-lowest: var(--color-surface-container-lowest);
   --color-surface-low: var(--color-surface-container-low);
@@ -173,6 +176,10 @@
 
   .text-surface-variant {
     color: var(--color-on-surface-variant);
+  }
+
+  .border-theme {
+    border-color: var(--color-outline-variant);
   }
 
   .table-row-hover {
@@ -254,4 +261,45 @@
   background: var(--color-surface-container-low) !important;
   color: var(--color-on-surface) !important;
   border: 1px solid var(--color-outline-variant) !important;
+}
+
+/* Dark mode */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* DaisyUI colors */
+    --color-base-100: #15171a;
+    --color-base-200: #1d2024;
+    --color-base-300: #262a30;
+    --color-base-content: #f5f7fa;
+
+    --color-primary: #5f7cff;
+    --color-primary-content: #ffffff;
+
+    --color-secondary: #8a95d1;
+    --color-secondary-content: #ffffff;
+
+    --color-neutral: #2d3138;
+    --color-neutral-content: #ffffff;
+
+    /* Divider */
+    --color-divider: #2f3540;
+
+    /* your variables */
+    --color-background: #111317;
+    --color-surface: #15171a;
+
+    --color-surface-container-lowest: #1a1d21;
+    --color-surface-container-low: #1f2328;
+    --color-surface-container: #262a30;
+    --color-surface-container-high: #2d3138;
+    --color-surface-container-highest: #363b43;
+
+    --color-on-background: #f5f7fa;
+    --color-on-surface: #f5f7fa;
+    --color-on-surface-variant: #a7adb8;
+
+    --color-outline: #707784;
+    --color-outline-variant: #444b56;
+  }
 }

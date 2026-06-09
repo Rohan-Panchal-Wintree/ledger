@@ -35,11 +35,11 @@ export function DashboardLayout() {
       <div className="flex h-screen w-full overflow-hidden">
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="h-14 shrink-0 border-b border-b-gray-200 bg-card px-4">
+          <header className="h-14 shrink-0 border-b border-divider bg-card px-4">
             <div className="flex h-full items-center justify-between">
               <div className="flex items-center gap-2">
                 <SidebarTrigger />
-                <span className="text-md font-medium text-[#1f2937]">
+                <span className="text-md font-medium text-on-surface">
                   {title}
                 </span>
               </div>
