@@ -12,6 +12,8 @@ import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
 import uploadsRoutes from "./uploads-history.routes.js";
 import profileRoutes from "./profile.routes.js";
+import merchantSettlementRoutes from "./merchantSettlment.routes.js";
+// MAIN
 import { middlewares } from "../../middlewares/index.js";
 import { csrfMiddleware } from "../../middlewares/csrf.middleware.js";
 import { enableEncryptedResponses } from "../../middlewares/encryptedResponse.middleware.js";
@@ -42,5 +44,6 @@ router.use("/dashboard", enableEncryptedResponses, dashboardRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/uploads", uploadsRoutes);
 router.use("/profile", profileRoutes);
+router.use("/merchant-settlement", merchantSettlementRoutes);
 
 export default router;

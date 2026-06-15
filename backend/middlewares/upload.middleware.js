@@ -1,15 +1,21 @@
 import multer from "multer";
-const storage = multer.memoryStorage();
 import "dotenv/config";
+
+const storage = multer.memoryStorage();
+
 const fileFilter = (_req, file, cb) => {
+	const filename = file.originalname.toLowerCase();
+
 	const allowed =
 		file.mimetype.includes("sheet") ||
 		file.mimetype.includes("excel") ||
-		file.originalname.endsWith(".xlsx") ||
-		file.originalname.endsWith(".xls");
+		file.mimetype.includes("csv") ||
+		filename.endsWith(".xlsx") ||
+		filename.endsWith(".xls") ||
+		filename.endsWith(".csv");
 
 	if (!allowed) {
-		return cb(new Error("Only Excel files are allowed"), false);
+		return cb(new Error("Only Excel and CSV files are allowed"), false);
 	}
 
 	cb(null, true);
