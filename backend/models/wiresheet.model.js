@@ -5,7 +5,6 @@ const wiresheetSchema = new mongoose.Schema(
 		wiresheetName: {
 			type: String,
 			required: true,
-			unique: true,
 			trim: true,
 		},
 		acquirerId: {
@@ -40,6 +39,14 @@ const wiresheetSchema = new mongoose.Schema(
 		},
 	},
 	{ timestamps: true },
+);
+
+wiresheetSchema.index(
+	{ acquirerId: 1, startDate: 1, endDate: 1 },
+	{
+		unique: true,
+		name: "uniq_wiresheet_acquirer_period",
+	},
 );
 
 export const Wiresheet = mongoose.model("Wiresheet", wiresheetSchema);

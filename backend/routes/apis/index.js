@@ -33,7 +33,7 @@ router.use("/users", userRoutes);
 router.use("/merchants", merchantRoutes);
 router.use("/acquirers", acquirerRoutes);
 router.use("/merchant-accounts", merchantAccountRoutes);
-router.use("/wiresheets", enableEncryptedResponses, wiresheetRoutes);
+router.use("/wiresheets", wiresheetRoutes);
 router.use("/payments", enableEncryptedResponses, paymentRoutes);
 router.use(
 	"/miscellaneous-payments",
