@@ -186,23 +186,143 @@ const calculateFees = ({ row, fee }) => {
 const escapeRegex = (value) =>
 	String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const getFeeIdentityKey = ({
-	memberId,
-	merchantName,
-	accountIds,
-	currency,
-	brand,
-}) =>
+const getFeeIdentityKey = ({ memberId, accountIds, currency }) =>
 	[
 		normalizeUpper(memberId),
-		normalizeUpper(merchantName),
 		(accountIds || [])
-			.map((id) => normalizeText(id))
+			.map((x) => normalizeText(x))
 			.sort()
 			.join("|"),
 		normalizeUpper(currency),
-		normalizeUpper(brand),
 	].join("__");
+
+// export const uploadMerchantFees = async (req, res) => {
+// 	const file = req.files?.file?.[0];
+
+// 	if (!file) {
+// 		return res.status(400).json({
+// 			success: false,
+// 			message: "Fee file is required",
+// 		});
+// 	}
+
+// 	const rows = parseWorkbookRows(file.buffer);
+
+// 	const operations = [];
+// 	let skippedRows = [];
+
+// 	for (const row of rows) {
+// 		const merchantName =
+// 			normalizeText(getValue(row, ["MerchantName", "Merchant Name"])) || "NA";
+
+// 		const memberId =
+// 			normalizeText(getValue(row, ["Member ID", "Merchant ID"])) || "NA";
+
+// 		let accountIds = parseAccountIds(
+// 			getValue(row, ["Bank Account ID", "Account ID"]),
+// 		);
+
+// 		if (!accountIds.length) {
+// 			accountIds = ["NA"];
+// 		}
+
+// 		const currency = normalizeUpper(getValue(row, ["Currency"])) || "NA";
+
+// 		const brand =
+// 			normalizeUpper(getValue(row, ["Payment Brand", "Brand"])) || "NA";
+
+// 		const partnerName = normalizeText(
+// 			getValue(row, ["Partner", "Partner Name"]),
+// 		);
+
+// 		const country = normalizeText(getValue(row, ["Country"]));
+// 		const type = normalizeText(getValue(row, ["Type"]));
+
+// 		if (!merchantName || merchantName === "NA") {
+// 			skippedRows.push({
+// 				merchantName,
+// 				memberId,
+// 				accountIds,
+// 				currency,
+// 				brand,
+// 				row,
+// 			});
+
+// 			continue;
+// 		}
+
+// 		if (
+// 			!merchantName ||
+// 			!memberId ||
+// 			!accountIds.length ||
+// 			!currency ||
+// 			!brand
+// 		) {
+// 			continue;
+// 		}
+
+// 		const feeIdentityKey = getFeeIdentityKey({
+// 			memberId,
+// 			merchantName,
+// 			accountIds,
+// 			currency,
+// 			brand,
+// 		});
+
+// 		operations.push({
+// 			updateOne: {
+// 				filter: {
+// 					feeIdentityKey,
+// 				},
+// 				update: {
+// 					$set: {
+// 						feeIdentityKey,
+// 						merchantName,
+// 						memberId,
+// 						partnerName,
+// 						accountIds,
+// 						country,
+// 						currency,
+// 						brand,
+
+// 						mdrPercent: parseNumber(getValue(row, ["MDR", "MDR %"])),
+// 						approvalFee: parseNumber(getValue(row, ["Approval Fee"])),
+// 						declineFee: parseNumber(getValue(row, ["Decline Fee"])),
+// 						reversalFee: parseNumber(getValue(row, ["Reversal Fee"])),
+// 						chargebackFee: parseNumber(getValue(row, ["Chargeback Fee"])),
+// 						rollingReservePercent: parseNumber(
+// 							getValue(row, ["RR", "Rolling Reserve"]),
+// 						),
+// 						settlementExpensePercent: parseNumber(
+// 							getValue(row, ["Settlement Exp", "Settlement Expense"]),
+// 						),
+
+// 						status: "active",
+// 						updatedBy: req.user._id,
+// 					},
+// 					$setOnInsert: {
+// 						createdBy: req.user._id,
+// 					},
+// 				},
+// 				upsert: true,
+// 			},
+// 		});
+// 	}
+
+// 	if (operations.length) {
+// 		await MerchantFeeConfig.bulkWrite(operations, { ordered: false });
+// 	}
+
+// 	return res.status(201).json({
+// 		success: true,
+// 		message: "Merchant fee file uploaded successfully",
+// 		data: {
+// 			totalRows: rows.length,
+// 			importedRows: operations.length,
+// 			skippedRows: skippedRows.length,
+// 		},
+// 	});
+// };
 
 export const uploadMerchantFees = async (req, res) => {
 	const file = req.files?.file?.[0];
@@ -216,8 +336,8 @@ export const uploadMerchantFees = async (req, res) => {
 
 	const rows = parseWorkbookRows(file.buffer);
 
-	const operations = [];
-	let skippedRows = [];
+	const docs = [];
+	const skippedRows = [];
 
 	for (const row of rows) {
 		const merchantName =
@@ -230,95 +350,47 @@ export const uploadMerchantFees = async (req, res) => {
 			getValue(row, ["Bank Account ID", "Account ID"]),
 		);
 
-		if (!accountIds.length) {
-			accountIds = ["NA"];
-		}
+		if (!accountIds.length) accountIds = ["NA"];
 
 		const currency = normalizeUpper(getValue(row, ["Currency"])) || "NA";
-
 		const brand =
 			normalizeUpper(getValue(row, ["Payment Brand", "Brand"])) || "NA";
 
-		const partnerName = normalizeText(
-			getValue(row, ["Partner", "Partner Name"]),
-		);
-
-		const country = normalizeText(getValue(row, ["Country"]));
-		const type = normalizeText(getValue(row, ["Type"]));
-
 		if (!merchantName || merchantName === "NA") {
-			skippedRows.push({
-				merchantName,
-				memberId,
-				accountIds,
-				currency,
-				brand,
-				row,
-			});
-
+			skippedRows.push(row);
 			continue;
 		}
 
-		if (
-			!merchantName ||
-			!memberId ||
-			!accountIds.length ||
-			!currency ||
-			!brand
-		) {
-			continue;
-		}
-
-		const feeIdentityKey = getFeeIdentityKey({
-			memberId,
+		docs.push({
 			merchantName,
+			memberId,
+			partnerName: normalizeText(getValue(row, ["Partner", "Partner Name"])),
 			accountIds,
+			country: normalizeText(getValue(row, ["Country"])),
+			type: normalizeText(getValue(row, ["Type"])),
 			currency,
 			brand,
-		});
 
-		operations.push({
-			updateOne: {
-				filter: {
-					feeIdentityKey,
-				},
-				update: {
-					$set: {
-						feeIdentityKey,
-						merchantName,
-						memberId,
-						partnerName,
-						accountIds,
-						country,
-						currency,
-						brand,
+			mdrPercent: parseNumber(getValue(row, ["MDR", "MDR %"])),
+			approvalFee: parseNumber(getValue(row, ["Approval Fee"])),
+			declineFee: parseNumber(getValue(row, ["Decline Fee"])),
+			reversalFee: parseNumber(getValue(row, ["Reversal Fee"])),
+			chargebackFee: parseNumber(getValue(row, ["Chargeback Fee"])),
+			rollingReservePercent: parseNumber(
+				getValue(row, ["RR", "Rolling Reserve"]),
+			),
+			settlementExpensePercent: parseNumber(
+				getValue(row, ["Settlement Exp", "Settlement Expense"]),
+			),
 
-						mdrPercent: parseNumber(getValue(row, ["MDR", "MDR %"])),
-						approvalFee: parseNumber(getValue(row, ["Approval Fee"])),
-						declineFee: parseNumber(getValue(row, ["Decline Fee"])),
-						reversalFee: parseNumber(getValue(row, ["Reversal Fee"])),
-						chargebackFee: parseNumber(getValue(row, ["Chargeback Fee"])),
-						rollingReservePercent: parseNumber(
-							getValue(row, ["RR", "Rolling Reserve"]),
-						),
-						settlementExpensePercent: parseNumber(
-							getValue(row, ["Settlement Exp", "Settlement Expense"]),
-						),
-
-						status: "active",
-						updatedBy: req.user._id,
-					},
-					$setOnInsert: {
-						createdBy: req.user._id,
-					},
-				},
-				upsert: true,
-			},
+			status: "active",
+			createdBy: req.user._id,
+			updatedBy: req.user._id,
 		});
 	}
 
-	if (operations.length) {
-		await MerchantFeeConfig.bulkWrite(operations, { ordered: false });
+	if (docs.length) {
+		await MerchantFeeConfig.insertMany(docs, { ordered: false });
 	}
 
 	return res.status(201).json({
@@ -326,7 +398,7 @@ export const uploadMerchantFees = async (req, res) => {
 		message: "Merchant fee file uploaded successfully",
 		data: {
 			totalRows: rows.length,
-			importedRows: operations.length,
+			insertedRows: docs.length,
 			skippedRows: skippedRows.length,
 		},
 	});
@@ -555,6 +627,12 @@ const normalizeTransactionRow = (row) => ({
 	reason: normalizeText(getValue(row, ["Reason", "Remark"])),
 });
 
+const isAllowedSettlementStatus = (status) => {
+	const value = normalizeUpper(status);
+
+	return value === "SETTLED" || value === "REVERSED" || value === "CHARGEBACK";
+};
+
 const normalizeNA = (value) => {
 	const cleaned = cleanCell(value);
 
@@ -577,33 +655,24 @@ const normalizeTransactionForMatching = (row) => ({
 const isMissingRequiredTransactionField = (row) =>
 	!row.memberId ||
 	row.memberId === "NA" ||
-	!row.merchantCompanyName ||
-	row.merchantCompanyName === "NA" ||
+	!row.bankAccountId ||
+	row.bankAccountId === "NA" ||
 	!row.currency ||
 	row.currency === "NA";
 
-const feeExactKey = ({ memberId, merchantName, accountId, currency, brand }) =>
+const feeExactKey = ({ memberId, accountId, currency }) =>
 	[
 		normalizeUpper(memberId),
-		normalizeUpper(merchantName),
 		normalizeText(accountId),
 		normalizeUpper(currency),
-		normalizeUpper(brand),
-	].join("__");
-
-const feeFallbackKey = ({ memberId, merchantName, currency, brand }) =>
-	[
-		normalizeUpper(memberId),
-		normalizeUpper(merchantName),
-		normalizeUpper(currency),
-		normalizeUpper(brand),
 	].join("__");
 
 const buildFeeIndexes = async () => {
-	const fees = await MerchantFeeConfig.find({ status: "active" }).lean();
+	const fees = await MerchantFeeConfig.find({
+		status: "active",
+	}).lean();
 
 	const exactFeeMap = new Map();
-	const fallbackFeeMap = new Map();
 
 	for (const fee of fees) {
 		const accountIds = Array.isArray(fee.accountIds) ? fee.accountIds : [];
@@ -611,72 +680,38 @@ const buildFeeIndexes = async () => {
 		for (const accountId of accountIds) {
 			const key = feeExactKey({
 				memberId: fee.memberId,
-				merchantName: fee.merchantName,
 				accountId,
 				currency: fee.currency,
-				brand: fee.brand,
 			});
 
 			exactFeeMap.set(key, fee);
 		}
-
-		// Fallback is used only when there is no exact account match.
-		// If more than one config exists for same merchant/currency/brand,
-		// mark fallback as ambiguous to avoid applying a wrong rate.
-		const fallbackKey = feeFallbackKey({
-			memberId: fee.memberId,
-			merchantName: fee.merchantName,
-			currency: fee.currency,
-			brand: fee.brand,
-		});
-
-		if (!fallbackFeeMap.has(fallbackKey)) {
-			fallbackFeeMap.set(fallbackKey, fee);
-		} else {
-			fallbackFeeMap.set(fallbackKey, null);
-		}
 	}
 
-	return { exactFeeMap, fallbackFeeMap };
+	return {
+		exactFeeMap,
+	};
 };
 
 const findFeeFromIndexes = (row, feeIndexes) => {
 	const exactKey = feeExactKey({
 		memberId: row.memberId,
-		merchantName: row.merchantCompanyName,
 		accountId: row.bankAccountId,
 		currency: row.currency,
-		brand: row.paymentBrand,
 	});
 
-	const exactFee = feeIndexes.exactFeeMap.get(exactKey);
+	const fee = feeIndexes.exactFeeMap.get(exactKey);
 
-	if (exactFee) {
+	if (!fee) {
 		return {
-			fee: exactFee,
-			matchType: "account_exact",
-		};
-	}
-
-	const fallbackKey = feeFallbackKey({
-		memberId: row.memberId,
-		merchantName: row.merchantCompanyName,
-		currency: row.currency,
-		brand: row.paymentBrand,
-	});
-
-	const fallbackFee = feeIndexes.fallbackFeeMap.get(fallbackKey);
-
-	if (fallbackFee) {
-		return {
-			fee: fallbackFee,
-			matchType: "merchant_fallback",
+			fee: null,
+			matchType: "unmatched",
 		};
 	}
 
 	return {
-		fee: null,
-		matchType: "unmatched",
+		fee,
+		matchType: "account_exact",
 	};
 };
 
@@ -750,6 +785,11 @@ export const uploadMerchantTransactions = async (req, res) => {
 			let row = normalizeTransactionRow(rawRow);
 
 			row = normalizeTransactionForMatching(row);
+
+			if (!isAllowedSettlementStatus(row.status)) {
+				skippedRows += 1;
+				continue;
+			}
 
 			if (isMissingRequiredTransactionField(row)) {
 				skippedRows += 1;

@@ -257,6 +257,13 @@ const buildPaymentDayReportData = async ({ paymentDate }) => {
 export const exportBankReportsExcel = async (req, res) => {
 	const report = await buildPaymentDayReportData(req.query);
 
+	const formatDate = (value) => {
+		if (!value) return "";
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return "";
+		return date.toISOString().slice(0, 10);
+	};
+
 	const rows = [];
 
 	for (const bank of report.banks || []) {
@@ -264,35 +271,59 @@ export const exportBankReportsExcel = async (req, res) => {
 			for (const transaction of merchant.transactions || []) {
 				rows.push({
 					"Payment Date": report.paymentDate || "All",
-					Bank: bank.bank,
-					Merchant: merchant.merchantName,
-					MID: merchant.mid,
+					Bank: bank.bank || "",
+					Merchant: merchant.merchantName || "",
+					MID: merchant.mid || "",
 
-					"Start Date": transaction.receivedPeriod?.startDate,
-					"End Date": transaction.receivedPeriod?.endDate,
+					"Start Date": formatDate(transaction.receivedPeriod?.startDate),
+					"End Date": formatDate(transaction.receivedPeriod?.endDate),
 
-					"Received Currency": transaction.receivedCurrency,
-					"Received Amount": transaction.receivedAmount,
+					"Received Currency": transaction.receivedCurrency || "",
+					"Received Amount": Number(transaction.receivedAmount || 0),
 
-					"Paid Currency": transaction.paidCurrency,
-					"Paid Against Processing": transaction.paidAmount,
+					"Paid Currency": transaction.paidCurrency || "",
+					"Paid Against Processing": Number(transaction.paidAmount || 0),
 
-					"Settlement Currency": transaction.settlementCurrency,
-					"Settlement Amount": transaction.settlementAmount,
+					"Settlement Currency": transaction.settlementCurrency || "",
+					"Settlement Amount": Number(transaction.settlementAmount || 0),
 
-					Rate: transaction.paymentRate || 0,
+					Rate: Number(transaction.paymentRate || 0),
 
-					"Payment Method": transaction.paymentMethod,
-					"Paid Date": transaction.paidToMerchantDate,
-					Status: transaction.status,
+					"Payment Method": transaction.paymentMethod || "",
+					"Paid Date": formatDate(transaction.paidToMerchantDate),
+					Status: transaction.status || "",
 				});
 			}
 		}
 	}
 
 	const worksheet = xlsx.utils.json_to_sheet(rows);
-	const workbook = xlsx.utils.book_new();
 
+	worksheet["!cols"] = [
+		{ wch: 14 }, // Payment Date
+		{ wch: 18 }, // Bank
+		{ wch: 35 }, // Merchant
+		{ wch: 16 }, // MID
+		{ wch: 14 }, // Start Date
+		{ wch: 14 }, // End Date
+		{ wch: 18 }, // Received Currency
+		{ wch: 18 }, // Received Amount
+		{ wch: 15 }, // Paid Currency
+		{ wch: 24 }, // Paid Against Processing
+		{ wch: 20 }, // Settlement Currency
+		{ wch: 20 }, // Settlement Amount
+		{ wch: 12 }, // Rate
+		{ wch: 16 }, // Payment Method
+		{ wch: 14 }, // Paid Date
+		{ wch: 16 }, // Status
+	];
+
+	worksheet["!freeze"] = {
+		xSplit: 0,
+		ySplit: 1,
+	};
+
+	const workbook = xlsx.utils.book_new();
 	xlsx.utils.book_append_sheet(workbook, worksheet, "Payment Report");
 
 	const buffer = xlsx.write(workbook, {
@@ -455,12 +486,12 @@ export const exportBankReportsPdf = async (req, res) => {
 
 		doc
 			.font("Helvetica")
-			.fontSize(7.5)
+			.fontSize(7)
 			.fillColor(C.darkBorder)
 			.text(`Payment Date: ${paymentDateStr}`, MARGIN + 16, y + 32, {
 				lineBreak: false,
 			})
-			.fontSize(7.5)
+			.fontSize(7)
 			.text(`Generated: ${generatedStr} UTC`, MARGIN, y + 32, {
 				width: USABLE - 8,
 				align: "right",
@@ -598,7 +629,7 @@ export const exportBankReportsPdf = async (req, res) => {
 
 			doc
 				.font("Helvetica-Bold")
-				.fontSize(7.5)
+				.fontSize(7)
 				.fillColor(C.primary)
 				.text(col.label, x + 8, y + 8, {
 					width: QW - 14,
@@ -607,7 +638,7 @@ export const exportBankReportsPdf = async (req, res) => {
 
 			doc
 				.font("Helvetica")
-				.fontSize(7.5)
+				.fontSize(7)
 				.fillColor(C.text)
 				.text(col.value, x + 8, y + 22, {
 					width: QW - 14,
@@ -621,10 +652,10 @@ export const exportBankReportsPdf = async (req, res) => {
 
 	// ─── Table Columns ──────────────────────────────────────────────────────
 	const COLS = [
-		{ label: "Merchant", width: Math.floor(USABLE * 0.24) },
-		{ label: "MID", width: Math.floor(USABLE * 0.08) },
-		{ label: "Received", width: Math.floor(USABLE * 0.19) },
-		{ label: "Paid Against Processing", width: Math.floor(USABLE * 0.21) },
+		{ label: "Merchant", width: Math.floor(USABLE * 0.25) },
+		{ label: "MID", width: Math.floor(USABLE * 0.09) },
+		{ label: "Received", width: Math.floor(USABLE * 0.2) },
+		{ label: "Paid Against Processing", width: Math.floor(USABLE * 0.22) },
 		{ label: "Settlement + Rate", width: 0 },
 	];
 
@@ -646,7 +677,7 @@ export const exportBankReportsPdf = async (req, res) => {
 
 		doc.rect(MARGIN, y, USABLE, H).fill(C.primary);
 
-		doc.font("Helvetica-Bold").fontSize(7.5).fillColor(C.white);
+		doc.font("Helvetica-Bold").fontSize(7).fillColor(C.white);
 
 		for (const col of COLS) {
 			doc.text(col.label, col.x + 4, y + 5, {
@@ -666,16 +697,21 @@ export const exportBankReportsPdf = async (req, res) => {
 		const settlement = merchantSettlementText(merchant);
 
 		// Calculate max row height
-		const cellH = (text, width) =>
-			doc.heightOfString(text || "—", {
-				width: width - PAD * 2,
-				fontSize: 7.5,
-			}) +
-			PAD * 2;
+		const cellH = (text, width, bold = false) => {
+			doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(7);
+
+			return (
+				doc.heightOfString(String(text || "—"), {
+					width: width - PAD * 2,
+					lineGap: 1,
+				}) +
+				PAD * 2
+			);
+		};
 
 		const RH = Math.max(
-			20,
-			cellH(merchant.merchantName || "—", COLS[0].width),
+			22,
+			cellH(merchant.merchantName || "—", COLS[0].width, true),
 			cellH(merchant.mid || "—", COLS[1].width),
 			cellH(received, COLS[2].width),
 			cellH(paid, COLS[3].width),
@@ -705,14 +741,14 @@ export const exportBankReportsPdf = async (req, res) => {
 		}
 
 		// Cell content
-		doc.font("Helvetica-Bold").fontSize(7.5).fillColor(C.text);
+		doc.font("Helvetica-Bold").fontSize(7).fillColor(C.text);
 
 		doc.text(merchant.merchantName || "—", COLS[0].x + PAD, y + PAD, {
 			width: COLS[0].width - PAD * 2,
 			lineBreak: true,
 		});
 
-		doc.font("Helvetica").fontSize(7.5).fillColor(C.text);
+		doc.font("Helvetica").fontSize(7).fillColor(C.text);
 
 		doc
 			.text(merchant.mid || "—", COLS[1].x + PAD, y + PAD, {

@@ -78,12 +78,6 @@ const merchantFeeConfigSchema = new mongoose.Schema(
 			type: String,
 			trim: true,
 		},
-		feeIdentityKey: {
-			type: String,
-			required: true,
-			unique: true,
-			index: true,
-		},
 	},
 	{ timestamps: true },
 );
