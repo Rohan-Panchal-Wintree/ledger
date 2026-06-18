@@ -156,6 +156,13 @@ export const listWiresheetUploads = async (req, res) => {
 	const [uploads, total] = await Promise.all([
 		SettlementUpload.find(uploadQuery)
 			.populate("uploadedBy", "name email")
+			.populate({
+				path: "wiresheetId",
+				populate: {
+					path: "acquirerId",
+					select: "name",
+				},
+			})
 			.sort({ createdAt: -1 })
 			.skip(skip)
 			.limit(limit)
@@ -164,21 +171,11 @@ export const listWiresheetUploads = async (req, res) => {
 		SettlementUpload.countDocuments(uploadQuery),
 	]);
 
-	const wiresheets = await Wiresheet.find()
-		.populate("acquirerId", "name")
-		.sort({ createdAt: -1 })
-		.lean();
-
 	return res.json({
 		success: true,
 
 		data: uploads.map((upload) => {
-			const matchedWiresheet = wiresheets.find((item) => {
-				const uploadTime = new Date(upload.createdAt).getTime();
-				const wiresheetTime = new Date(item.createdAt).getTime();
-
-				return Math.abs(uploadTime - wiresheetTime) <= 2 * 60 * 1000;
-			});
+			const matchedWiresheet = upload.wiresheetId || null;
 
 			const matchedPeriod = matchedWiresheet
 				? getMatchedWiresheetPeriod({

@@ -27,6 +27,11 @@ const settlementUploadSchema = new mongoose.Schema(
 
 		mimeType: String,
 		size: Number,
+		wiresheetId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Wiresheet",
+			default: null,
+		},
 
 		uploadedBy: {
 			type: mongoose.Schema.Types.ObjectId,

@@ -386,7 +386,7 @@ const buildWiresheetS3Key = (fileName) => {
 	return `settlement-uploads/wiresheets/${Date.now()}-${safeFileName}`;
 };
 
-const storeOriginalWiresheetUpload = async ({ file, userId }) => {
+const storeOriginalWiresheetUpload = async ({ file, userId, wiresheetId }) => {
 	const s3Key = buildWiresheetS3Key(file.originalname);
 
 	await s3.send(
@@ -409,6 +409,7 @@ const storeOriginalWiresheetUpload = async ({ file, userId }) => {
 		fileUrl,
 		mimeType: file.mimetype,
 		size: file.size,
+		wiresheetId,
 		uploadedBy: userId,
 	});
 };
@@ -496,6 +497,7 @@ export const uploadWiresheet = async (req, res) => {
 				const uploadRecord = await storeOriginalWiresheetUpload({
 					file,
 					userId: req.user._id,
+					wiresheetId: result.wiresheetId,
 				});
 
 				result.uploadRecord = {
