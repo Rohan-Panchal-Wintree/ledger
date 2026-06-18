@@ -84,7 +84,45 @@ const buildWiresheetName = ({ acquirerName, startDate, endDate }) =>
 		.slice(0, 10)}_TO_${endDate.toISOString().slice(0, 10)}`;
 
 // Find date range from rows
-const getSheetRange = (rows) => {
+// const getSheetRange = (rows) => {
+// 	const startDate = rows.reduce(
+// 		(min, row) => (!min || row.startDate < min ? row.startDate : min),
+// 		null,
+// 	);
+
+// 	const endDate = rows.reduce(
+// 		(max, row) => (!max || row.endDate > max ? row.endDate : max),
+// 		null,
+// 	);
+
+// 	return { startDate, endDate };
+// };
+
+// Find date range from filename first, fallback to rows
+const getSheetRange = (rows, fileName = "") => {
+	const matches = String(fileName || "").match(/\d{2}\.\d{2}\.\d{4}/g) || [];
+
+	if (matches.length >= 2) {
+		const parseFileDate = (value, isEndDate = false) => {
+			const [dd, mm, yyyy] = value.split(".");
+
+			const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+
+			if (isEndDate) {
+				date.setUTCHours(23, 59, 59, 999);
+			} else {
+				date.setUTCHours(0, 0, 0, 0);
+			}
+
+			return date;
+		};
+
+		return {
+			startDate: parseFileDate(matches[0]),
+			endDate: parseFileDate(matches[1], true),
+		};
+	}
+
 	const startDate = rows.reduce(
 		(min, row) => (!min || row.startDate < min ? row.startDate : min),
 		null,
@@ -237,7 +275,7 @@ const processSingleWiresheet = async ({ file, acquirerId }) => {
 		};
 	}
 
-	const { startDate, endDate } = getSheetRange(rows);
+	const { startDate, endDate } = getSheetRange(rows, file.originalname);
 
 	if (!startDate || !endDate) {
 		return {
