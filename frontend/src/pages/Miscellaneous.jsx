@@ -32,6 +32,7 @@ import Spinner from "../component/UI/Spinner";
 
 import MiscellaneousEntryForm from "../component/miscellaneous/MiscellaneousEntryForm";
 import MiscellaneousEntryRow from "../component/miscellaneous/MiscellaneousEntryRow";
+import PageHeader from "../component/UI/PageHeader";
 
 function getEntryGroupKey(entry) {
   return entry.paymentSheetDateLabel || formatDate(entry.paymentSheetDate);
@@ -272,6 +273,11 @@ export default function Miscellaneous() {
 
   return (
     <div className="w-full bg-background text-on-background">
+      <PageHeader
+        title="Miscellaneous"
+        description="Add, edit, and manage miscellaneous data associated with the payment sheet."
+        className="mb-6"
+      />
       {/* Toolbar */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -280,7 +286,7 @@ export default function Miscellaneous() {
           </h2>
 
           <p className="mt-1 text-sm font-medium text-on-surface-variant">
-            Create, search, edit, and delete miscellaneous payment records.
+            All the payment sheet related miscellaneous entries.
           </p>
         </div>
 

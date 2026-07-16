@@ -6,6 +6,7 @@ const roles = [
   { label: "Merchant", value: "merchant" },
   { label: "Finance", value: "finance" },
   { label: "Settlement", value: "settlement" },
+  { label: "Support", value: "support" },
 ];
 
 export default function EmailForm({

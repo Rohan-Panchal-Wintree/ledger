@@ -15,9 +15,7 @@ import { enableEncryptedResponses } from "../../middlewares/encryptedResponse.mi
 const router = Router();
 
 router.use(middlewares.authMiddleware);
-router.use(
-  middlewares.roleMiddleware(["admin", "finance", "settlement", "viewer"]),
-);
+router.use(middlewares.roleMiddleware(["admin", "finance", "settlement"]));
 
 // Fetch Latest 5 Dates from the database
 router.get("/dates", enableEncryptedResponses, asyncHandler(getReportDates));

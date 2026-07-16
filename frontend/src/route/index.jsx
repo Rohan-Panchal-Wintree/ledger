@@ -15,8 +15,15 @@ import ManageEmails from "../pages/ManageEmails";
 import Sheets from "../pages/Sheets.jsx";
 import Miscellaneous from "../pages/Miscellaneous";
 import ReportDetail from "../pages/ReportDetail";
+import MerchantSettlement from "../pages/MerchantSettlement.jsx";
 
-const authenticatedRoles = ["admin", "finance", "settlement", "merchant"];
+const authenticatedRoles = [
+  "admin",
+  "finance",
+  "settlement",
+  "merchant",
+  "support",
+];
 
 const router = createBrowserRouter([
   {
@@ -43,7 +50,9 @@ const router = createBrowserRouter([
       {
         path: "merchants",
         element: (
-          <ProtectedRoutes allowedRoles={["admin", "settlement", "finance"]}>
+          <ProtectedRoutes
+            allowedRoles={["admin", "settlement", "finance", "support"]}
+          >
             <Merchants />
           </ProtectedRoutes>
         ),
@@ -51,7 +60,9 @@ const router = createBrowserRouter([
       {
         path: "acquirers",
         element: (
-          <ProtectedRoutes allowedRoles={authenticatedRoles}>
+          <ProtectedRoutes
+            allowedRoles={["admin", "finance", "settlement", "support"]}
+          >
             <Acquirers />
           </ProtectedRoutes>
         ),
@@ -59,7 +70,9 @@ const router = createBrowserRouter([
       {
         path: "reports",
         element: (
-          <ProtectedRoutes allowedRoles={["admin", "settlement"]}>
+          <ProtectedRoutes
+            allowedRoles={["admin", "settlement", "finance", "support"]}
+          >
             <Reports />
           </ProtectedRoutes>
         ),
@@ -67,11 +80,21 @@ const router = createBrowserRouter([
       {
         path: "upload",
         element: (
-          <ProtectedRoutes allowedRoles={["admin", "settlement"]}>
+          <ProtectedRoutes
+            allowedRoles={["admin", "settlement", "finance", "support"]}
+          >
             <Upload />
           </ProtectedRoutes>
         ),
       },
+      // {
+      //   path: "merchant-settlement",
+      //   element: (
+      //     <ProtectedRoutes allowedRoles={["admin", "support", "settlement"]}>
+      //       <MerchantSettlement />
+      //     </ProtectedRoutes>
+      //   ),
+      // },
       {
         path: "miscellaneous",
         element: (

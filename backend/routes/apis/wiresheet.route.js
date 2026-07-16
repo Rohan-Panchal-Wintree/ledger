@@ -12,15 +12,15 @@ router.use(middlewares.authMiddleware);
 
 // ROUTES - START
 router.post(
-	"/upload-wiresheet",
-	authenticatedWriteLimiter,
-	middlewares.roleMiddleware(["admin", "settlement"]),
-	middlewares.uploadMiddleware.fields([
-		{ name: "file", maxCount: 1 },
-		{ name: "files", maxCount: 100 },
-	]),
-	validateRequest(uploadWiresheetSchema),
-	asyncHandler(uploadWiresheet),
+  "/upload-wiresheet",
+  authenticatedWriteLimiter,
+  middlewares.roleMiddleware(["admin", "settlement"]),
+  middlewares.uploadMiddleware.fields([
+    { name: "file", maxCount: 1 },
+    { name: "files", maxCount: 100 },
+  ]),
+  validateRequest(uploadWiresheetSchema),
+  asyncHandler(uploadWiresheet),
 );
 
 // ROUTES - END

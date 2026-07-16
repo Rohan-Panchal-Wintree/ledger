@@ -13,16 +13,16 @@ import { WiresheetTransaction } from "../models/wiresheet-transaction.model.js";
 
 // EXCEL & DATE
 import {
-	parseExcelFile,
-	extractWorkbookBankName,
+  parseExcelFile,
+  extractWorkbookBankName,
 } from "../utils/excelParser.js";
 import { parseFlexibleSheetDate } from "../utils/dateUtils.js";
 
 // CURRENCY
 import {
-	derivePaymentMethod,
-	deriveSettlementStatus,
-	roundMoney,
+  derivePaymentMethod,
+  deriveSettlementStatus,
+  roundMoney,
 } from "../utils/currencyUtils.js";
 
 // FILE READ FROM EXCEL FILE
@@ -30,58 +30,58 @@ import { extractBankNameFromFileName } from "../utils/ManagedVariables.js";
 
 // Clean text → remove extra spaces + make uppercase
 const normalizeText = (value) =>
-	String(value || "")
-		.replace(/\s+/g, " ")
-		.trim()
-		.toUpperCase();
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 
 // Decide merchant tag based on name
 const resolveMerchantTag = (merchantName) =>
-	normalizeText(merchantName).includes("(DP)")
-		? "Dreamzpay Merchant"
-		: "Transactworld Merchant";
+  normalizeText(merchantName).includes("(DP)")
+    ? "Dreamzpay Merchant"
+    : "Transactworld Merchant";
 
 // Convert Excel values → clean number
 const parseSheetNumber = (value) => {
-	if (value === null || value === undefined) return 0;
+  if (value === null || value === undefined) return 0;
 
-	const normalized = String(value)
-		.replace(/,/g, "")
-		.replace(/[^0-9.-]/g, "")
-		.trim();
+  const normalized = String(value)
+    .replace(/,/g, "")
+    .replace(/[^0-9.-]/g, "")
+    .trim();
 
-	if (!normalized || normalized === "-" || normalized === ".") return 0;
+  if (!normalized || normalized === "-" || normalized === ".") return 0;
 
-	const parsed = Number(normalized);
-	return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 // Converts raw Excel row → clean structured object
 const normalizeRow = (row) => ({
-	merchantName: String(row["MERCHANT NAME"] || row.merchantName || "").trim(),
-	mid: String(row.MID || row.mid || "").trim(),
-	startDate: parseFlexibleSheetDate(row["START DATE"] || row.startDate),
-	endDate: parseFlexibleSheetDate(row["END DATE"] || row.endDate),
-	processingCurrency: String(
-		row["PROCESSING CURRENCY"] || row.processingCurrency || "",
-	)
-		.trim()
-		.toUpperCase(),
-	processingAmount: parseSheetNumber(row.AMOUNT || row.processingAmount || 0),
-	rate: 0,
-	settlementCurrency: String(
-		row["PROCESSING CURRENCY"] || row.processingCurrency || "",
-	)
-		.trim()
-		.toUpperCase(),
-	payable: parseSheetNumber(row.AMOUNT || row.processingAmount || 0),
+  merchantName: String(row["MERCHANT NAME"] || row.merchantName || "").trim(),
+  mid: String(row.MID || row.mid || "").trim(),
+  startDate: parseFlexibleSheetDate(row["START DATE"] || row.startDate),
+  endDate: parseFlexibleSheetDate(row["END DATE"] || row.endDate),
+  processingCurrency: String(
+    row["PROCESSING CURRENCY"] || row.processingCurrency || "",
+  )
+    .trim()
+    .toUpperCase(),
+  processingAmount: parseSheetNumber(row.AMOUNT || row.processingAmount || 0),
+  rate: 0,
+  settlementCurrency: String(
+    row["PROCESSING CURRENCY"] || row.processingCurrency || "",
+  )
+    .trim()
+    .toUpperCase(),
+  payable: parseSheetNumber(row.AMOUNT || row.processingAmount || 0),
 });
 
 // Create wiresheet name
 const buildWiresheetName = ({ acquirerName, startDate, endDate }) =>
-	`${acquirerName.toUpperCase()}_${startDate
-		.toISOString()
-		.slice(0, 10)}_TO_${endDate.toISOString().slice(0, 10)}`;
+  `${acquirerName.toUpperCase()}_${startDate
+    .toISOString()
+    .slice(0, 10)}_TO_${endDate.toISOString().slice(0, 10)}`;
 
 // Find date range from rows
 // const getSheetRange = (rows) => {
@@ -100,317 +100,317 @@ const buildWiresheetName = ({ acquirerName, startDate, endDate }) =>
 
 // Find date range from filename first, fallback to rows
 const getSheetRange = (rows, fileName = "") => {
-	const matches = String(fileName || "").match(/\d{2}\.\d{2}\.\d{4}/g) || [];
+  const matches = String(fileName || "").match(/\d{2}\.\d{2}\.\d{4}/g) || [];
 
-	if (matches.length >= 2) {
-		const parseFileDate = (value, isEndDate = false) => {
-			const [dd, mm, yyyy] = value.split(".");
+  if (matches.length >= 2) {
+    const parseFileDate = (value, isEndDate = false) => {
+      const [dd, mm, yyyy] = value.split(".");
 
-			const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+      const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
 
-			if (isEndDate) {
-				date.setUTCHours(23, 59, 59, 999);
-			} else {
-				date.setUTCHours(0, 0, 0, 0);
-			}
+      if (isEndDate) {
+        date.setUTCHours(23, 59, 59, 999);
+      } else {
+        date.setUTCHours(0, 0, 0, 0);
+      }
 
-			return date;
-		};
+      return date;
+    };
 
-		return {
-			startDate: parseFileDate(matches[0]),
-			endDate: parseFileDate(matches[1], true),
-		};
-	}
+    return {
+      startDate: parseFileDate(matches[0]),
+      endDate: parseFileDate(matches[1], true),
+    };
+  }
 
-	const startDate = rows.reduce(
-		(min, row) => (!min || row.startDate < min ? row.startDate : min),
-		null,
-	);
+  const startDate = rows.reduce(
+    (min, row) => (!min || row.startDate < min ? row.startDate : min),
+    null,
+  );
 
-	const endDate = rows.reduce(
-		(max, row) => (!max || row.endDate > max ? row.endDate : max),
-		null,
-	);
+  const endDate = rows.reduce(
+    (max, row) => (!max || row.endDate > max ? row.endDate : max),
+    null,
+  );
 
-	return { startDate, endDate };
+  return { startDate, endDate };
 };
 
 const getAcquirer = async ({ acquirerId, fileBuffer, originalName }) => {
-	if (acquirerId) {
-		return Acquirer.findById(acquirerId).lean();
-	}
+  if (acquirerId) {
+    return Acquirer.findById(acquirerId).lean();
+  }
 
-	const workbookBankName = extractWorkbookBankName(fileBuffer);
+  const workbookBankName = extractWorkbookBankName(fileBuffer);
 
-	if (!workbookBankName) return null;
+  if (!workbookBankName) return null;
 
-	return Acquirer.findOne({
-		name: new RegExp(`^${workbookBankName}$`, "i"),
-	}).lean();
+  return Acquirer.findOne({
+    name: new RegExp(`^${workbookBankName}$`, "i"),
+  }).lean();
 };
 // Check if merchants exist -> Create missing ones
 
 const ensureMerchants = async (rows) => {
-	const merchantNames = [...new Set(rows.map((row) => row.merchantName))];
+  const merchantNames = [...new Set(rows.map((row) => row.merchantName))];
 
-	const existingMerchants = await Merchant.find({
-		merchantName: { $in: merchantNames },
-	}).lean();
+  const existingMerchants = await Merchant.find({
+    merchantName: { $in: merchantNames },
+  }).lean();
 
-	const merchantMap = new Map(
-		existingMerchants.map((merchant) => [merchant.merchantName, merchant]),
-	);
+  const merchantMap = new Map(
+    existingMerchants.map((merchant) => [merchant.merchantName, merchant]),
+  );
 
-	const missingMerchantNames = merchantNames.filter(
-		(merchantName) => !merchantMap.has(merchantName),
-	);
+  const missingMerchantNames = merchantNames.filter(
+    (merchantName) => !merchantMap.has(merchantName),
+  );
 
-	if (missingMerchantNames.length) {
-		await Merchant.insertMany(
-			missingMerchantNames.map((merchantName) => ({
-				merchantName,
-				merchantTag: resolveMerchantTag(merchantName),
-				status: "active",
-			})),
-			{ ordered: false },
-		).catch((error) => {
-			if (error.code !== 11000) throw error;
-		});
-	}
+  if (missingMerchantNames.length) {
+    await Merchant.insertMany(
+      missingMerchantNames.map((merchantName) => ({
+        merchantName,
+        merchantTag: resolveMerchantTag(merchantName),
+        status: "active",
+      })),
+      { ordered: false },
+    ).catch((error) => {
+      if (error.code !== 11000) throw error;
+    });
+  }
 
-	const merchants = await Merchant.find({
-		merchantName: { $in: merchantNames },
-	}).lean();
+  const merchants = await Merchant.find({
+    merchantName: { $in: merchantNames },
+  }).lean();
 
-	return new Map(
-		merchants.map((merchant) => [merchant.merchantName, merchant]),
-	);
+  return new Map(
+    merchants.map((merchant) => [merchant.merchantName, merchant]),
+  );
 };
 
 // Ensures: MID + Acquirer mapping exists
 const ensureMerchantMappings = async ({ rows, acquirerId, merchantMap }) => {
-	const cleanRows = rows.map((row) => ({
-		...row,
-		mid: String(row.mid).trim(),
-		merchantName: String(row.merchantName).trim(),
-	}));
+  const cleanRows = rows.map((row) => ({
+    ...row,
+    mid: String(row.mid).trim(),
+    merchantName: String(row.merchantName).trim(),
+  }));
 
-	const mids = [...new Set(cleanRows.map((row) => row.mid))];
+  const mids = [...new Set(cleanRows.map((row) => row.mid))];
 
-	const operations = [];
+  const operations = [];
 
-	for (const row of cleanRows) {
-		const merchant = merchantMap.get(row.merchantName);
+  for (const row of cleanRows) {
+    const merchant = merchantMap.get(row.merchantName);
 
-		if (!merchant) {
-			throw new Error(`Merchant not found for "${row.merchantName}"`);
-		}
+    if (!merchant) {
+      throw new Error(`Merchant not found for "${row.merchantName}"`);
+    }
 
-		operations.push({
-			updateOne: {
-				filter: {
-					acquirerId,
-					mid: row.mid,
-				},
-				update: {
-					$setOnInsert: {
-						merchantId: merchant._id,
-						acquirerId,
-						mid: row.mid,
-						processingCurrency: row.processingCurrency,
-						settlementCurrency: row.settlementCurrency,
-						status: "active",
-					},
-				},
-				upsert: true,
-			},
-		});
-	}
+    operations.push({
+      updateOne: {
+        filter: {
+          acquirerId,
+          mid: row.mid,
+        },
+        update: {
+          $setOnInsert: {
+            merchantId: merchant._id,
+            acquirerId,
+            mid: row.mid,
+            processingCurrency: row.processingCurrency,
+            settlementCurrency: row.settlementCurrency,
+            status: "active",
+          },
+        },
+        upsert: true,
+      },
+    });
+  }
 
-	if (operations.length) {
-		await MerchantAccount.bulkWrite(operations, { ordered: false });
-	}
+  if (operations.length) {
+    await MerchantAccount.bulkWrite(operations, { ordered: false });
+  }
 
-	const mappings = await MerchantAccount.find({
-		acquirerId,
-		mid: { $in: mids },
-	}).lean();
+  const mappings = await MerchantAccount.find({
+    acquirerId,
+    mid: { $in: mids },
+  }).lean();
 
-	const mappingMap = new Map(
-		mappings.map((mapping) => [
-			`${String(mapping.acquirerId)}:${String(mapping.mid).trim()}`,
-			mapping,
-		]),
-	);
+  const mappingMap = new Map(
+    mappings.map((mapping) => [
+      `${String(mapping.acquirerId)}:${String(mapping.mid).trim()}`,
+      mapping,
+    ]),
+  );
 
-	return mappingMap;
+  return mappingMap;
 };
 
 // PROCESSING WIRESHEET
 const processSingleWiresheet = async ({ file, acquirerId }) => {
-	const acquirer = await getAcquirer({
-		acquirerId,
-		fileBuffer: file.buffer,
-		originalName: file.originalname,
-	});
+  const acquirer = await getAcquirer({
+    acquirerId,
+    fileBuffer: file.buffer,
+    originalName: file.originalname,
+  });
 
-	if (!acquirer) {
-		return {
-			success: false,
-			fileName: file.originalname,
-			message: "Acquirer not found",
-		};
-	}
+  if (!acquirer) {
+    return {
+      success: false,
+      fileName: file.originalname,
+      message: "Acquirer not found",
+    };
+  }
 
-	const rows = parseExcelFile(file.buffer)
-		.map(normalizeRow)
-		.filter((row) => row.mid && row.merchantName);
+  const rows = parseExcelFile(file.buffer)
+    .map(normalizeRow)
+    .filter((row) => row.mid && row.merchantName);
 
-	if (!rows.length) {
-		return {
-			success: false,
-			fileName: file.originalname,
-			message: "No valid wiresheet rows found",
-		};
-	}
+  if (!rows.length) {
+    return {
+      success: false,
+      fileName: file.originalname,
+      message: "No valid wiresheet rows found",
+    };
+  }
 
-	const { startDate, endDate } = getSheetRange(rows, file.originalname);
+  const { startDate, endDate } = getSheetRange(rows, file.originalname);
 
-	if (!startDate || !endDate) {
-		return {
-			success: false,
-			fileName: file.originalname,
-			message: "Sheet must include valid start and end dates",
-		};
-	}
+  if (!startDate || !endDate) {
+    return {
+      success: false,
+      fileName: file.originalname,
+      message: "Sheet must include valid start and end dates",
+    };
+  }
 
-	const wiresheetName = buildWiresheetName({
-		acquirerName: acquirer.name,
-		startDate,
-		endDate,
-	});
+  const wiresheetName = buildWiresheetName({
+    acquirerName: acquirer.name,
+    startDate,
+    endDate,
+  });
 
-	const existingWiresheet = await Wiresheet.findOne({
-		acquirerId: acquirer._id,
-		startDate,
-		endDate,
-	}).lean();
+  const existingWiresheet = await Wiresheet.findOne({
+    acquirerId: acquirer._id,
+    startDate,
+    endDate,
+  }).lean();
 
-	if (existingWiresheet) {
-		return {
-			success: false,
-			duplicate: true,
-			fileName: file.originalname,
-			wiresheetId: existingWiresheet._id,
-			wiresheetName: existingWiresheet.wiresheetName,
-			message: "Wiresheet already exists for this acquirer and date range",
-		};
-	}
+  if (existingWiresheet) {
+    return {
+      success: false,
+      duplicate: true,
+      fileName: file.originalname,
+      wiresheetId: existingWiresheet._id,
+      wiresheetName: existingWiresheet.wiresheetName,
+      message: "Wiresheet already exists for this acquirer and date range",
+    };
+  }
 
-	const merchantMap = await ensureMerchants(rows);
+  const merchantMap = await ensureMerchants(rows);
 
-	const mappingMap = await ensureMerchantMappings({
-		rows,
-		acquirerId: acquirer._id,
-		merchantMap,
-	});
+  const mappingMap = await ensureMerchantMappings({
+    rows,
+    acquirerId: acquirer._id,
+    merchantMap,
+  });
 
-	let totalPayable = 0;
+  let totalPayable = 0;
 
-	const transactionDocs = rows.map((row) => {
-		const mid = String(row.mid).trim();
-		const merchantName = String(row.merchantName).trim();
+  const transactionDocs = rows.map((row) => {
+    const mid = String(row.mid).trim();
+    const merchantName = String(row.merchantName).trim();
 
-		const merchant = merchantMap.get(merchantName);
+    const merchant = merchantMap.get(merchantName);
 
-		if (!merchant) {
-			throw new Error(`Merchant not found for "${merchantName}"`);
-		}
+    if (!merchant) {
+      throw new Error(`Merchant not found for "${merchantName}"`);
+    }
 
-		const merchantMapping = mappingMap.get(`${String(acquirer._id)}:${mid}`);
+    const merchantMapping = mappingMap.get(`${String(acquirer._id)}:${mid}`);
 
-		if (!merchantMapping) {
-			throw new Error(`Merchant mapping not found for MID "${mid}"`);
-		}
+    if (!merchantMapping) {
+      throw new Error(`Merchant mapping not found for MID "${mid}"`);
+    }
 
-		const payable = roundMoney(row.payable);
-		totalPayable += payable;
+    const payable = roundMoney(row.payable);
+    totalPayable += payable;
 
-		return {
-			merchantId: merchant._id,
-			merchantMappingId: merchantMapping._id,
-			merchantName,
-			merchantTag: resolveMerchantTag(merchantName),
-			mid,
-			startDate: row.startDate,
-			endDate: row.endDate,
-			processingCurrency: row.processingCurrency,
-			processingAmount: roundMoney(row.processingAmount),
-			rate: row.rate,
-			settlementCurrency: row.settlementCurrency,
-			payable,
-			paid: 0,
-			balance: payable,
-			status: deriveSettlementStatus({ payable, paid: 0 }),
-		};
-	});
-	const roundedTotalPayable = roundMoney(totalPayable);
+    return {
+      merchantId: merchant._id,
+      merchantMappingId: merchantMapping._id,
+      merchantName,
+      merchantTag: resolveMerchantTag(merchantName),
+      mid,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      processingCurrency: row.processingCurrency,
+      processingAmount: roundMoney(row.processingAmount),
+      rate: row.rate,
+      settlementCurrency: row.settlementCurrency,
+      payable,
+      paid: 0,
+      balance: payable,
+      status: deriveSettlementStatus({ payable, paid: 0 }),
+    };
+  });
+  const roundedTotalPayable = roundMoney(totalPayable);
 
-	let wiresheet;
+  let wiresheet;
 
-	try {
-		wiresheet = await Wiresheet.create({
-			wiresheetName,
-			acquirerId: acquirer._id,
-			startDate,
-			endDate,
-			totalPayable: roundedTotalPayable,
-			totalPaid: 0,
-			totalBalance: roundedTotalPayable,
-			status: "pending",
-		});
-	} catch (error) {
-		if (error.code === 11000) {
-			return {
-				success: false,
-				duplicate: true,
-				fileName: file.originalname,
-				wiresheetName,
-				message: "Wiresheet already exists for this acquirer and date range",
-			};
-		}
+  try {
+    wiresheet = await Wiresheet.create({
+      wiresheetName,
+      acquirerId: acquirer._id,
+      startDate,
+      endDate,
+      totalPayable: roundedTotalPayable,
+      totalPaid: 0,
+      totalBalance: roundedTotalPayable,
+      status: "pending",
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return {
+        success: false,
+        duplicate: true,
+        fileName: file.originalname,
+        wiresheetName,
+        message: "Wiresheet already exists for this acquirer and date range",
+      };
+    }
 
-		throw error;
-	}
+    throw error;
+  }
 
-	try {
-		await WiresheetTransaction.insertMany(
-			transactionDocs.map((transaction) => ({
-				...transaction,
-				wiresheetId: wiresheet._id,
-			})),
-		);
-	} catch (error) {
-		await Wiresheet.deleteOne({ _id: wiresheet._id });
-		throw error;
-	}
+  try {
+    await WiresheetTransaction.insertMany(
+      transactionDocs.map((transaction) => ({
+        ...transaction,
+        wiresheetId: wiresheet._id,
+      })),
+    );
+  } catch (error) {
+    await Wiresheet.deleteOne({ _id: wiresheet._id });
+    throw error;
+  }
 
-	return {
-		success: true,
-		fileName: file.originalname,
-		wiresheetId: wiresheet._id,
-		wiresheetName: wiresheet.wiresheetName,
-		acquirerId: acquirer._id,
-		acquirerName: acquirer.name,
-		startDate,
-		endDate,
-		totalPayable: wiresheet.totalPayable,
-		totalPaid: wiresheet.totalPaid,
-		totalBalance: wiresheet.totalBalance,
-		status: wiresheet.status,
-		rowCount: transactionDocs.length,
-	};
+  return {
+    success: true,
+    fileName: file.originalname,
+    wiresheetId: wiresheet._id,
+    wiresheetName: wiresheet.wiresheetName,
+    acquirerId: acquirer._id,
+    acquirerName: acquirer.name,
+    startDate,
+    endDate,
+    totalPayable: wiresheet.totalPayable,
+    totalPaid: wiresheet.totalPaid,
+    totalBalance: wiresheet.totalBalance,
+    status: wiresheet.status,
+    rowCount: transactionDocs.length,
+  };
 };
 
 // UPLOAD WIRESHEET TO AWS S3
@@ -420,36 +420,36 @@ const processSingleWiresheet = async ({ file, acquirerId }) => {
 // };
 
 const buildWiresheetS3Key = (fileName) => {
-	const safeFileName = String(fileName || "file.xlsx").replace(/\s+/g, "_");
-	return `settlement-uploads/wiresheets/${Date.now()}-${safeFileName}`;
+  const safeFileName = String(fileName || "file.xlsx").replace(/\s+/g, "_");
+  return `settlement-uploads/wiresheets/${Date.now()}-${safeFileName}`;
 };
 
 const storeOriginalWiresheetUpload = async ({ file, userId, wiresheetId }) => {
-	const s3Key = buildWiresheetS3Key(file.originalname);
+  const s3Key = buildWiresheetS3Key(file.originalname);
 
-	await s3.send(
-		new PutObjectCommand({
-			Bucket: S3_BUCKET_NAME,
-			Key: s3Key,
-			Body: file.buffer,
-			ContentType:
-				file.mimetype ||
-				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		}),
-	);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+      Body: file.buffer,
+      ContentType:
+        file.mimetype ||
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+  );
 
-	const fileUrl = `s3://${S3_BUCKET_NAME}/${s3Key}`;
+  const fileUrl = `s3://${S3_BUCKET_NAME}/${s3Key}`;
 
-	return SettlementUpload.create({
-		type: "wiresheet",
-		fileName: file.originalname,
-		s3Key,
-		fileUrl,
-		mimeType: file.mimetype,
-		size: file.size,
-		wiresheetId,
-		uploadedBy: userId,
-	});
+  return SettlementUpload.create({
+    type: "wiresheet",
+    fileName: file.originalname,
+    s3Key,
+    fileUrl,
+    mimeType: file.mimetype,
+    size: file.size,
+    wiresheetId,
+    uploadedBy: userId,
+  });
 };
 
 // UPLOAD WIRESHEET
@@ -513,91 +513,91 @@ const storeOriginalWiresheetUpload = async ({ file, userId, wiresheetId }) => {
 
 // UPLOAD WIRESHEET
 export const uploadWiresheet = async (req, res) => {
-	const files = [...(req.files?.file || []), ...(req.files?.files || [])];
+  const files = [...(req.files?.file || []), ...(req.files?.files || [])];
 
-	if (!files.length) {
-		return res.status(400).json({
-			success: false,
-			message: "At least one wiresheet file is required",
-		});
-	}
+  if (!files.length) {
+    return res.status(400).json({
+      success: false,
+      message: "At least one wiresheet file is required",
+    });
+  }
 
-	const results = [];
+  const results = [];
 
-	for (const file of files) {
-		try {
-			const result = await processSingleWiresheet({
-				file,
-				acquirerId: req.body.acquirerId,
-			});
+  for (const file of files) {
+    try {
+      const result = await processSingleWiresheet({
+        file,
+        acquirerId: req.body.acquirerId,
+      });
 
-			if (result.success) {
-				const uploadRecord = await storeOriginalWiresheetUpload({
-					file,
-					userId: req.user._id,
-					wiresheetId: result.wiresheetId,
-				});
+      if (result.success) {
+        const uploadRecord = await storeOriginalWiresheetUpload({
+          file,
+          userId: req.user._id,
+          wiresheetId: result.wiresheetId,
+        });
 
-				result.uploadRecord = {
-					id: uploadRecord._id,
-					s3Key: uploadRecord.s3Key,
-				};
-			}
+        result.uploadRecord = {
+          id: uploadRecord._id,
+          s3Key: uploadRecord.s3Key,
+        };
+      }
 
-			results.push(result);
-		} catch (error) {
-			results.push({
-				success: false,
-				fileName: file.originalname,
-				message: error.message || "Wiresheet upload failed",
-			});
-		}
-	}
+      results.push(result);
+    } catch (error) {
+      results.push({
+        success: false,
+        fileName: file.originalname,
+        message: error.message || "Wiresheet upload failed",
+      });
+    }
+  }
 
-	const processedFiles = results.filter((item) => item.success);
-	const duplicateFiles = results.filter((item) => item.duplicate);
-	const failedFiles = results.filter(
-		(item) => !item.success && !item.duplicate,
-	);
+  const processedFiles = results.filter((item) => item.success);
+  const duplicateFiles = results.filter((item) => item.duplicate);
+  const failedFiles = results.filter(
+    (item) => !item.success && !item.duplicate,
+  );
 
-	const processedCount = processedFiles.length;
-	const duplicateCount = duplicateFiles.length;
-	const failedCount = failedFiles.length;
+  const processedCount = processedFiles.length;
+  const duplicateCount = duplicateFiles.length;
+  const failedCount = failedFiles.length;
 
-	let statusCode = 201;
-	let success = true;
-	let message = "Wiresheets uploaded successfully";
+  let statusCode = 201;
+  let success = true;
+  let message = "Wiresheets uploaded successfully";
 
-	if (processedCount === 0 && duplicateCount > 0 && failedCount === 0) {
-		statusCode = 409;
-		success = false;
-		message = duplicateFiles[0]?.message || "Wiresheet already exists";
-	} else if (processedCount === 0 && failedCount > 0) {
-		statusCode = 400;
-		success = false;
+  if (processedCount === 0 && duplicateCount > 0 && failedCount === 0) {
+    statusCode = 409;
+    success = false;
+    message = duplicateFiles[0]?.message || "Wiresheet already exists";
+  } else if (processedCount === 0 && failedCount > 0) {
+    statusCode = 400;
+    success = false;
 
-		if (failedFiles.length === 1) {
-			message = failedFiles[0].message;
-		} else {
-			message = `${failedCount} wiresheet(s) failed to upload`;
-		}
-	} else if (processedCount > 0 && (duplicateCount > 0 || failedCount > 0)) {
-		statusCode = 207;
-		success = true;
-		message = "Some wiresheets uploaded, some files had issues";
-	}
+    if (failedFiles.length === 1) {
+      message = failedFiles[0].message;
+    } else {
+      message = `${failedCount} wiresheet(s) failed to upload`;
+    }
+  } else if (processedCount > 0 && (duplicateCount > 0 || failedCount > 0)) {
+    statusCode = 207;
+    success = true;
+    message = "Some wiresheets uploaded, some files had issues";
+  }
 
-	return res.status(statusCode).json({
-		success,
-		message,
-		data: {
-			totalFiles: files.length,
-			processedCount,
-			duplicateCount,
-			failedCount,
-			processedFiles,
-			duplicateFiles,
-			failedFiles,
-		},
-	});
+  return res.status(statusCode).json({
+    success,
+    message,
+    data: {
+      totalFiles: files.length,
+      processedCount,
+      duplicateCount,
+      failedCount,
+      processedFiles,
+      duplicateFiles,
+      failedFiles,
+    },
+  });
 };
