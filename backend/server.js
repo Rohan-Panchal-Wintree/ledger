@@ -8,7 +8,6 @@ import { connectRedis } from "./dbConnection/redis.js";
 import { allowedOrigins } from "./utils/ManagedVariables.js";
 import { loggerMiddleware } from "./middlewares/logger.middleware.js";
 import { validateResponseEncryptionConfig } from "./utils/encryption.js";
-import { startMerchantSettlementEmailCron } from "./jobs/merchantSettlementEmail.job.js";
 import {
 	errorHandler,
 	notFoundHandler,

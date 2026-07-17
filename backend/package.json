@@ -1,40 +1,42 @@
 {
-  "name": "ledger-backend",
-  "version": "1.0.0",
-  "description": "",
-  "license": "ISC",
-  "author": "",
-  "type": "module",
-  "main": "server.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node --watch server.js"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.1057.0",
-    "@aws-sdk/s3-request-presigner": "^3.1057.0",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.4.1",
-    "helmet": "^8.1.0",
-    "install": "^0.13.0",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.6.0",
-    "multer": "^2.1.1",
-    "multer-s3": "^3.0.1",
-    "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.7",
-    "npm": "^11.16.0",
-    "pdfkit": "^0.18.0",
-    "rate-limit-redis": "^5.0.0",
-    "redis": "^5.12.1",
-    "ua-parser-js": "^2.0.9",
-    "xlsx": "^0.18.5",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  }
+	"name": "ledger-backend",
+	"version": "1.0.0",
+	"description": "",
+	"license": "ISC",
+	"author": "",
+	"type": "module",
+	"main": "server.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"dev": "node --watch server.js",
+		"worker:settlement-email": "node jobs/settlementEmail.worker.js"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1057.0",
+		"@aws-sdk/s3-request-presigner": "^3.1057.0",
+		"amqplib": "^2.0.1",
+		"cookie-parser": "^1.4.7",
+		"cors": "^2.8.6",
+		"dotenv": "^17.4.2",
+		"express": "^5.2.1",
+		"express-rate-limit": "^8.4.1",
+		"helmet": "^8.1.0",
+		"install": "^0.13.0",
+		"jsonwebtoken": "^9.0.3",
+		"mongoose": "^9.6.0",
+		"multer": "^2.1.1",
+		"multer-s3": "^3.0.1",
+		"node-cron": "^4.2.1",
+		"nodemailer": "^8.0.11",
+		"npm": "^11.16.0",
+		"pdfkit": "^0.18.0",
+		"rate-limit-redis": "^5.0.0",
+		"redis": "^5.12.1",
+		"ua-parser-js": "^2.0.9",
+		"xlsx": "^0.18.5",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.14"
+	}
 }

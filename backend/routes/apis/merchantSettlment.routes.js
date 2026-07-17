@@ -10,7 +10,7 @@ import {
 	getMerchantFee,
 	updateMerchantFee,
 	deleteMerchantFee,
-	uploadMerchantTransactions,
+	uploadSettlementBatchTransactions,
 	listMerchantTransactions,
 	generateMerchantSettlementReport,
 	listMerchantSettlementReports,
@@ -18,6 +18,13 @@ import {
 	downloadMerchantSettlementPdf,
 	downloadMerchantSettlementExcel,
 	sendMerchantSettlementEmail,
+	sendAllSettlementEmailsForBatch,
+	uploadCountryMaster,
+	createCountryMaster,
+	listCountryMaster,
+	getCountryMaster,
+	updateCountryMaster,
+	deleteCountryMaster,
 } from "../../controller/merchant-settlement.controller.js";
 
 const router = Router();
@@ -65,22 +72,63 @@ router.delete(
 	asyncHandler(deleteMerchantFee),
 );
 
+// COUNTRY
+
+router.post(
+	"/countries/upload",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
+	asyncHandler(uploadCountryMaster),
+);
+
+router.post(
+	"/countries",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	asyncHandler(createCountryMaster),
+);
+
+router.get("/countries", asyncHandler(listCountryMaster));
+
+router.get("/countries/:id", asyncHandler(getCountryMaster));
+
+router.put(
+	"/countries/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	asyncHandler(updateCountryMaster),
+);
+
+router.delete(
+	"/countries/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance"]),
+	asyncHandler(deleteCountryMaster),
+);
+
 /*
 |--------------------------------------------------------------------------
-| Transaction Upload
+| Settlement Batch Transaction Upload
 |--------------------------------------------------------------------------
 */
 
 router.post(
-	"/transactions/upload",
+	"/settlement-batches/upload",
 	authenticatedWriteLimiter,
 	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
 	middlewares.uploadMiddleware.fields([
-		{ name: "file", maxCount: 1 },
-		{ name: "files", maxCount: 10 },
+		{ name: "datestampFile", maxCount: 1 },
+		{ name: "timestampFile", maxCount: 1 },
 	]),
-	asyncHandler(uploadMerchantTransactions),
+	asyncHandler(uploadSettlementBatchTransactions),
 );
+
+/*
+|--------------------------------------------------------------------------
+| Transactions
+|--------------------------------------------------------------------------
+*/
 
 router.get("/transactions", asyncHandler(listMerchantTransactions));
 
@@ -99,10 +147,12 @@ router.post(
 
 router.get("/reports", asyncHandler(listMerchantSettlementReports));
 router.get("/reports/:id", asyncHandler(getMerchantSettlementReport));
+
 router.get(
 	"/reports/:id/download-pdf",
 	asyncHandler(downloadMerchantSettlementPdf),
 );
+
 router.get(
 	"/reports/:id/download-excel",
 	asyncHandler(downloadMerchantSettlementExcel),
@@ -113,6 +163,13 @@ router.post(
 	authenticatedWriteLimiter,
 	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
 	asyncHandler(sendMerchantSettlementEmail),
+);
+
+router.post(
+	"/settlement-batches/:batchId/send-all-emails",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	asyncHandler(sendAllSettlementEmailsForBatch),
 );
 
 export default router;

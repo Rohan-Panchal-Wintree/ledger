@@ -33,6 +33,40 @@ const merchantFeeConfigSchema = new mongoose.Schema(
 			trim: true,
 		},
 
+		countryRuleRaw: {
+			type: String,
+			trim: true,
+		},
+
+		countryScope: {
+			type: String,
+			enum: ["ALL", "EU", "NONEU", "COUNTRY"],
+			default: "ALL",
+			index: true,
+		},
+
+		countryCode: {
+			type: String,
+			trim: true,
+			uppercase: true,
+			index: true,
+		},
+
+		countryCategory: {
+			type: String,
+			enum: ["EU", "NONEU", "ALL"],
+			default: "ALL",
+			index: true,
+		},
+
+		gatewayName: {
+			type: String,
+			trim: true,
+			uppercase: true,
+			default: "ALL",
+			index: true,
+		},
+
 		currency: {
 			type: String,
 			required: true,
@@ -74,6 +108,7 @@ const merchantFeeConfigSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
 		},
+
 		type: {
 			type: String,
 			trim: true,
@@ -84,9 +119,11 @@ const merchantFeeConfigSchema = new mongoose.Schema(
 
 merchantFeeConfigSchema.index({
 	memberId: 1,
-	accountIds: 1,
 	currency: 1,
 	brand: 1,
+	countryScope: 1,
+	countryCode: 1,
+	gatewayName: 1,
 	status: 1,
 });
 

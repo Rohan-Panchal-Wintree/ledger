@@ -2,9 +2,30 @@ import mongoose from "mongoose";
 
 const merchantTransactionSchema = new mongoose.Schema(
 	{
+		settlementBatchId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "MerchantSettlementBatch",
+			required: true,
+			index: true,
+		},
+
 		uploadId: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "MerchantTransactionUpload",
+			required: true,
+			index: true,
+		},
+
+		reportId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "MerchantSettlementReport",
+			default: null,
+			index: true,
+		},
+
+		sourceFileType: {
+			type: String,
+			enum: ["datestamp", "timestamp"],
 			required: true,
 			index: true,
 		},
@@ -25,8 +46,41 @@ const merchantTransactionSchema = new mongoose.Schema(
 		transactionMode: { type: String, trim: true },
 		currency: { type: String, trim: true, uppercase: true, index: true },
 
+		isoCountry: {
+			type: String,
+			trim: true,
+			uppercase: true,
+			index: true,
+		},
+
+		countryName: {
+			type: String,
+			trim: true,
+			uppercase: true,
+		},
+
+		countryCode: {
+			type: String,
+			trim: true,
+			uppercase: true,
+			index: true,
+		},
+
+		countryCategory: {
+			type: String,
+			enum: ["EU", "NONEU", "ALL"],
+			default: "ALL",
+			index: true,
+		},
+
 		authAmount: { type: Number, default: 0 },
+		capturedAmountFromFile: { type: Number, default: 0 },
+		refundAmount: { type: Number, default: 0 },
+		chargebackAmount: { type: Number, default: 0 },
+
 		capturedAmount: { type: Number, default: 0 },
+		reversalAmount: { type: Number, default: 0 },
+		chargebackAmountValue: { type: Number, default: 0 },
 
 		status: { type: String, trim: true, index: true },
 		reason: { type: String, trim: true },
@@ -54,9 +108,10 @@ const merchantTransactionSchema = new mongoose.Schema(
 			default: "unmatched_fee",
 			index: true,
 		},
+
 		matchType: {
 			type: String,
-			enum: ["account_exact", "merchant_fallback", "unmatched"],
+			enum: ["country_exact", "category_exact", "all_fallback", "unmatched"],
 			default: "unmatched",
 			index: true,
 		},
@@ -65,10 +120,19 @@ const merchantTransactionSchema = new mongoose.Schema(
 );
 
 merchantTransactionSchema.index({
+	settlementBatchId: 1,
 	memberId: 1,
-	bankAccountId: 1,
 	currency: 1,
 	paymentBrand: 1,
+	countryCode: 1,
+	countryCategory: 1,
+	status: 1,
+});
+
+merchantTransactionSchema.index({
+	reportId: 1,
+	memberId: 1,
+	status: 1,
 });
 
 export const MerchantTransaction = mongoose.model(

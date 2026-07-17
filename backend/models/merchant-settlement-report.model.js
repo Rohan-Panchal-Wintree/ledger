@@ -2,6 +2,26 @@ import mongoose from "mongoose";
 
 const merchantSettlementReportSchema = new mongoose.Schema(
 	{
+		settlementBatchId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "MerchantSettlementBatch",
+			index: true,
+		},
+
+		merchantId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Merchant",
+			default: null,
+			index: true,
+		},
+
+		merchantAccountId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "MerchantAccount",
+			default: null,
+			index: true,
+		},
+
 		merchantName: { type: String, required: true, trim: true, index: true },
 		memberId: { type: String, required: true, trim: true, index: true },
 
@@ -33,14 +53,32 @@ const merchantSettlementReportSchema = new mongoose.Schema(
 			type: Object,
 			default: {},
 		},
+
 		merchantEmail: {
 			type: String,
 			trim: true,
 		},
 
+		emailRecipients: [
+			{
+				userId: {
+					type: mongoose.Schema.Types.ObjectId,
+					ref: "User",
+				},
+				name: String,
+				email: String,
+			},
+		],
+
 		reportData: {
 			type: Object,
 			default: {},
+		},
+
+		excelFile: {
+			fileName: String,
+			filePath: String,
+			generatedAt: Date,
 		},
 
 		emailStatus: {
@@ -51,6 +89,7 @@ const merchantSettlementReportSchema = new mongoose.Schema(
 
 		emailSentAt: Date,
 		emailTo: String,
+		emailError: String,
 
 		createdBy: {
 			type: mongoose.Schema.Types.ObjectId,
