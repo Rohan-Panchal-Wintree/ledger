@@ -37,7 +37,7 @@ router.use("/wiresheets", wiresheetRoutes);
 router.use("/payments", enableEncryptedResponses, paymentRoutes);
 router.use(
   "/miscellaneous-payments",
-  // enableEncryptedResponses,
+  enableEncryptedResponses,
   miscellaneousPaymentRoutes,
 );
 router.use("/dashboard", enableEncryptedResponses, dashboardRoutes);
