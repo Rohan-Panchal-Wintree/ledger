@@ -25,6 +25,9 @@ import {
 	getCountryMaster,
 	updateCountryMaster,
 	deleteCountryMaster,
+	listMerchantFeeChangeRequests,
+	approveMerchantFeeChangeRequest,
+	rejectMerchantFeeChangeRequest,
 } from "../../controller/merchant-settlement.controller.js";
 
 const router = Router();
@@ -172,4 +175,23 @@ router.post(
 	asyncHandler(sendAllSettlementEmailsForBatch),
 );
 
+router.get(
+	"/merchant-fees/change-requests",
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(listMerchantFeeChangeRequests),
+);
+
+router.post(
+	"/merchant-fees/change-requests/:id/approve",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(approveMerchantFeeChangeRequest),
+);
+
+router.post(
+	"/merchant-fees/change-requests/:id/reject",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(rejectMerchantFeeChangeRequest),
+);
 export default router;

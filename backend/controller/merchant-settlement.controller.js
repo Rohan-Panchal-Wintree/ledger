@@ -12,8 +12,10 @@ import { MerchantSettlementReport } from "../models/merchant-settlement-report.m
 import { MerchantSettlementBatch } from "../models/merchant-settlement-batch.model.js";
 import { CountryMaster } from "../models/country-master.model.js";
 import { User } from "../models/user.model.js";
-import { publishSettlementEmailJob } from "../utils/rabbitmq.js";
 import { MerchantAccount } from "../models/merchant-account.model.js";
+import { MerchantFeeChangeRequest } from "../models/merchant-fee-change-request.model.js";
+import { MerchantFeeConfigHistory } from "../models/merchant-fee-config-history.model.js";
+import { publishSettlementEmailJob } from "../utils/rabbitmq.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -517,6 +519,37 @@ const expandFeeBrands = (brand) => {
 	return [normalizePaymentBrandForMatching(value)];
 };
 
+const RATE_FIELDS = [
+	"mdrPercent",
+	"approvalFee",
+	"declineFee",
+	"reversalFee",
+	"chargebackFee",
+	"rollingReservePercent",
+	"settlementExpensePercent",
+	"type",
+];
+
+const pickRateSnapshot = (fee = {}) => ({
+	mdrPercent: Number(fee.mdrPercent || 0),
+	approvalFee: Number(fee.approvalFee || 0),
+	declineFee: Number(fee.declineFee || 0),
+	reversalFee: Number(fee.reversalFee || 0),
+	chargebackFee: Number(fee.chargebackFee || 0),
+	rollingReservePercent: Number(fee.rollingReservePercent || 0),
+	settlementExpensePercent: Number(fee.settlementExpensePercent || 0),
+	type: normalizeText(fee.type || ""),
+});
+
+const getChangedRateFields = (oldRates = {}, newRates = {}) =>
+	RATE_FIELDS.filter((field) => {
+		if (field === "type") {
+			return normalizeText(oldRates[field]) !== normalizeText(newRates[field]);
+		}
+
+		return Number(oldRates[field] || 0) !== Number(newRates[field] || 0);
+	});
+
 /*
 |--------------------------------------------------------------------------
 | Fee upload / CRUD
@@ -639,12 +672,54 @@ export const createMerchantFee = async (req, res) => {
 		updatedBy: req.user._id,
 	};
 
-	const doc = await MerchantFeeConfig.create(payload);
+	if (!normalizeText(req.body.changeReason)) {
+		return res.status(400).json({
+			success: false,
+			message: "changeReason is required to create a fee change request",
+		});
+	}
+
+	const newRates = pickRateSnapshot(payload);
+
+	const request = await MerchantFeeChangeRequest.create({
+		feeConfigId: null,
+		action: "CREATE",
+		status: "PENDING_APPROVAL",
+
+		memberId: payload.memberId,
+		merchantName: payload.merchantName,
+		partnerName: payload.partnerName,
+		accountIds: payload.accountIds || [],
+
+		brand: payload.brand,
+		currency: payload.currency,
+
+		country: payload.country,
+		countryRuleRaw: payload.countryRuleRaw,
+		countryScope: payload.countryScope,
+		countryCode: payload.countryCode,
+		countryCategory: payload.countryCategory,
+		gatewayName: payload.gatewayName,
+
+		oldRates: {},
+		newRates,
+		changedFields: RATE_FIELDS,
+
+		changeReason: normalizeText(req.body.changeReason),
+		requestedByName: normalizeText(req.body.requestedByName),
+		requestedByEmail: normalizeText(req.body.requestedByEmail),
+
+		makerId: req.user._id,
+		makerName: req.user.name || "",
+		makerEmail: req.user.email || "",
+
+		source: "manual",
+	});
 
 	return res.status(201).json({
 		success: true,
-		message: "Merchant fee created successfully",
-		data: doc,
+		message: "Fee create request created and waiting for checker approval",
+		data: request,
 	});
 };
 
@@ -655,6 +730,13 @@ export const updateMerchantFee = async (req, res) => {
 		return res.status(404).json({
 			success: false,
 			message: "Merchant fee not found",
+		});
+	}
+
+	if (!normalizeText(req.body.changeReason)) {
+		return res.status(400).json({
+			success: false,
+			message: "changeReason is required to create a fee change request",
 		});
 	}
 
@@ -690,14 +772,61 @@ export const updateMerchantFee = async (req, res) => {
 		payload.gatewayName = countryRule.gatewayName;
 	}
 
-	Object.assign(existing, payload);
+	const oldRates = pickRateSnapshot(existing);
+	const newRates = pickRateSnapshot({
+		...existing.toObject(),
+		...payload,
+	});
 
-	await existing.save();
+	const changedFields = getChangedRateFields(oldRates, newRates);
 
-	return res.json({
+	if (!changedFields.length) {
+		return res.json({
+			success: true,
+			message: "No rate changes detected",
+			data: existing,
+		});
+	}
+
+	const request = await MerchantFeeChangeRequest.create({
+		feeConfigId: existing._id,
+		action: "UPDATE",
+		status: "PENDING_APPROVAL",
+
+		memberId: existing.memberId,
+		merchantName: existing.merchantName,
+		partnerName: payload.partnerName ?? existing.partnerName,
+		accountIds: payload.accountIds ?? existing.accountIds,
+
+		brand: payload.brand ?? existing.brand,
+		currency: payload.currency ?? existing.currency,
+
+		country: payload.country ?? existing.country,
+		countryRuleRaw: payload.countryRuleRaw ?? existing.countryRuleRaw,
+		countryScope: payload.countryScope ?? existing.countryScope,
+		countryCode: payload.countryCode ?? existing.countryCode,
+		countryCategory: payload.countryCategory ?? existing.countryCategory,
+		gatewayName: payload.gatewayName ?? existing.gatewayName,
+
+		oldRates,
+		newRates,
+		changedFields,
+
+		changeReason: normalizeText(req.body.changeReason),
+		requestedByName: normalizeText(req.body.requestedByName),
+		requestedByEmail: normalizeText(req.body.requestedByEmail),
+
+		makerId: req.user._id,
+		makerName: req.user.name || "",
+		makerEmail: req.user.email || "",
+
+		source: "manual",
+	});
+
+	return res.status(201).json({
 		success: true,
-		message: "Merchant fee updated successfully",
-		data: existing,
+		message: "Fee change request created and waiting for checker approval",
+		data: request,
 	});
 };
 
@@ -801,6 +930,213 @@ export const getMerchantFee = async (req, res) => {
 	return res.json({
 		success: true,
 		data: fee,
+	});
+};
+
+export const approveMerchantFeeChangeRequest = async (req, res) => {
+	const request = await MerchantFeeChangeRequest.findById(req.params.id);
+
+	if (!request) {
+		return res.status(404).json({
+			success: false,
+			message: "Fee change request not found",
+		});
+	}
+
+	if (request.status !== "PENDING_APPROVAL") {
+		return res.status(400).json({
+			success: false,
+			message: "Only pending requests can be approved",
+		});
+	}
+
+	if (String(request.makerId) === String(req.user._id)) {
+		return res.status(403).json({
+			success: false,
+			message: "Maker and checker cannot be the same user",
+		});
+	}
+
+	let fee = null;
+
+	if (request.action === "CREATE") {
+		fee = await MerchantFeeConfig.create({
+			memberId: request.memberId,
+			merchantName: request.merchantName,
+			partnerName: request.partnerName,
+			accountIds: request.accountIds || [],
+
+			brand: request.brand,
+			currency: request.currency,
+
+			country: request.country,
+			countryRuleRaw: request.countryRuleRaw,
+			countryScope: request.countryScope,
+			countryCode: request.countryCode,
+			countryCategory: request.countryCategory,
+			gatewayName: request.gatewayName,
+
+			...request.newRates,
+
+			status: "active",
+			createdBy: request.makerId,
+			updatedBy: req.user._id,
+		});
+
+		request.feeConfigId = fee._id;
+	} else {
+		fee = await MerchantFeeConfig.findById(request.feeConfigId);
+
+		if (!fee) {
+			return res.status(404).json({
+				success: false,
+				message: "Merchant fee config not found",
+			});
+		}
+	}
+
+	if (request.action === "UPDATE") {
+		for (const field of request.changedFields) {
+			fee[field] = request.newRates[field];
+		}
+
+		fee.updatedBy = req.user._id;
+		await fee.save();
+	}
+
+	if (request.action === "DEACTIVATE") {
+		fee.status = "inactive";
+		fee.updatedBy = req.user._id;
+		await fee.save();
+	}
+
+	request.status = "APPROVED";
+	request.checkerId = req.user._id;
+	request.checkerName = req.user.name || "";
+	request.checkerEmail = req.user.email || "";
+	request.checkerComment = normalizeText(req.body.checkerComment || "");
+	request.approvedAt = new Date();
+
+	await request.save();
+
+	await MerchantFeeConfigHistory.create({
+		feeConfigId: fee._id,
+		action:
+			request.action === "CREATE"
+				? "CREATED"
+				: request.action === "UPDATE"
+					? "UPDATED"
+					: "DEACTIVATED",
+
+		memberId: request.memberId,
+		merchantName: request.merchantName,
+		partnerName: request.partnerName,
+		accountIds: request.accountIds,
+
+		brand: request.brand,
+		currency: request.currency,
+
+		country: request.country,
+		countryRuleRaw: request.countryRuleRaw,
+		countryScope: request.countryScope,
+		countryCode: request.countryCode,
+		countryCategory: request.countryCategory,
+		gatewayName: request.gatewayName,
+
+		oldRates: request.oldRates,
+		newRates: request.newRates,
+		changedFields: request.changedFields,
+
+		changeReason: request.changeReason,
+		requestedByName: request.requestedByName,
+		requestedByEmail: request.requestedByEmail,
+
+		changedBy: request.makerId,
+		changedByName: request.makerName,
+		changedByEmail: request.makerEmail,
+
+		approvedByName: request.checkerName,
+		approvedByEmail: request.checkerEmail,
+
+		source: request.source,
+		uploadedFileName: request.uploadedFileName,
+	});
+
+	return res.json({
+		success: true,
+		message: "Fee change approved and applied successfully",
+		data: request,
+	});
+};
+
+export const rejectMerchantFeeChangeRequest = async (req, res) => {
+	const request = await MerchantFeeChangeRequest.findById(req.params.id);
+
+	if (!request) {
+		return res.status(404).json({
+			success: false,
+			message: "Fee change request not found",
+		});
+	}
+
+	if (request.status !== "PENDING_APPROVAL") {
+		return res.status(400).json({
+			success: false,
+			message: "Only pending requests can be rejected",
+		});
+	}
+
+	if (!normalizeText(req.body.checkerComment)) {
+		return res.status(400).json({
+			success: false,
+			message: "checkerComment is required when rejecting a fee change request",
+		});
+	}
+
+	if (String(request.makerId) === String(req.user._id)) {
+		return res.status(403).json({
+			success: false,
+			message: "Maker and checker cannot be the same user",
+		});
+	}
+
+	request.status = "REJECTED";
+	request.checkerId = req.user._id;
+	request.checkerName = req.user.name || "";
+	request.checkerEmail = req.user.email || "";
+	request.checkerComment = normalizeText(req.body.checkerComment || "");
+	request.rejectedAt = new Date();
+
+	await request.save();
+
+	return res.json({
+		success: true,
+		message: "Fee change request rejected",
+		data: request,
+	});
+};
+
+export const listMerchantFeeChangeRequests = async (req, res) => {
+	const { status, memberId, brand, currency, countryCode, makerId } = req.query;
+
+	const query = {};
+
+	if (status) query.status = normalizeUpper(status);
+	if (memberId) query.memberId = normalizeText(memberId);
+	if (brand) query.brand = normalizeUpper(brand);
+	if (currency) query.currency = normalizeUpper(currency);
+	if (countryCode) query.countryCode = normalizeUpper(countryCode);
+	if (makerId) query.makerId = makerId;
+
+	const data = await MerchantFeeChangeRequest.find(query)
+		.populate("makerId", "name email")
+		.populate("checkerId", "name email")
+		.sort({ createdAt: -1 })
+		.lean();
+
+	return res.json({
+		success: true,
+		data,
 	});
 };
 
@@ -3742,8 +4078,8 @@ const getFinalSettlementRows = (currencySummary = {}) =>
 
 				settledActivity,
 				adjustmentAmount,
-				paymentFees,
-				otherFees,
+				paymentCharges: paymentFees,
+				otherCharges: otherFees,
 				feesCharged,
 
 				settlementExpense: row.settlementExpense || 0,
