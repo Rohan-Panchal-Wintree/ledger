@@ -10,6 +10,7 @@ import {
   Shield,
   Blend,
   FilePlus,
+  Handshake,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -40,55 +41,71 @@ export function AppSidebar() {
       name: "Dashboard",
       icon: LayoutDashboard,
       path: "/dashboard",
-      show: true,
+      show: ["admin", "finance", "settlement", "merchant", "support"].includes(
+        currentUser?.role,
+      ),
     },
     {
       name: "Merchants",
       icon: Building2,
       path: "/merchants",
-      show: true,
+      show: ["admin", "settlement", "finance", "support"].includes(
+        currentUser?.role,
+      ),
     },
     {
       name: "Acquirers",
       icon: Landmark,
       path: "/acquirers",
-      show: true,
+      show: ["admin", "finance", "settlement", "support"].includes(
+        currentUser?.role,
+      ),
     },
     {
       name: "Reports",
       icon: FileBarChart,
       path: "/reports",
-      show: currentUser?.role === "admin",
+      show: ["admin", "settlement", "finance"].includes(currentUser?.role),
     },
     {
       name: "Upload",
       icon: Upload,
       path: "/upload",
-      show: currentUser?.role === "admin",
+      show: ["admin", "settlement", "finance", "support"].includes(
+        currentUser?.role,
+      ),
     },
+    // {
+    //   name: "Merchant Settlement",
+    //   icon: Handshake,
+    //   path: "/merchant-settlement",
+    //   show: ["admin", "support", "settlement"].includes(currentUser?.role),
+    // },
     {
       name: "Miscellaneous",
       icon: Blend,
       path: "/miscellaneous",
-      show: currentUser?.role === "admin",
+      show: ["admin", "settlement", "finance"].includes(currentUser?.role),
     },
     {
       name: "Sheets",
       icon: FilePlus,
       path: "/sheets",
-      show: currentUser?.role === "admin",
+      show: ["admin", "settlement", "finance"].includes(currentUser?.role),
     },
     {
       name: "Manage Emails",
       icon: Users,
       path: "/manage-emails",
-      show: currentUser?.role === "admin",
+      show: ["admin"].includes(currentUser?.role),
     },
     {
       name: "Profile",
       icon: User,
       path: "/profile",
-      show: true,
+      show: ["admin", "finance", "settlement", "merchant", "support"].includes(
+        currentUser?.role,
+      ),
     },
   ];
 

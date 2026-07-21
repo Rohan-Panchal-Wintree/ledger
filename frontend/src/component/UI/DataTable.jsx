@@ -85,8 +85,6 @@ export default function DataTable({
               </p>
             ) : null}
           </div>
-
-          {isFetching && !isLoading ? <Spinner type="sm" /> : null}
         </div>
       ) : null}
 
@@ -112,10 +110,12 @@ export default function DataTable({
           </thead>
 
           <tbody className="divide-y divide-outline-variant/5">
-            {isLoading ? (
+            {isLoading || isFetching ? (
               <tr>
-                <td colSpan={columns.length} className="px-8 py-12 text-center">
-                  <Spinner type="md" />
+                <td colSpan={columns.length} className="px-8 py-10">
+                  <div className="flex items-center justify-center gap-3 text-sm font-semibold text-on-surface-variant">
+                    <Spinner type="sm" />
+                  </div>
                 </td>
               </tr>
             ) : isEmpty ? (

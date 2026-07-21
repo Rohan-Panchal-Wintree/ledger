@@ -28,7 +28,30 @@ function extractResponsePayload(response) {
   };
 }
 
-function buildQueryParams({ page = 1, limit = 20, fromDate, toDate } = {}) {
+// function buildQueryParams({ page = 1, limit = 20, fromDate, toDate } = {}) {
+//   const params = {
+//     page,
+//     limit,
+//   };
+
+//   if (fromDate) {
+//     params.fromDate = fromDate;
+//   }
+
+//   if (toDate) {
+//     params.toDate = toDate;
+//   }
+
+//   return params;
+// }
+
+function buildQueryParams({
+  page = 1,
+  limit = 20,
+  fromDate,
+  toDate,
+  search,
+} = {}) {
   const params = {
     page,
     limit,
@@ -40,6 +63,12 @@ function buildQueryParams({ page = 1, limit = 20, fromDate, toDate } = {}) {
 
   if (toDate) {
     params.toDate = toDate;
+  }
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
   }
 
   return params;

@@ -218,7 +218,6 @@ const ensureMerchantMappings = async ({ rows, acquirerId, merchantMap }) => {
 						merchantId: merchant._id,
 						acquirerId,
 						mid: row.mid,
-						memberId: row.mid,
 						processingCurrency: row.processingCurrency,
 						settlementCurrency: row.settlementCurrency,
 						status: "active",

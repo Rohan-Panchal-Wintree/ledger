@@ -233,7 +233,7 @@ export default function Reports() {
   }
 
   return (
-    <div className="w-full space-y-6 bg-surface p-4 md:p-6">
+    <div className="w-full space-y-6 bg-surface">
       <PageHeader
         title="Payment Reports Overview"
         description="A clean overview of received amounts, settlement totals, and transaction status."

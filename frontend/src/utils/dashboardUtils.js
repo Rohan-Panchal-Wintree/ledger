@@ -198,7 +198,7 @@ export function getDashboardAmountSummarySections(summary = {}) {
   return [
     {
       title: "Received",
-      totalLabel: "Wiresheet Received",
+      totalLabel: "Wiresheet Rec'd",
       totalValue: summary.totalReceived || 0,
       values: summary.received || {},
     },

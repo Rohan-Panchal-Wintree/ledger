@@ -13,7 +13,7 @@ const router = Router();
 
 router.use(middlewares.authMiddleware);
 router.use(
-  middlewares.roleMiddleware(["admin", "finance", "settlement", "viewer"]),
+  middlewares.roleMiddleware(["admin", "finance", "settlement", "support"]),
 );
 
 router.get("/latest", asyncHandler(getDashboardLatest));

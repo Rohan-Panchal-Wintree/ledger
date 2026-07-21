@@ -10,6 +10,8 @@ import { getUserFromStorage } from "./store/slices/Auth.slice.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
+const isDev = import.meta.env.DEV;
+
 store.dispatch(getUserFromStorage());
 
 const queryClient = new QueryClient({
@@ -20,14 +22,20 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 1,
       onError: (error) => {
-        toast.error(`Query Error: ${error.message || "Something went wrong"}`);
+        if (isDev) {
+          toast.error(
+            `Query Error: ${error.message || "Something went wrong"}`,
+          );
+        }
       },
     },
     mutations: {
       onError: (error) => {
-        toast.error(
-          `Mutation Error: ${error.message || "Something went wrong"}`,
-        );
+        if (isDev) {
+          toast.error(
+            `Mutation Error: ${error.message || "Something went wrong"}`,
+          );
+        }
       },
     },
   },

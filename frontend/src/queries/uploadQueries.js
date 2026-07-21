@@ -171,8 +171,6 @@ async function reconcileUnmatchedPaymentRowsApi({ batchId } = {}) {
     batchId ? { batchId } : {},
   );
 
-  console.log("response reconcile", response);
-
   return extractResponseData(response, response.data);
 }
 

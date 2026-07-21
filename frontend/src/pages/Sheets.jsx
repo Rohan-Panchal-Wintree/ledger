@@ -37,6 +37,7 @@ import { selectCurrentUser } from "../store/slices/Auth.slice";
 export default function Sheets() {
   const [activeTab, setActiveTab] = useState("wiresheet");
   const [searchTerm, setSearchTerm] = useState("");
+  const [backendSearch, setBackendSearch] = useState("");
 
   const [dateMode, setDateMode] = useState("single");
 
@@ -51,7 +52,9 @@ export default function Sheets() {
 
   const currentUser = useSelector(selectCurrentUser);
 
-  const canDownloadSheets = currentUser?.role === "admin";
+  const canDownloadSheets = ["admin", "finance", "settlement"].includes(
+    currentUser?.role,
+  );
   const isWiresheetTab = activeTab === "wiresheet";
 
   const dateFilters = useMemo(() => {
@@ -80,9 +83,10 @@ export default function Sheets() {
     () => ({
       page,
       limit,
+      search: backendSearch,
       ...dateFilters,
     }),
-    [dateFilters, limit, page],
+    [backendSearch, dateFilters, limit, page],
   );
 
   const wiresheetsQuery = useWiresheets(queryFilters);
@@ -108,6 +112,16 @@ export default function Sheets() {
   const filteredPaymentSheets = useMemo(
     () => filterPaymentSheetsBySearch(paymentSheets, searchTerm),
     [paymentSheets, searchTerm],
+  );
+
+  const normalizedSearchTerm = searchTerm.trim();
+
+  const activeLocalMatches = isWiresheetTab
+    ? filteredWiresheets
+    : filteredPaymentSheets;
+
+  const shouldUseLocalSearch = Boolean(
+    normalizedSearchTerm && activeLocalMatches.length > 0,
   );
 
   const activeRows = isWiresheetTab
@@ -146,6 +160,26 @@ export default function Sheets() {
     : "Search by file name, payment date, uploaded by...";
 
   useEffect(() => {
+    if (!normalizedSearchTerm) {
+      setBackendSearch("");
+      return;
+    }
+
+    if (shouldUseLocalSearch) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setBackendSearch(normalizedSearchTerm);
+      setPage(1);
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [normalizedSearchTerm, shouldUseLocalSearch]);
+
+  useEffect(() => {
     if (wiresheetsQuery.error) {
       toast.error(
         getErrorMessage(wiresheetsQuery.error, "Failed to load wiresheets."),
@@ -178,6 +212,7 @@ export default function Sheets() {
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
     setSearchTerm("");
+    setBackendSearch("");
 
     setDateDraft("");
     setDateRangeDraft(EMPTY_DATE_RANGE);
@@ -319,6 +354,7 @@ export default function Sheets() {
             className="w-full sm:w-80"
             onChange={(event) => {
               setSearchTerm(event.target.value);
+              setBackendSearch("");
               setPage(1);
             }}
           />

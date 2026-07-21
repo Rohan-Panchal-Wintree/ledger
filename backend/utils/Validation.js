@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-const userRoleSchema = z.enum(["admin", "merchant", "finance", "settlement"]);
+const userRoleSchema = z.enum([
+  "admin",
+  "merchant",
+  "finance",
+  "settlement",
+  "support",
+]);
 
 export const createUserSchema = z
   .object({
@@ -89,7 +95,7 @@ export const requestOtpSchema = z.object({
 export const registerSchema = z.object({
   name: z.string().min(2),
   email: z.email(),
-  role: z.enum(["admin", "merchant", "finance", "settlement"]),
+  role: z.enum(["admin", "merchant", "finance", "settlement", "support"]),
   isActive: z.boolean().optional(),
 });
 
