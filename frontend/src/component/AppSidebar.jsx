@@ -75,12 +75,12 @@ export function AppSidebar() {
         currentUser?.role,
       ),
     },
-    // {
-    //   name: "Merchant Settlement",
-    //   icon: Handshake,
-    //   path: "/merchant-settlement",
-    //   show: ["admin", "support", "settlement"].includes(currentUser?.role),
-    // },
+    {
+      name: "Merchant Settlement",
+      icon: Handshake,
+      path: "/merchant-settlement",
+      show: ["admin", "support", "settlement"].includes(currentUser?.role),
+    },
     {
       name: "Miscellaneous",
       icon: Blend,

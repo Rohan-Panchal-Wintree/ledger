@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { paymentApi, wiresheetApi } from "../api";
+import { merchantSettlementApi, paymentApi, wiresheetApi } from "../api";
 import { dashboardQueryKeys } from "./dashboardQueries";
 
 export const uploadQueryKeys = {
@@ -8,13 +8,29 @@ export const uploadQueryKeys = {
 
   unmatchedSummary: () => [...uploadQueryKeys.all, "unmatched-summary"],
 
-  unmatchedRows: ({ status, paymentSheetDate, fileName, page, limit } = {}) => [
+  unmatchedRows: ({
+    search,
+    status,
+    paymentDate,
+    fromDate,
+    toDate,
+    merchantName,
+    bank,
+    currency,
+    page,
+    limit,
+  } = {}) => [
     ...uploadQueryKeys.all,
     "unmatched-rows",
     {
+      search,
       status,
-      paymentSheetDate,
-      fileName,
+      paymentDate,
+      fromDate,
+      toDate,
+      merchantName,
+      bank,
+      currency,
       page,
       limit,
     },
@@ -23,6 +39,36 @@ export const uploadQueryKeys = {
 
 function extractResponseData(response, fallback) {
   return response?.data?.data ?? fallback;
+}
+
+async function uploadMerchantRatesApi(file) {
+  if (!file) {
+    throw new Error("Please select a rates file.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await feesApi.post("/fees/upload", formData);
+
+  return {
+    message:
+      response?.data?.message ||
+      response?.data?.data?.message ||
+      "Rates uploaded successfully.",
+
+    totalRows: Number(
+      response?.data?.data?.totalRows ?? response?.data?.totalRows ?? 0,
+    ),
+
+    insertedRows: Number(
+      response?.data?.data?.insertedRows ?? response?.data?.insertedRows ?? 0,
+    ),
+
+    skippedRows: Number(
+      response?.data?.data?.skippedRows ?? response?.data?.skippedRows ?? 0,
+    ),
+  };
 }
 
 function invalidateUploadQueries(queryClient) {
@@ -113,9 +159,14 @@ async function uploadFilesApi({
 }
 
 async function getUnmatchedPaymentRowsApi({
+  search = "",
   status = "",
-  paymentSheetDate = "",
-  fileName = "",
+  paymentDate = "",
+  fromDate = "",
+  toDate = "",
+  merchantName = "",
+  bank = "",
+  currency = "",
   page = 1,
   limit = 20,
 } = {}) {
@@ -124,19 +175,50 @@ async function getUnmatchedPaymentRowsApi({
     limit,
   };
 
-  if (status) {
-    params.status = status;
+  const normalizedSearch = String(search).trim();
+  const normalizedStatus = String(status).trim();
+  const normalizedPaymentDate = String(paymentDate).trim();
+  const normalizedFromDate = String(fromDate).trim();
+  const normalizedToDate = String(toDate).trim();
+  const normalizedMerchantName = String(merchantName).trim();
+  const normalizedBank = String(bank).trim();
+  const normalizedCurrency = String(currency).trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
   }
 
-  if (paymentSheetDate) {
-    params.paymentSheetDate = paymentSheetDate;
+  if (normalizedStatus) {
+    params.status = normalizedStatus;
   }
 
-  if (fileName) {
-    params.fileName = fileName;
+  if (normalizedPaymentDate) {
+    params.paymentDate = normalizedPaymentDate;
   }
 
-  const response = await paymentApi.get("/unmatched", { params });
+  if (normalizedFromDate) {
+    params.fromDate = normalizedFromDate;
+  }
+
+  if (normalizedToDate) {
+    params.toDate = normalizedToDate;
+  }
+
+  if (normalizedMerchantName) {
+    params.merchantName = normalizedMerchantName;
+  }
+
+  if (normalizedBank) {
+    params.bank = normalizedBank;
+  }
+
+  if (normalizedCurrency) {
+    params.currency = normalizedCurrency;
+  }
+
+  const response = await paymentApi.get("/unmatched", {
+    params,
+  });
 
   return {
     items: response?.data?.data || [],
@@ -193,30 +275,47 @@ export function useUploadFiles() {
   });
 }
 
+export function useUploadMerchantRates() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: uploadMerchantRatesApi,
+
+    onSuccess: () => {
+      invalidateUploadQueries(queryClient);
+    },
+  });
+}
+
 export function useUnmatchedPaymentRows({
+  search = "",
   status = "",
-  paymentSheetDate = "",
-  fileName = "",
+  paymentDate = "",
+  fromDate = "",
+  toDate = "",
+  merchantName = "",
+  bank = "",
+  currency = "",
   page = 1,
   limit = 20,
 } = {}) {
-  return useQuery({
-    queryKey: uploadQueryKeys.unmatchedRows({
-      status,
-      paymentSheetDate,
-      fileName,
-      page,
-      limit,
-    }),
+  const filters = {
+    search,
+    status,
+    paymentDate,
+    fromDate,
+    toDate,
+    merchantName,
+    bank,
+    currency,
+    page,
+    limit,
+  };
 
-    queryFn: () =>
-      getUnmatchedPaymentRowsApi({
-        status,
-        paymentSheetDate,
-        fileName,
-        page,
-        limit,
-      }),
+  return useQuery({
+    queryKey: uploadQueryKeys.unmatchedRows(filters),
+
+    queryFn: () => getUnmatchedPaymentRowsApi(filters),
 
     placeholderData: (previousData) => previousData,
   });

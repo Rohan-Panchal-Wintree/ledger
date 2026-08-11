@@ -13,6 +13,7 @@ import {
   PROFILE_URL,
   USERS_URL,
   SHEETS_URL,
+  MERCHANT_SETTLEMENT_URL,
 } from "./config";
 
 import { decryptData, encryptData } from "./utils/cryptoUtils";
@@ -248,3 +249,4 @@ export const miscellaneousPaymentApi = createApiInstance(
 );
 export const profileApi = createApiInstance(PROFILE_URL);
 export const usersApi = createApiInstance(USERS_URL);
+export const merchantSettlementApi = createApiInstance(MERCHANT_SETTLEMENT_URL);

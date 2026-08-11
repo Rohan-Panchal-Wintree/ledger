@@ -7,6 +7,7 @@ import {
   useUnmatchedPaymentRows,
   useUpdateUnmatchedPaymentRow,
   useUploadFiles,
+  useUploadMerchantRates,
 } from "../queries/uploadQueries";
 
 import { getErrorMessage } from "../utils/appUtils";
@@ -32,6 +33,16 @@ import {
   getInitialReviewPageSize,
 } from "../utils/uploadReviewUtils";
 
+const EMPTY_REVIEW_FILTERS = {
+  status: "",
+  paymentDate: "",
+  fromDate: "",
+  toDate: "",
+  merchantName: "",
+  bank: "",
+  currency: "",
+};
+
 export const useUploadPageController = () => {
   const [activeTab, setActiveTab] = useState("wire");
   const [tabState, setTabState] = useState(() =>
@@ -46,17 +57,38 @@ export const useUploadPageController = () => {
     getInitialReviewPageSize,
   );
 
+  // States for the filter for review section
+  const [reviewSearchDraft, setReviewSearchDraft] = useState("");
+  const [appliedReviewSearch, setAppliedReviewSearch] = useState("");
+  const [reviewFilterDraft, setReviewFilterDraft] =
+    useState(EMPTY_REVIEW_FILTERS);
+  const [appliedReviewFilters, setAppliedReviewFilters] =
+    useState(EMPTY_REVIEW_FILTERS);
+  const [isReviewFilterModalOpen, setIsReviewFilterModalOpen] = useState(false);
+
   const [selectedInvalidRow, setSelectedInvalidRow] = useState(null);
   const [isInvalidRowModalOpen, setIsInvalidRowModalOpen] = useState(false);
+  const [ratesFile, setRatesFile] = useState(null);
+  const [isRatesDragging, setIsRatesDragging] = useState(false);
 
   const wireInputRef = useRef(null);
   const paymentInputRef = useRef(null);
+  const ratesInputRef = useRef(null);
 
   const uploadFilesMutation = useUploadFiles();
+  const uploadMerchantRatesMutation = useUploadMerchantRates();
   const updateUnmatchedRowMutation = useUpdateUnmatchedPaymentRow();
   const reconcileUnmatchedMutation = useReconcileUnmatchedPaymentRows();
 
   const reviewRowsQuery = useUnmatchedPaymentRows({
+    search: appliedReviewSearch,
+    status: appliedReviewFilters.status,
+    paymentDate: appliedReviewFilters.paymentDate,
+    fromDate: appliedReviewFilters.fromDate,
+    toDate: appliedReviewFilters.toDate,
+    merchantName: appliedReviewFilters.merchantName,
+    bank: appliedReviewFilters.bank,
+    currency: appliedReviewFilters.currency,
     page: reviewPage,
     limit: reviewPageSize,
   });
@@ -75,20 +107,62 @@ export const useUploadPageController = () => {
   const isReviewTab = activeTab === "review";
   const isWireSheet = activeTab === "wire";
   const isPaymentSheet = activeTab === "payment";
+  const isRatesTab = activeTab === "rates";
 
   const currentTab = tabState[activeTab] || initialTabState;
   const activeFile = currentTab.files[currentTab.activeFileIndex] || null;
 
   const hasReviewIssues = (reviewMeta.total || reviewRows.length) > 0;
 
-  const currentFileLimit = isReviewTab ? 0 : getFileLimit(activeTab);
-  const currentFileCount = currentTab.files.length;
+  const activeReviewFilterCount = useMemo(() => {
+    let count = 0;
+
+    if (appliedReviewFilters.status) {
+      count += 1;
+    }
+
+    if (appliedReviewFilters.paymentDate) {
+      count += 1;
+    } else if (appliedReviewFilters.fromDate || appliedReviewFilters.toDate) {
+      count += 1;
+    }
+
+    if (appliedReviewFilters.merchantName) {
+      count += 1;
+    }
+
+    if (appliedReviewFilters.bank) {
+      count += 1;
+    }
+
+    if (appliedReviewFilters.currency) {
+      count += 1;
+    }
+
+    return count;
+  }, [appliedReviewFilters]);
+
+  const currentFileLimit = isReviewTab
+    ? 0
+    : isRatesTab
+      ? 1
+      : getFileLimit(activeTab);
+
+  const currentFileCount = isRatesTab
+    ? Number(Boolean(ratesFile))
+    : currentTab.files.length;
 
   const hasUnsavedFiles =
-    tabState.wire.files.length > 0 || tabState.payment.files.length > 0;
+    tabState.wire.files.length > 0 ||
+    tabState.payment.files.length > 0 ||
+    Boolean(ratesFile);
 
-  const isCurrentTabExtracting = Boolean(extractingTab[activeTab]);
-  const isCurrentTabUploading = Boolean(uploadingTab[activeTab]);
+  const isCurrentTabExtracting = isRatesTab
+    ? false
+    : Boolean(extractingTab[activeTab]);
+  const isCurrentTabUploading = isRatesTab
+    ? uploadMerchantRatesMutation.isPending
+    : Boolean(uploadingTab[activeTab]);
   const isCurrentTabBusy = isCurrentTabExtracting || isCurrentTabUploading;
 
   const { sheetKey: activePaymentSheetKey, sheetData: activePaymentSheetData } =
@@ -152,6 +226,125 @@ export const useUploadPageController = () => {
       [tab]: value,
     }));
   }, []);
+
+  const validateRatesFile = useCallback((file) => {
+    if (!file) {
+      return "Please select a rates file.";
+    }
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+
+    if (!["xlsx", "csv"].includes(extension)) {
+      return "Only .xlsx and .csv files are supported.";
+    }
+
+    const maximumSize = 50 * 1024 * 1024;
+
+    if (file.size > maximumSize) {
+      return "The rates file must not exceed 50MB.";
+    }
+
+    return null;
+  }, []);
+
+  const handleRatesFileSelect = useCallback(
+    (file) => {
+      const validationError = validateRatesFile(file);
+
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+
+      setRatesFile(file);
+    },
+    [validateRatesFile],
+  );
+
+  const handleRatesBrowseClick = useCallback(() => {
+    ratesInputRef.current?.click();
+  }, []);
+
+  const handleRatesInputChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0] || null;
+
+      if (file) {
+        handleRatesFileSelect(file);
+      }
+
+      if (ratesInputRef.current) {
+        ratesInputRef.current.value = "";
+      }
+    },
+    [handleRatesFileSelect],
+  );
+
+  const handleRatesDragOver = useCallback((event) => {
+    event.preventDefault();
+    setIsRatesDragging(true);
+  }, []);
+
+  const handleRatesDragLeave = useCallback((event) => {
+    event.preventDefault();
+    setIsRatesDragging(false);
+  }, []);
+
+  const handleRatesDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+      setIsRatesDragging(false);
+
+      const files = Array.from(event.dataTransfer.files || []);
+
+      if (!files.length) return;
+
+      if (files.length > 1) {
+        toast.error("Only one rates file can be uploaded at a time.");
+      }
+
+      handleRatesFileSelect(files[0]);
+    },
+    [handleRatesFileSelect],
+  );
+
+  const handleRemoveRatesFile = useCallback(() => {
+    setRatesFile(null);
+
+    if (ratesInputRef.current) {
+      ratesInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleUploadRates = useCallback(async () => {
+    if (!ratesFile) {
+      toast.error("Please select a rates file.");
+      return;
+    }
+
+    try {
+      const response = await uploadMerchantRatesMutation.mutateAsync(ratesFile);
+
+      setRatesFile(null);
+
+      if (ratesInputRef.current) {
+        ratesInputRef.current.value = "";
+      }
+
+      toast.success(response?.message || "Rates uploaded successfully.");
+
+      toast(
+        `Total rows: ${response?.totalRows || 0}
+Inserted rows: ${response?.insertedRows || 0}
+Skipped rows: ${response?.skippedRows || 0}`,
+        {
+          duration: 6000,
+        },
+      );
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to upload the rates file."));
+    }
+  }, [ratesFile, uploadMerchantRatesMutation]);
 
   const handleBrowseClick = useCallback(
     (tab) => {
@@ -439,6 +632,69 @@ export const useUploadPageController = () => {
     uploadFilesMutation,
   ]);
 
+  // Filter modal handlers for the review issue
+
+  const handleOpenReviewFilters = useCallback(() => {
+    setReviewFilterDraft({
+      ...appliedReviewFilters,
+    });
+
+    setIsReviewFilterModalOpen(true);
+  }, [appliedReviewFilters]);
+
+  const handleCloseReviewFilters = useCallback(() => {
+    setReviewFilterDraft({
+      ...appliedReviewFilters,
+    });
+
+    setIsReviewFilterModalOpen(false);
+  }, [appliedReviewFilters]);
+
+  const handleReviewFilterChange = useCallback((name, value) => {
+    setReviewFilterDraft((currentFilters) => ({
+      ...currentFilters,
+      [name]: value,
+    }));
+  }, []);
+
+  const handleApplyReviewFilters = useCallback(() => {
+    setAppliedReviewFilters({
+      ...reviewFilterDraft,
+    });
+
+    setReviewPage(1);
+    setIsReviewFilterModalOpen(false);
+  }, [reviewFilterDraft]);
+
+  const handleResetReviewFilters = useCallback(() => {
+    setReviewFilterDraft({
+      ...EMPTY_REVIEW_FILTERS,
+    });
+
+    setAppliedReviewFilters({
+      ...EMPTY_REVIEW_FILTERS,
+    });
+
+    setReviewPage(1);
+    setIsReviewFilterModalOpen(false);
+  }, []);
+
+  // Review issue search handler
+
+  const handleApplyReviewSearch = useCallback((searchValue) => {
+    const normalizedSearch = String(searchValue || "").trim();
+
+    setReviewSearchDraft(searchValue || "");
+    setAppliedReviewSearch(normalizedSearch);
+    setReviewPage(1);
+  }, []);
+
+  const handleClearReviewSearch = useCallback(() => {
+    setReviewSearchDraft("");
+    setAppliedReviewSearch("");
+    setReviewPage(1);
+  }, []);
+
   const handleEditInvalidRow = useCallback((row) => {
     setSelectedInvalidRow(row);
     setIsInvalidRowModalOpen(true);
@@ -541,16 +797,27 @@ Skipped: ${response?.skippedCount || 0}`,
       setReviewPage,
       handleReviewRowsPerPageChange,
 
+      reviewSearchDraft,
+      setReviewSearchDraft,
+      appliedReviewSearch,
+
+      reviewFilterDraft,
+      appliedReviewFilters,
+      isReviewFilterModalOpen,
+      activeReviewFilterCount,
+
       selectedInvalidRow,
       isInvalidRowModalOpen,
 
       wireInputRef,
       paymentInputRef,
+      ratesInputRef,
 
       hasReviewIssues,
       isReviewTab,
       isWireSheet,
       isPaymentSheet,
+      isRatesTab,
 
       currentFileLimit,
       currentFileCount,
@@ -562,6 +829,10 @@ Skipped: ${response?.skippedCount || 0}`,
       activePaymentSheetData,
       displayedRows,
       analysis,
+
+      ratesFile,
+      isRatesDragging,
+      uploadMerchantRatesMutation,
 
       reconcileUnmatchedMutation,
       reviewRowsQuery,
@@ -576,6 +847,20 @@ Skipped: ${response?.skippedCount || 0}`,
       handleFileTabChange,
       handlePaymentSheetTabChange,
       handleProcess,
+      handleRatesBrowseClick,
+      handleRatesInputChange,
+      handleRatesDragOver,
+      handleRatesDragLeave,
+      handleRatesDrop,
+      handleRemoveRatesFile,
+      handleUploadRates,
+      handleApplyReviewSearch,
+      handleClearReviewSearch,
+      handleOpenReviewFilters,
+      handleCloseReviewFilters,
+      handleReviewFilterChange,
+      handleApplyReviewFilters,
+      handleResetReviewFilters,
       handleEditInvalidRow,
       handleCloseInvalidRowModal,
       handleSaveInvalidRow,
@@ -621,6 +906,19 @@ Skipped: ${response?.skippedCount || 0}`,
       reviewRowsQuery,
       selectedInvalidRow,
       tabState,
+      activeReviewFilterCount,
+      appliedReviewFilters,
+      appliedReviewSearch,
+      handleApplyReviewFilters,
+      handleApplyReviewSearch,
+      handleClearReviewSearch,
+      handleCloseReviewFilters,
+      handleOpenReviewFilters,
+      handleResetReviewFilters,
+      handleReviewFilterChange,
+      isReviewFilterModalOpen,
+      reviewFilterDraft,
+      reviewSearchDraft,
     ],
   );
 };

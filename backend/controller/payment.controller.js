@@ -1379,20 +1379,177 @@ export const listPayments = async (_req, res) => {
   });
 };
 
+const escapeSearchRegex = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const createSearchRegex = (value) => {
+  const normalizedValue = String(value || "").trim();
+
+  if (!normalizedValue) return null;
+
+  return new RegExp(escapeSearchRegex(normalizedValue), "i");
+};
+
+const parseFilterDate = (value) => {
+  if (!value) return null;
+
+  const parsedDate = new Date(value);
+
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const buildUnmatchedPaymentDateCondition = ({
+  paymentDate,
+  fromDate,
+  toDate,
+}) => {
+  const exactDate = parseFilterDate(paymentDate);
+
+  if (exactDate) {
+    const exactDateRange = {
+      $gte: startOfDay(exactDate),
+      $lte: endOfDay(exactDate),
+    };
+
+    return {
+      $or: [
+        { paymentDate: exactDateRange },
+        { paidToMerchantDate: exactDateRange },
+      ],
+    };
+  }
+
+  const parsedFromDate = parseFilterDate(fromDate);
+  const parsedToDate = parseFilterDate(toDate);
+
+  if (!parsedFromDate && !parsedToDate) {
+    return null;
+  }
+
+  const dateRange = {};
+
+  if (parsedFromDate) {
+    dateRange.$gte = startOfDay(parsedFromDate);
+  }
+
+  if (parsedToDate) {
+    dateRange.$lte = endOfDay(parsedToDate);
+  }
+
+  return {
+    $or: [{ paymentDate: dateRange }, { paidToMerchantDate: dateRange }],
+  };
+};
+
 export const listUnmatchedPayments = async (req, res) => {
-  const { status, page = 1, limit = 20 } = req.query;
+  const {
+    status = "",
+    search = "",
+    bank = "",
+    merchantName = "",
+    mid = "",
+    currency = "",
+    paymentDate = "",
+    fromDate = "",
+    toDate = "",
+    page = 1,
+    limit = 20,
+  } = req.query;
 
   const pageNumber = Math.max(Number(page) || 1, 1);
   const limitNumber = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const skip = (pageNumber - 1) * limitNumber;
 
-  const query = status
-    ? { status }
-    : { status: { $in: ["invalid", "unmatched"] } };
+  const activeStatuses = ["invalid", "unmatched"];
+  const normalizedStatus = String(status).trim().toLowerCase();
+
+  const conditions = [
+    activeStatuses.includes(normalizedStatus)
+      ? { status: normalizedStatus }
+      : { status: { $in: activeStatuses } },
+  ];
+
+  const bankRegex = createSearchRegex(bank);
+
+  if (bankRegex) {
+    conditions.push({
+      paymentBank: bankRegex,
+    });
+  }
+
+  const merchantRegex = createSearchRegex(merchantName);
+
+  if (merchantRegex) {
+    conditions.push({
+      merchantName: merchantRegex,
+    });
+  }
+
+  const midRegex = createSearchRegex(mid);
+
+  if (midRegex) {
+    conditions.push({
+      sourceMid: midRegex,
+    });
+  }
+
+  const currencyRegex = createSearchRegex(currency);
+
+  if (currencyRegex) {
+    conditions.push({
+      $or: [
+        { sourceProcessingCurrency: currencyRegex },
+        { settlementCurrency: currencyRegex },
+      ],
+    });
+  }
+
+  const paymentDateCondition = buildUnmatchedPaymentDateCondition({
+    paymentDate,
+    fromDate,
+    toDate,
+  });
+
+  if (paymentDateCondition) {
+    conditions.push(paymentDateCondition);
+  }
+
+  const searchRegex = createSearchRegex(search);
+
+  if (searchRegex) {
+    conditions.push({
+      $or: [
+        { paymentBank: searchRegex },
+        { merchantName: searchRegex },
+        { sourceMid: searchRegex },
+        { sourceProcessingCurrency: searchRegex },
+        { settlementCurrency: searchRegex },
+        { paymentMethod: searchRegex },
+        { paymentSheetDateLabel: searchRegex },
+        { originalFilename: searchRegex },
+        { sheetName: searchRegex },
+        { failureReason: searchRegex },
+        { referenceNo: searchRegex },
+        { hashPayment: searchRegex },
+        { status: searchRegex },
+      ],
+    });
+  }
+
+  const query =
+    conditions.length === 1
+      ? conditions[0]
+      : {
+          $and: conditions,
+        };
 
   const [data, total, summary] = await Promise.all([
     UnmatchedPayment.find(query)
-      .sort({ createdAt: -1 })
+      .sort({
+        status: 1,
+        createdAt: -1,
+        _id: -1,
+      })
       .skip(skip)
       .limit(limitNumber)
       .lean(),

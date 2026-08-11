@@ -87,14 +87,14 @@ const router = createBrowserRouter([
           </ProtectedRoutes>
         ),
       },
-      // {
-      //   path: "merchant-settlement",
-      //   element: (
-      //     <ProtectedRoutes allowedRoles={["admin", "support", "settlement"]}>
-      //       <MerchantSettlement />
-      //     </ProtectedRoutes>
-      //   ),
-      // },
+      {
+        path: "merchant-settlement",
+        element: (
+          <ProtectedRoutes allowedRoles={["admin", "support", "settlement"]}>
+            <MerchantSettlement />
+          </ProtectedRoutes>
+        ),
+      },
       {
         path: "miscellaneous",
         element: (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { RefreshCcw } from "lucide-react";
+import { Filter, RefreshCcw } from "lucide-react";
 
 import Button from "../UI/Button";
 import DataTable from "../UI/DataTable";
@@ -21,6 +21,8 @@ export default function UploadIssuesSection({
   isFetching = false,
   title = "Review Upload Issues",
   description = "Fix invalid rows and reconcile unmatched payment rows.",
+  openReviewFilter,
+  activeReviewFilterCount = 0,
 }) {
   const sectionRef = useRef(null);
 
@@ -69,6 +71,20 @@ export default function UploadIssuesSection({
           >
             Reconcile
           </Button>
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              leftIcon={<Filter size={16} />}
+              onClick={openReviewFilter}
+            >
+              Filters
+              {activeReviewFilterCount > 0
+                ? ` (${activeReviewFilterCount})`
+                : ""}
+            </Button>
+          </div>
         </div>
       </div>
 

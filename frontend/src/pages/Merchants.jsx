@@ -102,7 +102,15 @@ export default function Merchants() {
   const [backendSearch, setBackendSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(() => {
+    const savedPageSize = Number(
+      localStorage.getItem("global-table-rows-per-page"),
+    );
+
+    return savedPageSize > 0 ? savedPageSize : 25;
+  });
+
+  // global-table-rows-per-page
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formMode, setFormMode] = useState("create");
@@ -292,6 +300,8 @@ export default function Merchants() {
     return merchant.status?.toLowerCase() === statusFilter;
   });
 
+  const visibleMerchantCount = filteredMerchants.length;
+
   const activeMerchantCount = merchants.filter(
     (merchant) => merchant.status?.toLowerCase() === "active",
   ).length;
@@ -312,8 +322,8 @@ export default function Merchants() {
     },
     {
       label: "Visible Results",
-      value: activeMerchantCount,
-      helper: "After current search",
+      value: visibleMerchantCount,
+      helper: "Rows currently displayed",
       icon: Building2,
     },
     {

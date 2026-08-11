@@ -20,6 +20,8 @@ export const dashboardQueryKeys = {
 async function fetchDashboardLatestApi() {
   const response = await dashboardApi.get("/latest");
 
+  console.log("latest dashboard response", response.data.data);
+
   return (
     response?.data?.data || {
       dashboardSource: null,

@@ -96,6 +96,9 @@ export default function Dashboard() {
   const dashboardData = activeDashboardQuery.data || {};
   const transactions = dashboardData.transactions || [];
   const dashboardSummary = dashboardData.summary || {};
+  const displayedPaymentDate = dashboardData.paymentDate
+    ? formatDate(dashboardData.paymentDate)
+    : null;
 
   // Miscellaneous query
   const miscellaneousQuery = useMiscellaneousPayments(
@@ -463,7 +466,18 @@ export default function Dashboard() {
     <div className="w-full bg-background text-on-background">
       <DashboardSummarySection summary={dashboardSummary} />
 
-      <div className="flex justify-end">
+      <div className="flex justify-between">
+        {displayedPaymentDate ? (
+          <div className="mb-4 flex justify-end">
+            <div className="rounded-full bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface-variant">
+              Payment sheet data :{" "}
+              <span className="font-bold text-on-surface">
+                {displayedPaymentDate}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         <DatePicker
           mode={reportDateMode}
           allowModeSwitch

@@ -42,7 +42,7 @@ export default function PaymentSheetRow({
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm font-bold text-on-surface">
-        {formatNumber(row.totalRows)}
+        {row.totalRows}
       </td>
 
       <td className="whitespace-nowrap px-8 py-4 text-right text-sm font-bold text-on-surface">

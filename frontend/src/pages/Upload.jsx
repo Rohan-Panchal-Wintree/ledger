@@ -1,8 +1,16 @@
-import { AlertTriangle, FileSpreadsheet, FileUp, X } from "lucide-react";
+import {
+  AlertTriangle,
+  FileSpreadsheet,
+  FileUp,
+  Filter,
+  X,
+} from "lucide-react";
+import { useSelector } from "react-redux";
 
 import UploadFile from "../component/upload/UploadFile";
 import EditInvalidPaymentRowForm from "../component/upload/EditInvalidPaymentRowForm";
 import UploadPreviewSection from "../component/upload/UploadPreviewSection";
+import ReviewIssuesFilterForm from "../component/upload/ReviewIssuesFilterForm";
 
 import Spinner from "../component/UI/Spinner";
 import Tabs from "../component/UI/Tabs";
@@ -12,6 +20,7 @@ import Modal from "../component/UI/Modal";
 import UploadIssuesSection from "../component/upload/UploadIssuesSection";
 
 import { useUploadPageController } from "../hooks/useUploadPageController";
+import { selectCurrentUser } from "../store/slices/Auth.slice";
 
 const wirePreviewColumns = [
   { key: "merchantName", label: "Merchant Name" },
@@ -49,16 +58,28 @@ export default function Upload() {
     setReviewPage,
     handleReviewRowsPerPageChange,
 
+    reviewFilterDraft,
+    isReviewFilterModalOpen,
+    activeReviewFilterCount,
+
+    handleOpenReviewFilters,
+    handleCloseReviewFilters,
+    handleReviewFilterChange,
+    handleApplyReviewFilters,
+    handleResetReviewFilters,
+
     selectedInvalidRow,
     isInvalidRowModalOpen,
 
     wireInputRef,
     paymentInputRef,
+    ratesInputRef,
 
     hasReviewIssues,
     isReviewTab,
     isWireSheet,
     isPaymentSheet,
+    isRatesTab,
 
     currentFileLimit,
     currentFileCount,
@@ -70,6 +91,10 @@ export default function Upload() {
     activePaymentSheetData,
     displayedRows,
     analysis,
+
+    ratesFile,
+    isRatesDragging,
+    uploadMerchantRatesMutation,
 
     reconcileUnmatchedMutation,
     reviewRowsQuery,
@@ -84,11 +109,25 @@ export default function Upload() {
     handleFileTabChange,
     handlePaymentSheetTabChange,
     handleProcess,
+    handleRatesBrowseClick,
+    handleRatesInputChange,
+    handleRatesDragOver,
+    handleRatesDragLeave,
+    handleRatesDrop,
+    handleRemoveRatesFile,
+    handleUploadRates,
     handleEditInvalidRow,
     handleCloseInvalidRowModal,
     handleSaveInvalidRow,
     handleReconcilePayments,
   } = useUploadPageController();
+
+  const currentUser = useSelector(selectCurrentUser);
+  const normalizedRole = String(currentUser.role).trim().toLowerCase();
+
+  const canUploadRates = ["admin", "support", "settlement"].includes(
+    normalizedRole,
+  );
 
   const renderUploadTabs = () => (
     <div className="flex items-center justify-between">
@@ -106,6 +145,15 @@ export default function Upload() {
             value: "payment",
             icon: FileUp,
           },
+          ...(canUploadRates
+            ? [
+                {
+                  label: "Rates",
+                  value: "rates",
+                  icon: FileSpreadsheet,
+                },
+              ]
+            : []),
           ...(hasReviewIssues || isReviewTab
             ? [
                 {
@@ -125,7 +173,11 @@ export default function Upload() {
           </span>
 
           <span className="text-on-surface-variant">
-            {isWireSheet ? "Wiresheets selected" : "Payment sheets selected"}
+            {isRatesTab
+              ? "Rates file selected"
+              : isWireSheet
+                ? "Wiresheets selected"
+                : "Payment sheets selected"}
           </span>
         </div>
       )}
@@ -133,7 +185,7 @@ export default function Upload() {
   );
 
   const renderFileTabs = () => {
-    if (!currentTab.files.length) return null;
+    if (isRatesTab || !currentTab.files.length) return null;
 
     return (
       <div className="mb-6 flex gap-2 overflow-x-auto scrollbar-hide">
@@ -218,8 +270,40 @@ export default function Upload() {
             onReconcile={handleReconcilePayments}
             isReconciling={reconcileUnmatchedMutation.isPending}
             isFetching={reviewRowsQuery.isFetching}
+            openReviewFilter={handleOpenReviewFilters}
+            activeReviewFilterCount={activeReviewFilterCount}
           />
         </div>
+
+        <Modal
+          open={isReviewFilterModalOpen}
+          title="Filter Review Issues"
+          description="Filter unmatched and invalid payment rows."
+          size="lg"
+          onClose={handleCloseReviewFilters}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleResetReviewFilters}
+              >
+                Clear
+              </Button>
+
+              <Button type="submit" form="review-issues-filter-form">
+                Apply Filters
+              </Button>
+            </>
+          }
+        >
+          <ReviewIssuesFilterForm
+            formId="review-issues-filter-form"
+            filters={reviewFilterDraft}
+            onChange={handleReviewFilterChange}
+            onApply={handleApplyReviewFilters}
+          />
+        </Modal>
 
         {renderInvalidRowModal()}
       </div>
@@ -246,64 +330,98 @@ export default function Upload() {
         onChange={(event) => handleInputChange(event, "payment")}
       />
 
-      {renderUploadTabs()}
-      {renderFileTabs()}
-
-      <UploadFile
-        mode={currentTab.files.length > 0 ? "filled" : "empty"}
-        title={
-          currentTab.files.length > 0
-            ? isWireSheet
-              ? "Upload Wiresheet Excel"
-              : "Upload Payment Excel"
-            : isWireSheet
-              ? "Upload Wiresheet Settlement File"
-              : "Upload Payment Sheet File"
-        }
-        description={
-          isWireSheet
-            ? "Process your multi-acquirer transaction reports through our engine."
-            : "Process your payment sheet reports through our engine."
-        }
-        selectedFile={activeFile?.file || null}
-        isDragging={currentTab.isDragging}
-        onBrowse={() => handleBrowseClick(activeTab)}
-        onDragOver={(event) => handleDragOver(event, activeTab)}
-        onDragLeave={(event) => handleDragLeave(event, activeTab)}
-        onDrop={(event) => handleDrop(event, activeTab)}
-        onRemove={() => handleRemoveFile(activeTab, currentTab.activeFileIndex)}
-        onCancel={() => handleCancel(activeTab)}
-        onProcess={handleProcess}
-        isProcessing={isCurrentTabBusy}
-        analysis={analysis}
-        showRates={isPaymentSheet}
+      <input
+        ref={ratesInputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={handleRatesInputChange}
       />
 
-      {isCurrentTabExtracting ? (
-        <div className="my-6 flex items-center justify-center rounded-lg border border-outline-variant/10 bg-surface-container-lowest px-8 py-10">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Spinner type="md" />
+      {renderUploadTabs()}
 
-            <p className="text-sm font-bold text-on-surface">
-              Extracting file data...
-            </p>
-
-            <p className="text-xs text-on-surface-variant">
-              Please wait while we read and prepare the spreadsheet preview.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <UploadPreviewSection
-          isWireSheet={isWireSheet}
-          isPaymentSheet={isPaymentSheet}
-          hasUploadedFiles={currentTab.files.length > 0}
-          activeFile={activeFile}
-          activePaymentSheetKey={activePaymentSheetKey}
-          activePaymentSheetData={activePaymentSheetData}
-          displayedRows={displayedRows}
-          onPaymentSheetTabChange={handlePaymentSheetTabChange}
+      {isRatesTab ? (
+        <UploadFile
+          simpleUpload
+          mode={ratesFile ? "filled" : "empty"}
+          title={
+            ratesFile ? "Upload Merchant Rates File" : "Upload Merchant Rates"
+          }
+          description="Select one CSV file. The file will be processed by the server after upload."
+          selectedFile={ratesFile}
+          isDragging={isRatesDragging}
+          onBrowse={handleRatesBrowseClick}
+          onDragOver={handleRatesDragOver}
+          onDragLeave={handleRatesDragLeave}
+          onDrop={handleRatesDrop}
+          onRemove={handleRemoveRatesFile}
+          onCancel={handleRemoveRatesFile}
+          onProcess={handleUploadRates}
+          isProcessing={uploadMerchantRatesMutation.isPending}
         />
+      ) : (
+        <>
+          {renderFileTabs()}
+
+          <UploadFile
+            mode={currentTab.files.length > 0 ? "filled" : "empty"}
+            title={
+              currentTab.files.length > 0
+                ? isWireSheet
+                  ? "Upload Wiresheet Excel"
+                  : "Upload Payment Excel"
+                : isWireSheet
+                  ? "Upload Wiresheet Settlement File"
+                  : "Upload Payment Sheet File"
+            }
+            description={
+              isWireSheet
+                ? "Process your multi-acquirer transaction reports through our engine."
+                : "Process your payment sheet reports through our engine."
+            }
+            selectedFile={activeFile?.file || null}
+            isDragging={currentTab.isDragging}
+            onBrowse={() => handleBrowseClick(activeTab)}
+            onDragOver={(event) => handleDragOver(event, activeTab)}
+            onDragLeave={(event) => handleDragLeave(event, activeTab)}
+            onDrop={(event) => handleDrop(event, activeTab)}
+            onRemove={() =>
+              handleRemoveFile(activeTab, currentTab.activeFileIndex)
+            }
+            onCancel={() => handleCancel(activeTab)}
+            onProcess={handleProcess}
+            isProcessing={isCurrentTabBusy}
+            analysis={analysis}
+            showRates={isPaymentSheet}
+          />
+
+          {isCurrentTabExtracting ? (
+            <div className="my-6 flex items-center justify-center rounded-lg border border-outline-variant/10 bg-surface-container-lowest px-8 py-10">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <Spinner type="md" />
+
+                <p className="text-sm font-bold text-on-surface">
+                  Extracting file data...
+                </p>
+
+                <p className="text-xs text-on-surface-variant">
+                  Please wait while we read and prepare the spreadsheet preview.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <UploadPreviewSection
+              isWireSheet={isWireSheet}
+              isPaymentSheet={isPaymentSheet}
+              hasUploadedFiles={currentTab.files.length > 0}
+              activeFile={activeFile}
+              activePaymentSheetKey={activePaymentSheetKey}
+              activePaymentSheetData={activePaymentSheetData}
+              displayedRows={displayedRows}
+              onPaymentSheetTabChange={handlePaymentSheetTabChange}
+            />
+          )}
+        </>
       )}
 
       {renderInvalidRowModal()}

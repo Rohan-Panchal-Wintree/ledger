@@ -4,6 +4,7 @@ import Spinner from "../UI/Spinner.jsx";
 
 export default function UploadFile({
   mode = "empty",
+  simpleUpload = false,
   title,
   description,
   selectedFile,
@@ -31,8 +32,14 @@ export default function UploadFile({
 }) {
   if (mode === "filled") {
     return (
-      <div className="mb-12 grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-        <section className="space-y-8 lg:col-span-5">
+      <div
+        className={`mb-12 grid grid-cols-1 items-start gap-8 ${
+          simpleUpload ? "" : "lg:grid-cols-12"
+        }`}
+      >
+        <section
+          className={`space-y-8 ${simpleUpload ? "w-full" : "lg:col-span-5"}`}
+        >
           <div className="space-y-2">
             <h2 className="text-3xl font-extrabold tracking-tight text-on-surface">
               {title}
@@ -57,7 +64,9 @@ export default function UploadFile({
 
             <div className="space-y-1">
               <p className="font-semibold text-on-surface">
-                Drop one or more XLSX files here
+                {simpleUpload
+                  ? "Drop one CSV file here"
+                  : "Drop one or more XLSX files here"}
               </p>
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Max file size: 50MB
@@ -121,91 +130,71 @@ export default function UploadFile({
           </div>
         </section>
 
-        <section className="space-y-6 rounded-xl bg-surface-container-low p-8 lg:col-span-7">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-tight text-on-surface">
-              {previewTitle}
-            </h2>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
-              {previewBadge}
-            </span>
-          </div>
-
-          <div
-            className={`grid gap-4 ${
-              showRates ? "grid-cols-2" : "grid-cols-2"
-            }`}
-          >
-            <div className="col-span-2 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 md:col-span-1">
-              <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Acquirers Detected
-              </p>
-              <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
-                {analysis.acquirers.length > 0 ? (
-                  analysis.acquirers.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-primary"
-                    >
-                      {item}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-on-surface-variant">-</span>
-                )}
-              </div>
-            </div>
-
-            <div className="col-span-2 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 md:col-span-1">
-              <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Currencies Detected
-              </p>
-              <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
-                {analysis.currencies.length > 0 ? (
-                  analysis.currencies.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-secondary"
-                    >
-                      {item}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-on-surface-variant">-</span>
-                )}
-              </div>
+        {!simpleUpload && (
+          <section className="space-y-6 rounded-xl bg-surface-container-low p-8 lg:col-span-7">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold tracking-tight text-on-surface">
+                {previewTitle}
+              </h2>
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
+                {previewBadge}
+              </span>
             </div>
 
             <div
-              className={`rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 ${showRates ? "col-span-2 md:col-span-1" : "col-span-2"}`}
+              className={`grid gap-4 ${
+                showRates ? "grid-cols-2" : "grid-cols-2"
+              }`}
             >
-              <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Merchants Detected
-              </p>
-              <div className="flex max-h-20 flex-wrap gap-2 overflow-y-auto pr-1">
-                {analysis.merchantsList.length > 0 ? (
-                  analysis.merchantsList.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-on-surface"
-                    >
-                      {item}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-on-surface-variant">-</span>
-                )}
-              </div>
-            </div>
-
-            {showRates && (
               <div className="col-span-2 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 md:col-span-1">
                 <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                  Rates Detected
+                  Acquirers Detected
                 </p>
-                <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
-                  {analysis.rates.length > 0 ? (
-                    analysis.rates.map((item) => (
+                <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {analysis.acquirers.length > 0 ? (
+                    analysis.acquirers.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-primary"
+                      >
+                        {item}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-on-surface-variant">-</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="col-span-2 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 md:col-span-1">
+                <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                  Currencies Detected
+                </p>
+                <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {analysis.currencies.length > 0 ? (
+                    analysis.currencies.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-secondary"
+                      >
+                        {item}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-on-surface-variant">-</span>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 ${showRates ? "col-span-2 md:col-span-1" : "col-span-2"}`}
+              >
+                <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                  Merchants Detected
+                </p>
+                <div className="flex max-h-20 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {analysis.merchantsList.length > 0 ? (
+                    analysis.merchantsList.map((item) => (
                       <span
                         key={item}
                         className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-on-surface"
@@ -218,53 +207,83 @@ export default function UploadFile({
                   )}
                 </div>
               </div>
-            )}
 
-            <div className="flex flex-col justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
-              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Transactions
-              </p>
-              <p className="mt-2 text-4xl font-extrabold tracking-tight text-on-surface">
-                {analysis.transactions}
-              </p>
-            </div>
-
-            <div className="flex flex-col justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
-              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Merchant Count
-              </p>
-              <p className="mt-2 text-4xl font-extrabold tracking-tight text-on-surface">
-                {analysis.merchants}
-              </p>
-            </div>
-
-            <div className="relative col-span-2 overflow-hidden rounded-lg bg-primary p-6">
-              <div className="relative z-10">
-                <p className="mb-4 text-xs font-bold uppercase tracking-wider text-white/70">
-                  Total Amount
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-extrabold tracking-tight text-white">
-                    {Number(analysis.estimatedRevenue || 0).toLocaleString(
-                      "en-IN",
-                      {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      },
+              {showRates && (
+                <div className="col-span-2 rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6 md:col-span-1">
+                  <p className="mb-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                    Rates Detected
+                  </p>
+                  <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
+                    {analysis.rates.length > 0 ? (
+                      analysis.rates.map((item) => (
+                        <span
+                          key={item}
+                          className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-on-surface"
+                        >
+                          {item}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-on-surface-variant">-</span>
                     )}
-                  </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
+                <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                  Transactions
+                </p>
+                <p className="mt-2 text-4xl font-extrabold tracking-tight text-on-surface">
+                  {analysis.transactions}
+                </p>
+              </div>
+
+              <div className="flex flex-col justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
+                <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                  Merchant Count
+                </p>
+                <p className="mt-2 text-4xl font-extrabold tracking-tight text-on-surface">
+                  {analysis.merchants}
+                </p>
+              </div>
+
+              <div className="relative col-span-2 overflow-hidden rounded-lg bg-primary p-6">
+                <div className="relative z-10">
+                  <p className="mb-4 text-xs font-bold uppercase tracking-wider text-white/70">
+                    Total Amount
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-extrabold tracking-tight text-white">
+                      {Number(analysis.estimatedRevenue || 0).toLocaleString(
+                        "en-IN",
+                        {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        },
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-2">
-      <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-8">
+    <div
+      className={`mb-12 grid grid-cols-1 items-start gap-8 ${
+        simpleUpload ? "" : "lg:grid-cols-2"
+      }`}
+    >
+      <section
+        className={`rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-8 ${
+          simpleUpload ? "w-full" : ""
+        }`}
+      >
         <h2 className="mb-6 flex items-center gap-2 text-xl font-bold text-on-surface">
           <UploadCloud className="h-5 w-5 text-primary" />
           {title}
@@ -286,7 +305,9 @@ export default function UploadFile({
           </div>
 
           <p className="mb-2 text-lg font-semibold text-on-surface">
-            Drag and drop one or more files here
+            {simpleUpload
+              ? "Drag and drop one file here"
+              : "Drag and drop one or more files here"}
           </p>
 
           <p className="mb-8 text-sm text-on-surface-variant">
@@ -306,45 +327,47 @@ export default function UploadFile({
         </div>
       </section>
 
-      <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-8">
-        <h2 className="mb-6 flex items-center gap-2 text-xl font-bold text-on-surface">
-          <Activity className="h-5 w-5 text-primary" />
-          Processing Status
-        </h2>
+      {!simpleUpload && (
+        <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-8">
+          <h2 className="mb-6 flex items-center gap-2 text-xl font-bold text-on-surface">
+            <Activity className="h-5 w-5 text-primary" />
+            Processing Status
+          </h2>
 
-        <div className="flex min-h-90 flex-col items-center justify-center rounded-lg border border-outline-variant/10 bg-surface-container-low p-12 text-center">
-          {isProcessing ? (
-            <>
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest">
-                <Spinner type="lg" />
-              </div>
+          <div className="flex min-h-90 flex-col items-center justify-center rounded-lg border border-outline-variant/10 bg-surface-container-low p-12 text-center">
+            {isProcessing ? (
+              <>
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest">
+                  <Spinner type="lg" />
+                </div>
 
-              <p className="text-lg font-bold text-on-surface">
-                Analyzing file...
-              </p>
+                <p className="text-lg font-bold text-on-surface">
+                  Analyzing file...
+                </p>
 
-              <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
-                Reading spreadsheet data and preparing the preview.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest text-outline">
-                <Activity className="h-8 w-8" />
-              </div>
+                <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
+                  Reading spreadsheet data and preparing the preview.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-highest text-outline">
+                  <Activity className="h-8 w-8" />
+                </div>
 
-              <p className="text-lg font-medium italic text-on-surface-variant">
-                No file uploaded yet
-              </p>
+                <p className="text-lg font-medium italic text-on-surface-variant">
+                  No file uploaded yet
+                </p>
 
-              <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
-                Upload a file to see real-time extraction and validation results
-                here.
-              </p>
-            </>
-          )}
-        </div>
-      </section>
+                <p className="mt-2 max-w-xs text-sm text-on-surface-variant/60">
+                  Upload a file to see real-time extraction and validation
+                  results here.
+                </p>
+              </>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

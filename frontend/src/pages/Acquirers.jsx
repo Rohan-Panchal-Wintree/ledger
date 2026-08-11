@@ -64,8 +64,13 @@ export default function Acquirers() {
   const [searchValue, setSearchValue] = useState("");
   const [backendSearch, setBackendSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(() => {
+    const savedPageSize = Number(
+      localStorage.getItem("global-table-rows-per-page"),
+    );
 
+    return savedPageSize > 0 ? savedPageSize : 25;
+  });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formMode, setFormMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
