@@ -55,6 +55,7 @@ export default function Upload() {
     reviewRows,
     reviewMeta,
     reviewPage,
+    reviewFilterOptions,
     setReviewPage,
     handleReviewRowsPerPageChange,
 
@@ -300,6 +301,7 @@ export default function Upload() {
           <ReviewIssuesFilterForm
             formId="review-issues-filter-form"
             filters={reviewFilterDraft}
+            filterOptions={reviewFilterOptions}
             onChange={handleReviewFilterChange}
             onApply={handleApplyReviewFilters}
           />

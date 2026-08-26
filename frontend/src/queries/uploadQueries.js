@@ -230,6 +230,12 @@ async function getUnmatchedPaymentRowsApi({
       unmatchedRows: [],
     },
 
+    filterOptions: response?.data?.filterOptions || {
+      banks: [],
+      merchants: [],
+      currencies: [],
+    },
+
     meta: response?.data?.meta || {
       total: 0,
       page,

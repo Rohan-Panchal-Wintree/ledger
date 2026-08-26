@@ -95,6 +95,12 @@ export const useUploadPageController = () => {
 
   const reviewRows = reviewRowsQuery.data?.items || [];
 
+  const reviewFilterOptions = reviewRowsQuery.data?.filterOptions || {
+    banks: [],
+    merchants: [],
+    currencies: [],
+  };
+
   const reviewMeta = reviewRowsQuery.data?.meta || {
     total: reviewRows.length,
     page: reviewPage,
@@ -792,6 +798,7 @@ Skipped: ${response?.skippedCount || 0}`,
 
       reviewRows,
       reviewMeta,
+      reviewFilterOptions,
       reviewPage,
       reviewPageSize,
       setReviewPage,
@@ -900,6 +907,7 @@ Skipped: ${response?.skippedCount || 0}`,
       isWireSheet,
       reconcileUnmatchedMutation,
       reviewMeta,
+      reviewFilterOptions,
       reviewPage,
       reviewPageSize,
       reviewRows,

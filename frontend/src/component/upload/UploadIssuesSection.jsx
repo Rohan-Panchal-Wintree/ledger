@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Filter, RefreshCcw } from "lucide-react";
+import { RefreshCcw, SlidersHorizontal } from "lucide-react";
 
 import Button from "../UI/Button";
 import DataTable from "../UI/DataTable";
-import Spinner from "../UI/Spinner";
 
 import UploadIssueRow from "./UploadIssueRow";
 
@@ -42,7 +41,7 @@ export default function UploadIssuesSection({
     });
   }, [page]);
 
-  if (!rows.length) return null;
+  // if (!rows.length) return null;
 
   return (
     <section ref={sectionRef} className="space-y-4">
@@ -63,7 +62,6 @@ export default function UploadIssuesSection({
           <Button
             type="button"
             variant="primary"
-            size="sm"
             leftIcon={<RefreshCcw className="h-4 w-4" />}
             loading={isReconciling}
             disabled={isReconciling}
@@ -75,8 +73,8 @@ export default function UploadIssuesSection({
           <div className="flex justify-end">
             <Button
               type="button"
-              variant="secondary"
-              leftIcon={<Filter size={16} />}
+              variant={activeReviewFilterCount > 0 ? "primary" : "secondary"}
+              leftIcon={<SlidersHorizontal size={16} />}
               onClick={openReviewFilter}
             >
               Filters
@@ -94,9 +92,10 @@ export default function UploadIssuesSection({
         page={page}
         onPageChange={onPageChange}
         onRowsPerPageChange={onPageSizeChange}
+        isFetching={isFetching}
         isEmpty={!rows.length}
         emptyTitle="No upload issues found"
-        emptyDescription="All payment rows are ready for processing."
+        emptyDescription="No payment rows match the currently applied filters."
         showFooter
       >
         {sortedRows.map((row, index) => (
@@ -107,12 +106,6 @@ export default function UploadIssuesSection({
           />
         ))}
       </DataTable>
-
-      {isFetching && rows.length > 0 ? (
-        <div className="flex justify-center py-2">
-          <Spinner type="sm" />
-        </div>
-      ) : null}
     </section>
   );
 }

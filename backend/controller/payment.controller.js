@@ -1441,6 +1441,58 @@ const buildUnmatchedPaymentDateCondition = ({
   };
 };
 
+const buildUnmatchedFilterOptions = async () => {
+  const rows = await UnmatchedPayment.find(
+    {
+      status: {
+        $in: ["invalid", "unmatched"],
+      },
+    },
+    {
+      paymentBank: 1,
+      merchantName: 1,
+      sourceProcessingCurrency: 1,
+      settlementCurrency: 1,
+    },
+  ).lean();
+
+  const banks = [
+    ...new Set(
+      rows
+        .map((row) => row.paymentBank)
+        .filter(Boolean)
+        .map((value) => String(value).trim()),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  const merchants = [
+    ...new Set(
+      rows
+        .map((row) => row.merchantName)
+        .filter(Boolean)
+        .map((value) => String(value).trim()),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  const currencies = [
+    ...new Set(
+      rows
+        .flatMap((row) => [
+          row.sourceProcessingCurrency,
+          row.settlementCurrency,
+        ])
+        .filter(Boolean)
+        .map((value) => String(value).trim()),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  return {
+    banks,
+    merchants,
+    currencies,
+  };
+};
+
 export const listUnmatchedPayments = async (req, res) => {
   const {
     status = "",
@@ -1543,7 +1595,7 @@ export const listUnmatchedPayments = async (req, res) => {
           $and: conditions,
         };
 
-  const [data, total, summary] = await Promise.all([
+  const [data, total, summary, filterOptions] = await Promise.all([
     UnmatchedPayment.find(query)
       .sort({
         status: 1,
@@ -1557,11 +1609,14 @@ export const listUnmatchedPayments = async (req, res) => {
     UnmatchedPayment.countDocuments(query),
 
     buildUnmatchedSummary(),
+
+    buildUnmatchedFilterOptions(),
   ]);
 
   return res.json({
     success: true,
     summary,
+    filterOptions,
     meta: {
       total,
       page: pageNumber,

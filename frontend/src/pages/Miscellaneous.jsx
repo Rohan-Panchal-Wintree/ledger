@@ -282,12 +282,8 @@ export default function Miscellaneous() {
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-on-surface">
-            Miscellaneous Entries
+            Entries
           </h2>
-
-          <p className="mt-1 text-sm font-medium text-on-surface-variant">
-            All the payment sheet related miscellaneous entries.
-          </p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

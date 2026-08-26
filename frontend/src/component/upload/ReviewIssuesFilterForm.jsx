@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Button from "../UI/Button";
 import DatePicker from "../UI/DatePicker";
 import FormField from "../UI/FormField";
-import SearchInput from "../UI/SearchInput";
+import SearchableDropdown from "../UI/SearchableDropdown";
 
 const STATUS_OPTIONS = [
   { label: "All Issues", value: "" },
@@ -18,6 +18,11 @@ function getInitialDateMode(filters) {
 export default function ReviewIssuesFilterForm({
   formId = "review-issues-filter-form",
   filters,
+  filterOptions = {
+    banks: [],
+    merchants: [],
+    currencies: [],
+  },
   onChange,
   onApply,
 }) {
@@ -64,6 +69,39 @@ export default function ReviewIssuesFilterForm({
           endDate: filters?.toDate || "",
         };
 
+  const bankOptions = useMemo(
+    () => [
+      { label: "All Banks", value: "" },
+      ...(filterOptions?.banks || []).map((bank) => ({
+        label: bank,
+        value: bank,
+      })),
+    ],
+    [filterOptions?.banks],
+  );
+
+  const merchantOptions = useMemo(
+    () => [
+      { label: "All Merchants", value: "" },
+      ...(filterOptions?.merchants || []).map((merchant) => ({
+        label: merchant,
+        value: merchant,
+      })),
+    ],
+    [filterOptions?.merchants],
+  );
+
+  const currencyOptions = useMemo(
+    () => [
+      { label: "All Currencies", value: "" },
+      ...(filterOptions?.currencies || []).map((currency) => ({
+        label: currency,
+        value: currency,
+      })),
+    ],
+    [filterOptions?.currencies],
+  );
+
   return (
     <form id={formId} onSubmit={handleSubmit} className="space-y-8">
       <div>
@@ -91,49 +129,49 @@ export default function ReviewIssuesFilterForm({
         </div>
       </div>
 
-      <div>
-        <p className="mb-3 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-          Payment Date
-        </p>
-
-        <DatePicker
-          mode={dateMode}
-          allowModeSwitch
-          value={datePickerValue}
-          onModeChange={handleDateModeChange}
-          onChange={handleDateChange}
-          onClear={handleClearDate}
-          showApply={false}
-          showClear
-          className="w-full justify-start rounded-xl"
-        />
+      <div className="inline-block">
+        <FormField label="Payment Date">
+          <DatePicker
+            mode={dateMode}
+            allowModeSwitch
+            value={datePickerValue}
+            onModeChange={handleDateModeChange}
+            onChange={handleDateChange}
+            onClear={handleClearDate}
+            showApply={false}
+            showClear
+          />
+        </FormField>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <FormField label="Bank">
-          <SearchInput
+          <SearchableDropdown
             value={filters?.bank || ""}
-            placeholder="Filter by bank name..."
-            inputClassName="rounded-xl"
-            onChange={(event) => onChange?.("bank", event.target.value)}
+            options={bankOptions}
+            placeholder="All Banks"
+            searchPlaceholder="Search banks..."
+            onChange={(value) => onChange?.("bank", value)}
           />
         </FormField>
 
         <FormField label="Merchant Name">
-          <SearchInput
+          <SearchableDropdown
             value={filters?.merchantName || ""}
-            placeholder="Filter by merchant name..."
-            inputClassName="rounded-xl"
-            onChange={(event) => onChange?.("merchantName", event.target.value)}
+            options={merchantOptions}
+            placeholder="All Merchants"
+            searchPlaceholder="Search merchants..."
+            onChange={(value) => onChange?.("merchantName", value)}
           />
         </FormField>
 
         <FormField label="Currency">
-          <SearchInput
+          <SearchableDropdown
             value={filters?.currency || ""}
-            placeholder="Processing or settlement currency..."
-            inputClassName="rounded-xl"
-            onChange={(event) => onChange?.("currency", event.target.value)}
+            options={currencyOptions}
+            placeholder="All Currencies"
+            searchPlaceholder="Search currencies..."
+            onChange={(value) => onChange?.("currency", value)}
           />
         </FormField>
       </div>
