@@ -830,6 +830,47 @@ export const updateMerchantFee = async (req, res) => {
   });
 };
 
+// Reactivates an inactive fees
+export const activateMerchantFee = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid merchant fee ID",
+    });
+  }
+
+  const fee = await MerchantFeeConfig.findById(id);
+
+  if (!fee) {
+    return res.status(404).json({
+      success: false,
+      message: "Merchant fee not found",
+    });
+  }
+
+  if (fee.status === "active") {
+    return res.status(200).json({
+      success: true,
+      message: "Merchant fee is already active",
+      data: fee,
+    });
+  }
+
+  fee.status = "active";
+  fee.updatedBy = req.user._id;
+
+  await fee.save();
+
+  return res.status(200).json({
+    success: true,
+    message: "Merchant fee activated successfully",
+    data: fee,
+  });
+};
+
+// Deactivates the fees instead of DELETEING the fees
 export const deleteMerchantFee = async (req, res) => {
   const fee = await MerchantFeeConfig.findByIdAndUpdate(
     req.params.id,
@@ -876,14 +917,47 @@ export const listMerchantFees = async (req, res) => {
   if (countryCode) query.countryCode = normalizeUpper(countryCode);
 
   if (search) {
-    query.$or = [
-      { merchantName: new RegExp(search, "i") },
-      { memberId: new RegExp(search, "i") },
-      { partnerName: new RegExp(search, "i") },
-      { accountIds: new RegExp(search, "i") },
-      { country: new RegExp(search, "i") },
-      { countryCode: new RegExp(search, "i") },
-    ];
+    const normalizedSearch = String(search).trim();
+
+    if (normalizedSearch) {
+      const escapedSearch = normalizedSearch.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+
+      const searchRegex = new RegExp(escapedSearch, "i");
+
+      const searchConditions = [
+        { merchantName: searchRegex },
+        { memberId: searchRegex },
+        { partnerName: searchRegex },
+        { accountIds: searchRegex },
+        { country: searchRegex },
+        { countryCode: searchRegex },
+        { countryScope: searchRegex },
+        { gatewayName: searchRegex },
+        { currency: searchRegex },
+        { brand: searchRegex },
+        { type: searchRegex },
+        { status: searchRegex },
+      ];
+
+      const numericSearch = Number(normalizedSearch);
+
+      if (Number.isFinite(numericSearch)) {
+        searchConditions.push(
+          { mdrPercent: numericSearch },
+          { approvalFee: numericSearch },
+          { declineFee: numericSearch },
+          { reversalFee: numericSearch },
+          { chargebackFee: numericSearch },
+          { rollingReservePercent: numericSearch },
+          { settlementExpensePercent: numericSearch },
+        );
+      }
+
+      query.$or = searchConditions;
+    }
   }
 
   const [data, total] = await Promise.all([

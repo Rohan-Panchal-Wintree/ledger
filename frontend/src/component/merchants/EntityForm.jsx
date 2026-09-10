@@ -1,8 +1,7 @@
 import FormField from "../UI/FormField";
 import Spinner from "../UI/Spinner";
 
-const inputBaseClass =
-  "w-full rounded-xl border px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-outline/50 focus:border-primary focus:ring-2 focus:ring-primary/20";
+const inputBaseClass = "form-input";
 
 function getInputClassName(hasError) {
   return `${inputBaseClass} ${

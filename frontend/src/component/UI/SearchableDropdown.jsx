@@ -35,7 +35,7 @@ export default function SearchableDropdown({
         type="button"
         tabIndex={0}
         disabled={disabled}
-        className="select select-bordered flex w-full items-center justify-between rounded-xl border-outline-variant/20 bg-surface-container-low text-sm text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+        className="select flex w-full items-center border-none justify-between rounded-xl bg-surface-container-low text-sm text-on-surface  focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
           className={

@@ -9,6 +9,7 @@ import {
   listMerchantFees,
   getMerchantFee,
   updateMerchantFee,
+  activateMerchantFee,
   deleteMerchantFee,
   uploadSettlementBatchTransactions,
   listMerchantTransactions,
@@ -59,6 +60,27 @@ router.post(
 );
 
 router.get("/fees", asyncHandler(listMerchantFees));
+
+//Fees updation approval
+router.get(
+  "/fees/change-requests",
+  asyncHandler(listMerchantFeeChangeRequests),
+);
+
+router.post(
+  "/fees/change-requests/:id/approve",
+  authenticatedWriteLimiter,
+  middlewares.roleMiddleware(["admin"]),
+  asyncHandler(approveMerchantFeeChangeRequest),
+);
+
+router.post(
+  "/fees/change-requests/:id/reject",
+  authenticatedWriteLimiter,
+  middlewares.roleMiddleware(["admin"]),
+  asyncHandler(rejectMerchantFeeChangeRequest),
+);
+
 router.get("/fees/:id", asyncHandler(getMerchantFee));
 
 router.put(
@@ -73,6 +95,13 @@ router.delete(
   authenticatedWriteLimiter,
   middlewares.roleMiddleware(["admin", "finance"]),
   asyncHandler(deleteMerchantFee),
+);
+
+router.patch(
+  "/fees/:id/activate",
+  authenticatedWriteLimiter,
+  middlewares.roleMiddleware(["admin", "finance"]),
+  asyncHandler(activateMerchantFee),
 );
 
 // COUNTRY

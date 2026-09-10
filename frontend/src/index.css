@@ -191,15 +191,15 @@
   }
 
   .form-input {
-    @apply input w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none transition-all focus:outline-none focus:ring-2 focus:ring-primary/20;
+    @apply input w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none transition-all focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary;
   }
 
   .form-select {
-    @apply select w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none transition-all focus:outline-none focus:ring-2 focus:ring-primary/20;
+    @apply select w-full rounded-full border-none bg-surface-container-low px-5 text-sm text-on-surface outline-none transition-all focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary;
   }
 
   .form-textarea {
-    @apply textarea min-h-28 w-full rounded-3xl border-none bg-surface-container-low px-5 py-4 text-sm text-on-surface outline-none transition-all focus:outline-none focus:ring-2 focus:ring-primary/20;
+    @apply textarea min-h-28 w-full rounded-3xl border-none bg-surface-container-low px-5 py-4 text-sm text-on-surface outline-none transition-all focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary;
   }
 }
 
