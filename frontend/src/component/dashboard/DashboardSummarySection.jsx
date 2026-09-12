@@ -14,7 +14,7 @@ export default function DashboardSummarySection({ summary = {} }) {
 
   return (
     <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-4">
-      <div className="group flex flex-col justify-between rounded-lg bg-linear-to-br from-primary to-primary-container p-8 text-white transition-all duration-300 md:col-span-2">
+      <div className="group flex flex-col justify-between rounded-lg bg-linear-to-br bg-primary p-8 text-white transition-all duration-300 md:col-span-2">
         <div className="flex items-start justify-between">
           <span className="text-xs font-bold uppercase tracking-widest text-white/70">
             Total Amount Paid

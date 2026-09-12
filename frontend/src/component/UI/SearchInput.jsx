@@ -19,7 +19,7 @@ export default function SearchInput({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
-        className={`w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface outline-none transition-all focus:ring-2 focus:ring-primary/20 ${inputClassName}`}
+        className={`w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface outline-none transition-all focus:ring-2 focus:ring-primary ${inputClassName}`}
       />
     </div>
   );

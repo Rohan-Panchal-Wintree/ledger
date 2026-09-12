@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import {
@@ -27,6 +27,7 @@ import MerchantSettlementRejectForm from "../component/merchant-settlement/Merch
 import MerchantSettlementReportView from "../component/merchant-settlement/MerchantSettlementReportView";
 
 import {
+  useMerchantSettlementTransactions,
   useMerchantSettlementFees,
   useCreateMerchantSettlementFee,
   useUpdateMerchantSettlementFee,
@@ -44,13 +45,15 @@ const SETTLEMENT_TABS = [
 ];
 
 const transactionColumns = [
-  { key: "transactionId", label: "Transaction ID" },
-  { key: "merchantId", label: "Merchant ID" },
-  { key: "merchantName", label: "Merchant Name" },
+  { key: "transaction", label: "Transaction" },
+  { key: "merchant", label: "Merchant" },
+  { key: "processing", label: "Processing" },
+  { key: "country", label: "Country" },
   { key: "amount", label: "Amount", align: "right" },
-  { key: "currency", label: "Currency" },
+  { key: "fees", label: "Fees", align: "right" },
+  { key: "settlement", label: "Settlement", align: "right" },
   { key: "status", label: "Status", align: "center" },
-  { key: "createdAt", label: "Created At" },
+  { key: "match", label: "Fee Match", align: "center" },
 ];
 
 const rateColumns = [
@@ -77,6 +80,10 @@ const approvalColumns = [
 export default function MerchantSettlement() {
   const [activeTab, setActiveTab] = useState("transactions");
   const [searchQuery, setSearchQuery] = useState("");
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionPageSize, setTransactionPageSize] = useState(
+    readStoredRowsPerPage,
+  );
   const [ratePage, setRatePage] = useState(1);
   const [ratePageSize, setRatePageSize] = useState(readStoredRowsPerPage);
 
@@ -91,6 +98,16 @@ export default function MerchantSettlement() {
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [approvalStatus, setApprovalStatus] = useState("PENDING_APPROVAL");
+
+  const {
+    data: transactionsResponse,
+    isLoading: isTransactionsLoading,
+    isFetching: isTransactionsFetching,
+  } = useMerchantSettlementTransactions({
+    search: searchQuery.trim() || undefined,
+    page: transactionPage,
+    limit: transactionPageSize,
+  });
 
   const {
     data: ratesResponse,
@@ -135,8 +152,15 @@ export default function MerchantSettlement() {
 
   const isRateStatusPending = isDeactivatingRate || isActivatingRate;
 
+  const transactions = transactionsResponse?.items ?? [];
+  const transactionMeta = transactionsResponse?.meta ?? {
+    total: 0,
+    page: transactionPage,
+    limit: transactionPageSize,
+    totalPages: 0,
+  };
+
   // temporary until their APIs are connected
-  const transactions = [];
   const reports = [];
 
   const rates = ratesResponse?.items ?? [];
@@ -147,23 +171,6 @@ export default function MerchantSettlement() {
     limit: ratePageSize,
     totalPages: 0,
   };
-
-  const filteredTransactions = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return transactions;
-
-    return transactions.filter((item) =>
-      [
-        item.transactionId,
-        item.merchantId,
-        item.merchantName,
-        item.currency,
-        item.status,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query)),
-    );
-  }, [searchQuery, transactions]);
 
   const handleOpenAddRate = () => {
     setEditingRate(null);
@@ -341,15 +348,32 @@ export default function MerchantSettlement() {
         <DataTable
           title="Transaction Lists"
           columns={transactionColumns}
-          totalItems={filteredTransactions.length}
+          page={transactionPage}
+          pageSize={transactionPageSize}
+          totalItems={transactionMeta.total}
+          onPageChange={setTransactionPage}
+          onRowsPerPageChange={setTransactionPageSize}
+          isLoading={isTransactionsLoading}
+          isFetching={isTransactionsFetching}
           itemLabel="transactions"
-          isEmpty={filteredTransactions.length === 0}
-          emptyTitle="No transactions found."
-          emptyDescription="Uploaded payment gateway transactions will appear here."
+          isEmpty={transactions.length === 0}
+          emptyTitle={
+            searchQuery.trim()
+              ? "No matching transactions found."
+              : "No transactions found."
+          }
+          emptyDescription={
+            searchQuery.trim()
+              ? "Try adjusting your search."
+              : "Uploaded settlement transactions will appear here."
+          }
           emptyIcon={Upload}
         >
-          {filteredTransactions.map((item) => (
-            <MerchantSettlementTransactionRow key={item.id} item={item} />
+          {transactions.map((transaction) => (
+            <MerchantSettlementTransactionRow
+              key={transaction._id || transaction.id}
+              transaction={transaction}
+            />
           ))}
         </DataTable>
       );
@@ -427,6 +451,10 @@ export default function MerchantSettlement() {
             className="w-full sm:w-80"
             onChange={(event) => {
               setSearchQuery(event.target.value);
+
+              if (activeTab === "transactions") {
+                setTransactionPage(1);
+              }
 
               if (activeTab === "rates") {
                 setRatePage(1);

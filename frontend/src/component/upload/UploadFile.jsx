@@ -7,7 +7,11 @@ export default function UploadFile({
   simpleUpload = false,
   title,
   description,
+  dropLabel,
   selectedFile,
+  selectedFiles = [],
+  processDisabled = false,
+  onRemoveFile,
   isDragging,
   onBrowse,
   onDragOver,
@@ -30,6 +34,42 @@ export default function UploadFile({
     estimatedRevenue: 0,
   },
 }) {
+  const getActualFile = (item) => {
+    if (!item) return null;
+
+    if (item instanceof File) {
+      return item;
+    }
+
+    if (item.file instanceof File) {
+      return item.file;
+    }
+
+    if (item.source instanceof File) {
+      return item.source;
+    }
+
+    if (item.source?.file instanceof File) {
+      return item.source.file;
+    }
+
+    return null;
+  };
+
+  const rawFiles =
+    selectedFiles.length > 0
+      ? selectedFiles
+      : selectedFile
+        ? [selectedFile]
+        : [];
+
+  const filesToDisplay = rawFiles
+    .map((source) => ({
+      source,
+      file: getActualFile(source),
+    }))
+    .filter(({ file }) => Boolean(file));
+
   if (mode === "filled") {
     return (
       <div
@@ -48,7 +88,7 @@ export default function UploadFile({
           </div>
 
           <div
-            onClick={onBrowse}
+            onClick={isProcessing ? undefined : onBrowse}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
@@ -64,9 +104,10 @@ export default function UploadFile({
 
             <div className="space-y-1">
               <p className="font-semibold text-on-surface">
-                {simpleUpload
-                  ? "Drop one CSV file here"
-                  : "Drop one or more XLSX files here"}
+                {dropLabel ||
+                  (simpleUpload
+                    ? "Drop one file here"
+                    : "Drop one or more XLSX files here")}
               </p>
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Max file size: 50MB
@@ -74,41 +115,55 @@ export default function UploadFile({
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6">
-            <div className="flex items-center gap-4">
-              <div className="rounded-full bg-green-100 p-3 text-green-700">
-                <FileText className="h-5 w-5" />
-              </div>
+          <div className="space-y-3">
+            {filesToDisplay.map(({ source, file }, index) => (
+              <div
+                key={`${file.name}-${file.size}-${index}`}
+                className="flex items-center justify-between rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-6"
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="shrink-0 rounded-full bg-green-100 p-3 text-green-700">
+                    <FileText className="h-5 w-5" />
+                  </div>
 
-              <div>
-                <p className="font-bold text-on-surface">
-                  {selectedFile?.name}
-                </p>
-                <p className="text-xs text-on-surface-variant">
-                  {selectedFile
-                    ? `${(selectedFile.size / 1024 / 1024).toFixed(
-                        2,
-                      )} MB • Ready to process`
-                    : "No file selected"}
-                </p>
-              </div>
-            </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-on-surface">
+                      {file.name}
+                    </p>
 
-            <button
-              type="button"
-              onClick={onRemove}
-              className="text-on-surface-variant transition-colors hover:bg-gray-100 p-2 rounded-full"
-            >
-              <X className="h-5 w-5" />
-            </button>
+                    <p className="text-xs text-on-surface-variant">
+                      {(file.size / 1024 / 1024).toFixed(2)} MB • Ready to
+                      process
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onRemoveFile) {
+                      onRemoveFile(source, index);
+                      return;
+                    }
+
+                    onRemove?.();
+                  }}
+                  disabled={isProcessing}
+                  className="rounded-full p-2 text-on-surface-variant transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-4 pt-2">
             <button
               type="button"
               onClick={onProcess}
-              disabled={isProcessing}
-              className="flex items-center gap-2 rounded-full bg-primary px-8 py-4 text-sm font-bold tracking-wide text-white transition"
+              disabled={isProcessing || processDisabled}
+              className="flex items-center gap-2 rounded-full bg-primary px-8 py-4 text-sm font-bold tracking-wide text-white transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isProcessing ? (
                 <Spinner type="md" color="white" />
@@ -123,7 +178,8 @@ export default function UploadFile({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-full bg-surface-container-high px-8 py-4 text-sm font-bold tracking-wide text-on-surface-variant transition-colors hover:bg-surface-variant"
+              disabled={isProcessing}
+              className="rounded-full bg-surface-container-high px-8 py-4 text-sm font-bold tracking-wide text-on-surface-variant transition-colors hover:bg-surface-variant disabled:cursor-not-allowed disabled:opacity-50"
             >
               CANCEL
             </button>
@@ -290,7 +346,7 @@ export default function UploadFile({
         </h2>
 
         <div
-          onClick={onBrowse}
+          onClick={isProcessing ? undefined : onBrowse}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}

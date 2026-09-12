@@ -75,12 +75,15 @@ export default function Upload() {
     wireInputRef,
     paymentInputRef,
     ratesInputRef,
+    settlementTransactionsInputRef,
 
     hasReviewIssues,
     isReviewTab,
     isWireSheet,
     isPaymentSheet,
     isRatesTab,
+    isSettlementTransactionsTab,
+    hasBothSettlementTransactionFiles,
 
     currentFileLimit,
     currentFileCount,
@@ -96,6 +99,9 @@ export default function Upload() {
     ratesFile,
     isRatesDragging,
     uploadMerchantRatesMutation,
+    settlementTransactionFileList,
+    isSettlementTransactionsDragging,
+    uploadSettlementTransactionsMutation,
 
     reconcileUnmatchedMutation,
     reviewRowsQuery,
@@ -117,6 +123,14 @@ export default function Upload() {
     handleRatesDrop,
     handleRemoveRatesFile,
     handleUploadRates,
+    handleSettlementTransactionsBrowseClick,
+    handleSettlementTransactionsInputChange,
+    handleSettlementTransactionsDragOver,
+    handleSettlementTransactionsDragLeave,
+    handleSettlementTransactionsDrop,
+    handleRemoveSettlementTransactionFiles,
+    handleRemoveSettlementTransactionFile,
+    handleUploadSettlementTransactions,
     handleEditInvalidRow,
     handleCloseInvalidRowModal,
     handleSaveInvalidRow,
@@ -129,6 +143,12 @@ export default function Upload() {
   const canUploadRates = ["admin", "support", "settlement"].includes(
     normalizedRole,
   );
+
+  const canUploadSettlementTransactions = [
+    "admin",
+    "finance",
+    "settlement",
+  ].includes(normalizedRole);
 
   const renderUploadTabs = () => (
     <div className="flex items-center justify-between">
@@ -146,6 +166,15 @@ export default function Upload() {
             value: "payment",
             icon: FileUp,
           },
+          ...(canUploadSettlementTransactions
+            ? [
+                {
+                  label: "Transaction List",
+                  value: "settlement-transactions",
+                  icon: FileUp,
+                },
+              ]
+            : []),
           ...(canUploadRates
             ? [
                 {
@@ -176,9 +205,11 @@ export default function Upload() {
           <span className="text-on-surface-variant">
             {isRatesTab
               ? "Rates file selected"
-              : isWireSheet
-                ? "Wiresheets selected"
-                : "Payment sheets selected"}
+              : isSettlementTransactionsTab
+                ? "Transaction files selected"
+                : isWireSheet
+                  ? "Wiresheets selected"
+                  : "Payment sheets selected"}
           </span>
         </div>
       )}
@@ -186,7 +217,9 @@ export default function Upload() {
   );
 
   const renderFileTabs = () => {
-    if (isRatesTab || !currentTab.files.length) return null;
+    if (isRatesTab || isSettlementTransactionsTab || !currentTab.files.length) {
+      return null;
+    }
 
     return (
       <div className="mb-6 flex gap-2 overflow-x-auto scrollbar-hide">
@@ -340,6 +373,15 @@ export default function Upload() {
         onChange={handleRatesInputChange}
       />
 
+      <input
+        ref={settlementTransactionsInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        multiple
+        className="hidden"
+        onChange={handleSettlementTransactionsInputChange}
+      />
+
       {renderUploadTabs()}
 
       {isRatesTab ? (
@@ -360,6 +402,25 @@ export default function Upload() {
           onCancel={handleRemoveRatesFile}
           onProcess={handleUploadRates}
           isProcessing={uploadMerchantRatesMutation.isPending}
+        />
+      ) : isSettlementTransactionsTab ? (
+        <UploadFile
+          simpleUpload
+          mode={settlementTransactionFileList.length > 0 ? "filled" : "empty"}
+          title="Upload Settlement Transaction Files"
+          description='Select exactly two XLSX or CSV files: one filename containing "datestamp" and one containing "timestamp". Both files are required.'
+          dropLabel="Drop datestamp or timestamp files here"
+          selectedFiles={settlementTransactionFileList}
+          isDragging={isSettlementTransactionsDragging}
+          onBrowse={handleSettlementTransactionsBrowseClick}
+          onDragOver={handleSettlementTransactionsDragOver}
+          onDragLeave={handleSettlementTransactionsDragLeave}
+          onDrop={handleSettlementTransactionsDrop}
+          onRemoveFile={handleRemoveSettlementTransactionFile}
+          onCancel={handleRemoveSettlementTransactionFiles}
+          onProcess={handleUploadSettlementTransactions}
+          isProcessing={uploadSettlementTransactionsMutation.isPending}
+          processDisabled={!hasBothSettlementTransactionFiles}
         />
       ) : (
         <>

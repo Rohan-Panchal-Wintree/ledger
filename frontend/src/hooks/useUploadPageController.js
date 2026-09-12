@@ -8,6 +8,7 @@ import {
   useUpdateUnmatchedPaymentRow,
   useUploadFiles,
   useUploadMerchantRates,
+  useUploadSettlementBatchTransactions,
 } from "../queries/uploadQueries";
 
 import { getErrorMessage } from "../utils/appUtils";
@@ -71,12 +72,25 @@ export const useUploadPageController = () => {
   const [ratesFile, setRatesFile] = useState(null);
   const [isRatesDragging, setIsRatesDragging] = useState(false);
 
+  const [settlementTransactionFiles, setSettlementTransactionFiles] = useState({
+    datestampFile: null,
+    timestampFile: null,
+  });
+
+  const [
+    isSettlementTransactionsDragging,
+    setIsSettlementTransactionsDragging,
+  ] = useState(false);
+
   const wireInputRef = useRef(null);
   const paymentInputRef = useRef(null);
   const ratesInputRef = useRef(null);
+  const settlementTransactionsInputRef = useRef(null);
 
   const uploadFilesMutation = useUploadFiles();
   const uploadMerchantRatesMutation = useUploadMerchantRates();
+  const uploadSettlementTransactionsMutation =
+    useUploadSettlementBatchTransactions();
   const updateUnmatchedRowMutation = useUpdateUnmatchedPaymentRow();
   const reconcileUnmatchedMutation = useReconcileUnmatchedPaymentRows();
 
@@ -114,6 +128,32 @@ export const useUploadPageController = () => {
   const isWireSheet = activeTab === "wire";
   const isPaymentSheet = activeTab === "payment";
   const isRatesTab = activeTab === "rates";
+  const isSettlementTransactionsTab = activeTab === "settlement-transactions";
+
+  const settlementTransactionFileList = [
+    settlementTransactionFiles.datestampFile,
+    settlementTransactionFiles.timestampFile,
+  ].filter(Boolean);
+
+  const settlementTransactionFileCount = settlementTransactionFileList.length;
+
+  const hasBothSettlementTransactionFiles = useMemo(() => {
+    const getFileName = (item) => {
+      const file = item?.file || item?.source?.file || item?.source || item;
+
+      return String(file?.name || "").toLowerCase();
+    };
+
+    const hasDatestampFile = settlementTransactionFileList.some((item) =>
+      getFileName(item).includes("datestamp"),
+    );
+
+    const hasTimestampFile = settlementTransactionFileList.some((item) =>
+      getFileName(item).includes("timestamp"),
+    );
+
+    return hasDatestampFile && hasTimestampFile;
+  }, [settlementTransactionFileList]);
 
   const currentTab = tabState[activeTab] || initialTabState;
   const activeFile = currentTab.files[currentTab.activeFileIndex] || null;
@@ -152,23 +192,31 @@ export const useUploadPageController = () => {
     ? 0
     : isRatesTab
       ? 1
-      : getFileLimit(activeTab);
+      : isSettlementTransactionsTab
+        ? 2
+        : getFileLimit(activeTab);
 
   const currentFileCount = isRatesTab
     ? Number(Boolean(ratesFile))
-    : currentTab.files.length;
+    : isSettlementTransactionsTab
+      ? settlementTransactionFileCount
+      : currentTab.files.length;
 
   const hasUnsavedFiles =
     tabState.wire.files.length > 0 ||
     tabState.payment.files.length > 0 ||
-    Boolean(ratesFile);
+    Boolean(ratesFile) ||
+    settlementTransactionFileCount > 0;
 
-  const isCurrentTabExtracting = isRatesTab
-    ? false
-    : Boolean(extractingTab[activeTab]);
+  const isCurrentTabExtracting =
+    isRatesTab || isSettlementTransactionsTab
+      ? false
+      : Boolean(extractingTab[activeTab]);
   const isCurrentTabUploading = isRatesTab
     ? uploadMerchantRatesMutation.isPending
-    : Boolean(uploadingTab[activeTab]);
+    : isSettlementTransactionsTab
+      ? uploadSettlementTransactionsMutation.isPending
+      : Boolean(uploadingTab[activeTab]);
   const isCurrentTabBusy = isCurrentTabExtracting || isCurrentTabUploading;
 
   const { sheetKey: activePaymentSheetKey, sheetData: activePaymentSheetData } =
@@ -352,6 +400,93 @@ Skipped rows: ${response?.skippedRows || 0}`,
     }
   }, [ratesFile, uploadMerchantRatesMutation]);
 
+  const getSettlementTransactionFileType = useCallback((file) => {
+    const fileName = String(file?.name || "").toLowerCase();
+
+    if (fileName.includes("datestamp")) {
+      return "datestampFile";
+    }
+
+    if (fileName.includes("timestamp")) {
+      return "timestampFile";
+    }
+
+    return null;
+  }, []);
+
+  const validateSettlementTransactionFile = useCallback(
+    (file) => {
+      if (!file) {
+        return "Please select a transaction file.";
+      }
+
+      const extension = file.name.split(".").pop()?.toLowerCase();
+
+      if (!["xlsx", "csv"].includes(extension)) {
+        return "Only .xlsx and .csv files are supported.";
+      }
+
+      const fileType = getSettlementTransactionFileType(file);
+
+      if (!fileType) {
+        return `${file.name} must contain either "datestamp" or "timestamp" in the filename.`;
+      }
+
+      const maximumSize = 100 * 1024 * 1024;
+
+      if (file.size > maximumSize) {
+        return `${file.name} must not exceed 100MB.`;
+      }
+
+      return null;
+    },
+    [getSettlementTransactionFileType],
+  );
+
+  const handleSettlementTransactionFilesSelect = useCallback(
+    (files) => {
+      const selectedFiles = Array.from(files || []).filter(Boolean);
+
+      if (!selectedFiles.length) return;
+
+      if (selectedFiles.length > 2) {
+        toast.error(
+          "You can upload a maximum of two settlement transaction files.",
+        );
+        return;
+      }
+
+      const validatedFiles = [];
+
+      for (const file of selectedFiles) {
+        const validationError = validateSettlementTransactionFile(file);
+
+        if (validationError) {
+          toast.error(validationError);
+          return;
+        }
+
+        validatedFiles.push({
+          file,
+          type: getSettlementTransactionFileType(file),
+        });
+      }
+
+      setSettlementTransactionFiles((currentFiles) => {
+        const nextFiles = {
+          ...currentFiles,
+        };
+
+        for (const { file, type } of validatedFiles) {
+          nextFiles[type] = file;
+        }
+
+        return nextFiles;
+      });
+    },
+    [getSettlementTransactionFileType, validateSettlementTransactionFile],
+  );
+
   const handleBrowseClick = useCallback(
     (tab) => {
       if (tabState[tab].files.length >= getFileLimit(tab)) {
@@ -371,6 +506,123 @@ Skipped rows: ${response?.skippedRows || 0}`,
     },
     [tabState],
   );
+
+  const handleSettlementTransactionsBrowseClick = useCallback(() => {
+    settlementTransactionsInputRef.current?.click();
+  }, []);
+
+  const handleSettlementTransactionsInputChange = useCallback(
+    (event) => {
+      handleSettlementTransactionFilesSelect(event.target.files);
+
+      if (settlementTransactionsInputRef.current) {
+        settlementTransactionsInputRef.current.value = "";
+      }
+    },
+    [handleSettlementTransactionFilesSelect],
+  );
+
+  const handleSettlementTransactionsDragOver = useCallback((event) => {
+    event.preventDefault();
+    setIsSettlementTransactionsDragging(true);
+  }, []);
+
+  const handleSettlementTransactionsDragLeave = useCallback((event) => {
+    event.preventDefault();
+    setIsSettlementTransactionsDragging(false);
+  }, []);
+
+  const handleSettlementTransactionsDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+      setIsSettlementTransactionsDragging(false);
+
+      handleSettlementTransactionFilesSelect(event.dataTransfer.files);
+    },
+    [handleSettlementTransactionFilesSelect],
+  );
+
+  const handleRemoveSettlementTransactionFiles = useCallback(() => {
+    setSettlementTransactionFiles({
+      datestampFile: null,
+      timestampFile: null,
+    });
+
+    if (settlementTransactionsInputRef.current) {
+      settlementTransactionsInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleRemoveSettlementTransactionFile = useCallback((file) => {
+    if (!file) return;
+
+    setSettlementTransactionFiles((currentFiles) => {
+      if (currentFiles.datestampFile === file) {
+        return {
+          ...currentFiles,
+          datestampFile: null,
+        };
+      }
+
+      if (currentFiles.timestampFile === file) {
+        return {
+          ...currentFiles,
+          timestampFile: null,
+        };
+      }
+
+      return currentFiles;
+    });
+  }, []);
+
+  const handleUploadSettlementTransactions = useCallback(async () => {
+    const { datestampFile, timestampFile } = settlementTransactionFiles;
+
+    if (!datestampFile || !timestampFile) {
+      toast.error(
+        "Both the datestamp and timestamp files are required before uploading.",
+      );
+      return;
+    }
+
+    try {
+      const response = await uploadSettlementTransactionsMutation.mutateAsync({
+        datestampFile,
+        timestampFile,
+      });
+
+      setSettlementTransactionFiles({
+        datestampFile: null,
+        timestampFile: null,
+      });
+
+      if (settlementTransactionsInputRef.current) {
+        settlementTransactionsInputRef.current.value = "";
+      }
+
+      toast.success(
+        response?.message || "Settlement transactions uploaded successfully.",
+      );
+
+      toast(
+        `Total rows: ${response?.totalRows || 0}
+Valid rows: ${response?.validRows || 0}
+Matched rows: ${response?.matchedRows || 0}
+Unmatched fee rows: ${response?.unmatchedFeeRows || 0}
+Skipped rows: ${response?.skippedRows || 0}`,
+        {
+          duration: 7000,
+        },
+      );
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          "Unable to upload settlement transaction files.",
+        ),
+      );
+    }
+  }, [settlementTransactionFiles, uploadSettlementTransactionsMutation]);
 
   const handleFileSelect = useCallback(
     async (files, tab) => {
@@ -819,12 +1071,15 @@ Skipped: ${response?.skippedCount || 0}`,
       wireInputRef,
       paymentInputRef,
       ratesInputRef,
+      settlementTransactionsInputRef,
 
       hasReviewIssues,
       isReviewTab,
       isWireSheet,
       isPaymentSheet,
       isRatesTab,
+      isSettlementTransactionsTab,
+      hasBothSettlementTransactionFiles,
 
       currentFileLimit,
       currentFileCount,
@@ -840,6 +1095,10 @@ Skipped: ${response?.skippedCount || 0}`,
       ratesFile,
       isRatesDragging,
       uploadMerchantRatesMutation,
+      settlementTransactionFiles,
+      settlementTransactionFileList,
+      isSettlementTransactionsDragging,
+      uploadSettlementTransactionsMutation,
 
       reconcileUnmatchedMutation,
       reviewRowsQuery,
@@ -861,6 +1120,14 @@ Skipped: ${response?.skippedCount || 0}`,
       handleRatesDrop,
       handleRemoveRatesFile,
       handleUploadRates,
+      handleSettlementTransactionsBrowseClick,
+      handleSettlementTransactionsInputChange,
+      handleSettlementTransactionsDragOver,
+      handleSettlementTransactionsDragLeave,
+      handleSettlementTransactionsDrop,
+      handleRemoveSettlementTransactionFiles,
+      handleRemoveSettlementTransactionFile,
+      handleUploadSettlementTransactions,
       handleApplyReviewSearch,
       handleClearReviewSearch,
       handleOpenReviewFilters,
@@ -883,6 +1150,8 @@ Skipped: ${response?.skippedCount || 0}`,
       currentFileLimit,
       currentTab,
       displayedRows,
+      settlementTransactionFileList,
+      hasBothSettlementTransactionFiles,
       handleBrowseClick,
       handleCancel,
       handleCloseInvalidRowModal,
@@ -898,6 +1167,14 @@ Skipped: ${response?.skippedCount || 0}`,
       handleRemoveFile,
       handleReviewRowsPerPageChange,
       handleSaveInvalidRow,
+      handleSettlementTransactionsBrowseClick,
+      handleSettlementTransactionsInputChange,
+      handleSettlementTransactionsDragOver,
+      handleSettlementTransactionsDragLeave,
+      handleSettlementTransactionsDrop,
+      handleRemoveSettlementTransactionFiles,
+      handleRemoveSettlementTransactionFile,
+      handleUploadSettlementTransactions,
       hasReviewIssues,
       isCurrentTabBusy,
       isCurrentTabExtracting,
@@ -905,6 +1182,9 @@ Skipped: ${response?.skippedCount || 0}`,
       isPaymentSheet,
       isReviewTab,
       isWireSheet,
+      isSettlementTransactionsDragging,
+      isSettlementTransactionsTab,
+      uploadSettlementTransactionsMutation,
       reconcileUnmatchedMutation,
       reviewMeta,
       reviewFilterOptions,

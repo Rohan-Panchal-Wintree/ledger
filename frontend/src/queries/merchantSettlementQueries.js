@@ -26,6 +26,14 @@ export const merchantSettlementKeys = {
     "list",
     params,
   ],
+
+  transactions: () => [...merchantSettlementKeys.all, "transactions"],
+
+  transactionList: (params = {}) => [
+    ...merchantSettlementKeys.transactions(),
+    "list",
+    params,
+  ],
 };
 
 /*
@@ -346,3 +354,32 @@ export const useRejectMerchantSettlementFeeChangeRequest = () => {
     },
   });
 };
+
+/*
+|--------------------------------------------------------------------------
+| GET /transactions
+|--------------------------------------------------------------------------
+*/
+
+export const getMerchantSettlementTransactions = async (params = {}) => {
+  const response = await merchantSettlementApi.get("/transactions", {
+    params: cleanParams(params),
+  });
+
+  return {
+    items: response.data?.data || [],
+    meta: response.data?.meta || {
+      total: 0,
+      page: Number(params.page) || 1,
+      limit: Number(params.limit) || 20,
+      totalPages: 0,
+    },
+  };
+};
+
+export const useMerchantSettlementTransactions = (params = {}) =>
+  useQuery({
+    queryKey: merchantSettlementKeys.transactionList(params),
+    queryFn: () => getMerchantSettlementTransactions(params),
+    placeholderData: (previousData) => previousData,
+  });

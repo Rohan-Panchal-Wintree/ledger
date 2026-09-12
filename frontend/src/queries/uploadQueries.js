@@ -49,7 +49,7 @@ async function uploadMerchantRatesApi(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await feesApi.post("/fees/upload", formData);
+  const response = await merchantSettlementApi.post("/fees/upload", formData);
 
   return {
     message:
@@ -68,6 +68,48 @@ async function uploadMerchantRatesApi(file) {
     skippedRows: Number(
       response?.data?.data?.skippedRows ?? response?.data?.skippedRows ?? 0,
     ),
+  };
+}
+
+async function uploadSettlementBatchTransactionsApi({
+  datestampFile = null,
+  timestampFile = null,
+} = {}) {
+  if (!datestampFile && !timestampFile) {
+    throw new Error("Please select at least one settlement transaction file.");
+  }
+
+  const formData = new FormData();
+
+  if (datestampFile) {
+    formData.append("datestampFile", datestampFile);
+  }
+
+  if (timestampFile) {
+    formData.append("timestampFile", timestampFile);
+  }
+
+  const response = await merchantSettlementApi.post(
+    "/settlement-batches/upload",
+    formData,
+  );
+
+  const data = response?.data?.data || {};
+
+  return {
+    message:
+      response?.data?.message ||
+      "Settlement transactions uploaded successfully.",
+
+    settlementBatchId: data.settlementBatchId || null,
+    files: data.files || [],
+    generatedReportIds: data.generatedReportIds || [],
+
+    totalRows: Number(data.totalRows || 0),
+    validRows: Number(data.validRows || 0),
+    matchedRows: Number(data.matchedRows || 0),
+    unmatchedFeeRows: Number(data.unmatchedFeeRows || 0),
+    skippedRows: Number(data.skippedRows || 0),
   };
 }
 
@@ -289,6 +331,26 @@ export function useUploadMerchantRates() {
 
     onSuccess: () => {
       invalidateUploadQueries(queryClient);
+    },
+  });
+}
+
+export function useUploadSettlementBatchTransactions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: uploadSettlementBatchTransactionsApi,
+
+    onSuccess: () => {
+      invalidateUploadQueries(queryClient);
+
+      queryClient.invalidateQueries({
+        queryKey: ["merchant-settlement", "transactions"],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ["merchant-settlement"],
+      });
     },
   });
 }
