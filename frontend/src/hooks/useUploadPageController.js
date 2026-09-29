@@ -9,6 +9,7 @@ import {
   useUploadFiles,
   useUploadMerchantRates,
   useUploadSettlementBatchTransactions,
+  useUploadCountryMaster,
 } from "../queries/uploadQueries";
 
 import { getErrorMessage } from "../utils/appUtils";
@@ -72,6 +73,9 @@ export const useUploadPageController = () => {
   const [ratesFile, setRatesFile] = useState(null);
   const [isRatesDragging, setIsRatesDragging] = useState(false);
 
+  const [countryFile, setCountryFile] = useState(null);
+  const [isCountryDragging, setIsCountryDragging] = useState(false);
+
   const [settlementTransactionFiles, setSettlementTransactionFiles] = useState({
     datestampFile: null,
     timestampFile: null,
@@ -85,10 +89,12 @@ export const useUploadPageController = () => {
   const wireInputRef = useRef(null);
   const paymentInputRef = useRef(null);
   const ratesInputRef = useRef(null);
+  const countryInputRef = useRef(null);
   const settlementTransactionsInputRef = useRef(null);
 
   const uploadFilesMutation = useUploadFiles();
   const uploadMerchantRatesMutation = useUploadMerchantRates();
+  const uploadCountryMasterMutation = useUploadCountryMaster();
   const uploadSettlementTransactionsMutation =
     useUploadSettlementBatchTransactions();
   const updateUnmatchedRowMutation = useUpdateUnmatchedPaymentRow();
@@ -128,6 +134,7 @@ export const useUploadPageController = () => {
   const isWireSheet = activeTab === "wire";
   const isPaymentSheet = activeTab === "payment";
   const isRatesTab = activeTab === "rates";
+  const isCountriesTab = activeTab === "countries";
   const isSettlementTransactionsTab = activeTab === "settlement-transactions";
 
   const settlementTransactionFileList = [
@@ -192,31 +199,40 @@ export const useUploadPageController = () => {
     ? 0
     : isRatesTab
       ? 1
-      : isSettlementTransactionsTab
-        ? 2
-        : getFileLimit(activeTab);
+      : isCountriesTab
+        ? 1
+        : isSettlementTransactionsTab
+          ? 2
+          : getFileLimit(activeTab);
 
   const currentFileCount = isRatesTab
     ? Number(Boolean(ratesFile))
-    : isSettlementTransactionsTab
-      ? settlementTransactionFileCount
-      : currentTab.files.length;
+    : isCountriesTab
+      ? Number(Boolean(countryFile))
+      : isSettlementTransactionsTab
+        ? settlementTransactionFileCount
+        : currentTab.files.length;
 
   const hasUnsavedFiles =
     tabState.wire.files.length > 0 ||
     tabState.payment.files.length > 0 ||
     Boolean(ratesFile) ||
+    Boolean(countryFile) ||
     settlementTransactionFileCount > 0;
 
   const isCurrentTabExtracting =
-    isRatesTab || isSettlementTransactionsTab
+    isRatesTab || isCountriesTab || isSettlementTransactionsTab
       ? false
       : Boolean(extractingTab[activeTab]);
+
   const isCurrentTabUploading = isRatesTab
     ? uploadMerchantRatesMutation.isPending
-    : isSettlementTransactionsTab
-      ? uploadSettlementTransactionsMutation.isPending
-      : Boolean(uploadingTab[activeTab]);
+    : isCountriesTab
+      ? uploadCountryMasterMutation.isPending
+      : isSettlementTransactionsTab
+        ? uploadSettlementTransactionsMutation.isPending
+        : Boolean(uploadingTab[activeTab]);
+
   const isCurrentTabBusy = isCurrentTabExtracting || isCurrentTabUploading;
 
   const { sheetKey: activePaymentSheetKey, sheetData: activePaymentSheetData } =
@@ -280,6 +296,10 @@ export const useUploadPageController = () => {
       [tab]: value,
     }));
   }, []);
+
+  // ----------------------------------------------
+  //  Rates
+  // ----------------------------------------------
 
   const validateRatesFile = useCallback((file) => {
     if (!file) {
@@ -399,6 +419,141 @@ Skipped rows: ${response?.skippedRows || 0}`,
       toast.error(getErrorMessage(error, "Unable to upload the rates file."));
     }
   }, [ratesFile, uploadMerchantRatesMutation]);
+
+  // ----------------------------------------------
+  // Countries
+  // ----------------------------------------------
+
+  const validateCountryFile = useCallback((file) => {
+    if (!file) {
+      return "Please select a country master file.";
+    }
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+
+    if (!["xlsx", "csv"].includes(extension)) {
+      return "Only .xlsx and .csv files are supported.";
+    }
+
+    const maximumSize = 50 * 1024 * 1024;
+
+    if (file.size > maximumSize) {
+      return "The country master file must not exceed 50MB.";
+    }
+
+    return null;
+  }, []);
+
+  const handleCountryFileSelect = useCallback(
+    (file) => {
+      const validationError = validateCountryFile(file);
+
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+
+      setCountryFile(file);
+    },
+    [validateCountryFile],
+  );
+
+  const handleCountryBrowseClick = useCallback(() => {
+    countryInputRef.current?.click();
+  }, []);
+
+  const handleCountryInputChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0] || null;
+
+      if (file) {
+        handleCountryFileSelect(file);
+      }
+
+      if (countryInputRef.current) {
+        countryInputRef.current.value = "";
+      }
+    },
+    [handleCountryFileSelect],
+  );
+
+  const handleCountryDragOver = useCallback((event) => {
+    event.preventDefault();
+    setIsCountryDragging(true);
+  }, []);
+
+  const handleCountryDragLeave = useCallback((event) => {
+    event.preventDefault();
+    setIsCountryDragging(false);
+  }, []);
+
+  const handleCountryDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+      setIsCountryDragging(false);
+
+      const files = Array.from(event.dataTransfer.files || []);
+
+      if (!files.length) return;
+
+      if (files.length > 1) {
+        toast.error("Only one country master file can be uploaded at a time.");
+        return;
+      }
+
+      handleCountryFileSelect(files[0]);
+    },
+    [handleCountryFileSelect],
+  );
+
+  const handleRemoveCountryFile = useCallback(() => {
+    setCountryFile(null);
+
+    if (countryInputRef.current) {
+      countryInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleUploadCountryMaster = useCallback(async () => {
+    if (!countryFile) {
+      toast.error("Please select a country master file.");
+      return;
+    }
+
+    try {
+      const response =
+        await uploadCountryMasterMutation.mutateAsync(countryFile);
+
+      setCountryFile(null);
+
+      if (countryInputRef.current) {
+        countryInputRef.current.value = "";
+      }
+
+      toast.success(
+        response?.message || "Country master uploaded successfully.",
+      );
+
+      toast(
+        `Excel rows: ${response?.excelRows || 0}
+Processed: ${response?.countryRecordsProcessed || 0}
+Unique countries: ${response?.uniqueCountriesStored || 0}
+EU: ${response?.totalEuCountries || 0}
+Non EU: ${response?.totalNonEuCountries || 0}`,
+        {
+          duration: 7000,
+        },
+      );
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to upload country master file."),
+      );
+    }
+  }, [countryFile, uploadCountryMasterMutation]);
+
+  // ----------------------------------------------
+  // Transaction list
+  // ----------------------------------------------
 
   const getSettlementTransactionFileType = useCallback((file) => {
     const fileName = String(file?.name || "").toLowerCase();
@@ -1071,6 +1226,7 @@ Skipped: ${response?.skippedCount || 0}`,
       wireInputRef,
       paymentInputRef,
       ratesInputRef,
+      countryInputRef,
       settlementTransactionsInputRef,
 
       hasReviewIssues,
@@ -1078,6 +1234,7 @@ Skipped: ${response?.skippedCount || 0}`,
       isWireSheet,
       isPaymentSheet,
       isRatesTab,
+      isCountriesTab,
       isSettlementTransactionsTab,
       hasBothSettlementTransactionFiles,
 
@@ -1095,6 +1252,9 @@ Skipped: ${response?.skippedCount || 0}`,
       ratesFile,
       isRatesDragging,
       uploadMerchantRatesMutation,
+      countryFile,
+      isCountryDragging,
+      uploadCountryMasterMutation,
       settlementTransactionFiles,
       settlementTransactionFileList,
       isSettlementTransactionsDragging,
@@ -1120,6 +1280,13 @@ Skipped: ${response?.skippedCount || 0}`,
       handleRatesDrop,
       handleRemoveRatesFile,
       handleUploadRates,
+      handleCountryBrowseClick,
+      handleCountryInputChange,
+      handleCountryDragOver,
+      handleCountryDragLeave,
+      handleCountryDrop,
+      handleRemoveCountryFile,
+      handleUploadCountryMaster,
       handleSettlementTransactionsBrowseClick,
       handleSettlementTransactionsInputChange,
       handleSettlementTransactionsDragOver,

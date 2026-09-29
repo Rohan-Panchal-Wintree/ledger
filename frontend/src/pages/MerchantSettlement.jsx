@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import {
   ArrowRightLeft,
   FileSpreadsheet,
+  Globe2,
   Plus,
   ReceiptText,
   Upload,
@@ -25,6 +26,8 @@ import MerchantSettlementRateForm from "../component/merchant-settlement/Merchan
 import MerchantSettlementApprovalRow from "../component/merchant-settlement/MerchantSettlementApprovalRow";
 import MerchantSettlementRejectForm from "../component/merchant-settlement/MerchantSettlementRejectForm";
 import MerchantSettlementReportView from "../component/merchant-settlement/MerchantSettlementReportView";
+import MerchantSettlementCountryRow from "../component/merchant-settlement/MerchantSettlementCountryRow";
+import MerchantSettlementCountryForm from "../component/merchant-settlement/MerchantSettlementCountryForm";
 
 import {
   useMerchantSettlementTransactions,
@@ -36,11 +39,16 @@ import {
   useMerchantSettlementFeeChangeRequests,
   useApproveMerchantSettlementFeeChangeRequest,
   useRejectMerchantSettlementFeeChangeRequest,
+  useMerchantSettlementCountries,
+  useCreateMerchantSettlementCountry,
+  useUpdateMerchantSettlementCountry,
+  useDeleteMerchantSettlementCountry,
 } from "../queries/merchantSettlementQueries";
 
 const SETTLEMENT_TABS = [
   { label: "Transaction Lists", value: "transactions", icon: ArrowRightLeft },
   { label: "Rates", value: "rates", icon: FileSpreadsheet },
+  { label: "Countries", value: "countries", icon: Globe2 },
   { label: "Reports", value: "reports", icon: ReceiptText },
 ];
 
@@ -77,6 +85,14 @@ const approvalColumns = [
   { key: "actions", label: "Actions", align: "right" },
 ];
 
+const countryColumns = [
+  { key: "countryName", label: "Country Name" },
+  { key: "feeCountryCode", label: "Fee Country Code" },
+  { key: "countryCategory", label: "Category" },
+  { key: "status", label: "Status", align: "center" },
+  { key: "actions", label: "Actions", align: "right" },
+];
+
 export default function MerchantSettlement() {
   const [activeTab, setActiveTab] = useState("transactions");
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,12 +103,25 @@ export default function MerchantSettlement() {
   const [ratePage, setRatePage] = useState(1);
   const [ratePageSize, setRatePageSize] = useState(readStoredRowsPerPage);
 
+  const [countryPage, setCountryPage] = useState(1);
+  const [countryPageSize, setCountryPageSize] = useState(readStoredRowsPerPage);
+
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
   const [editingRate, setEditingRate] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [activateTarget, setActivateTarget] = useState(null);
 
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
+  const [editingCountry, setEditingCountry] = useState(null);
+  const [countryDeactivateTarget, setCountryDeactivateTarget] = useState(null);
+  const [countryActivateTarget, setCountryActivateTarget] = useState(null);
+
   const currentUser = useSelector(selectCurrentUser);
+
+  const isAdmin =
+    String(currentUser?.role || "")
+      .trim()
+      .toLowerCase() === "admin";
 
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [approveTarget, setApproveTarget] = useState(null);
@@ -119,14 +148,33 @@ export default function MerchantSettlement() {
     limit: ratePageSize,
   });
 
+  const {
+    data: countriesResponse,
+    isLoading: isCountriesLoading,
+    isFetching: isCountriesFetching,
+  } = useMerchantSettlementCountries({
+    search: searchQuery.trim() || undefined,
+    status: "all",
+    page: countryPage,
+    limit: countryPageSize,
+  });
+
   const createRateMutation = useCreateMerchantSettlementFee();
   const updateRateMutation = useUpdateMerchantSettlementFee();
   const deactivateRateMutation = useDeleteMerchantSettlementFee();
   const activateRateMutation = useActivateMerchantSettlementFee();
+  const createCountryMutation = useCreateMerchantSettlementCountry();
+  const updateCountryMutation = useUpdateMerchantSettlementCountry();
+  const deleteCountryMutation = useDeleteMerchantSettlementCountry();
   const { data: pendingApprovalRequests = [] } =
     useMerchantSettlementFeeChangeRequests({
       status: "PENDING_APPROVAL",
     });
+
+  const isCountryStatusPending = updateCountryMutation.isPending;
+
+  const isSubmittingCountry =
+    createCountryMutation.isPending || updateCountryMutation.isPending;
 
   const {
     data: approvalRequests = [],
@@ -160,15 +208,21 @@ export default function MerchantSettlement() {
     totalPages: 0,
   };
 
-  // temporary until their APIs are connected
-  const reports = [];
-
   const rates = ratesResponse?.items ?? [];
 
   const rateMeta = ratesResponse?.meta ?? {
     total: 0,
     page: ratePage,
     limit: ratePageSize,
+    totalPages: 0,
+  };
+
+  const countries = countriesResponse?.items ?? [];
+
+  const countryMeta = countriesResponse?.meta ?? {
+    total: 0,
+    page: countryPage,
+    limit: countryPageSize,
     totalPages: 0,
   };
 
@@ -265,6 +319,109 @@ export default function MerchantSettlement() {
     }
   };
 
+  const handleOpenAddCountry = () => {
+    if (!isAdmin) return;
+
+    setEditingCountry(null);
+    setIsCountryModalOpen(true);
+  };
+
+  const handleOpenEditCountry = (country) => {
+    if (!isAdmin) return;
+
+    setEditingCountry(country);
+    setIsCountryModalOpen(true);
+  };
+
+  const closeCountryModal = () => {
+    setEditingCountry(null);
+    setIsCountryModalOpen(false);
+  };
+
+  const handleCloseCountryModal = () => {
+    if (isSubmittingCountry) return;
+
+    closeCountryModal();
+  };
+
+  const handleSubmitCountry = async (payload) => {
+    if (!isAdmin) return;
+
+    try {
+      let result;
+
+      if (editingCountry) {
+        result = await updateCountryMutation.mutateAsync({
+          id: editingCountry._id || editingCountry.id,
+          payload,
+        });
+      } else {
+        result = await createCountryMutation.mutateAsync(payload);
+      }
+
+      toast.success(
+        result?.message ||
+          (editingCountry
+            ? "Country updated successfully."
+            : "Country added successfully."),
+      );
+
+      closeCountryModal();
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save country.",
+      );
+    }
+  };
+
+  const handleConfirmCountryDeactivate = async () => {
+    if (!countryDeactivateTarget || !isAdmin) return;
+
+    try {
+      const result = await updateCountryMutation.mutateAsync({
+        id: countryDeactivateTarget._id || countryDeactivateTarget.id,
+        payload: {
+          status: "inactive",
+        },
+      });
+
+      toast.success(result?.message || "Country deactivated successfully.");
+
+      setCountryDeactivateTarget(null);
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to deactivate country.",
+      );
+    }
+  };
+
+  const handleConfirmCountryActivate = async () => {
+    if (!countryActivateTarget || !isAdmin) return;
+
+    try {
+      const result = await updateCountryMutation.mutateAsync({
+        id: countryActivateTarget._id || countryActivateTarget.id,
+        payload: {
+          status: "active",
+        },
+      });
+
+      toast.success(result?.message || "Country reactivated successfully.");
+
+      setCountryActivateTarget(null);
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to reactivate country.",
+      );
+    }
+  };
+
   const handleConfirmApproval = async () => {
     if (!approveTarget) return;
 
@@ -311,35 +468,47 @@ export default function MerchantSettlement() {
   };
 
   const renderActions = () => {
-    if (activeTab !== "rates") {
-      return null;
+    if (activeTab === "rates") {
+      return (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setApprovalStatus("PENDING_APPROVAL");
+              setIsApprovalModalOpen(true);
+            }}
+          >
+            Approvals
+            {pendingApprovalRequests.length > 0 ? (
+              <span>({pendingApprovalRequests.length})</span>
+            ) : null}
+          </Button>
+
+          <Button
+            type="button"
+            leftIcon={<Plus size={16} />}
+            onClick={handleOpenAddRate}
+          >
+            Add Rate
+          </Button>
+        </div>
+      );
     }
 
-    return (
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => {
-            setApprovalStatus("PENDING_APPROVAL");
-            setIsApprovalModalOpen(true);
-          }}
-        >
-          Approvals
-          {pendingApprovalRequests.length > 0 ? (
-            <span>({pendingApprovalRequests.length})</span>
-          ) : null}
-        </Button>
-
+    if (activeTab === "countries" && isAdmin) {
+      return (
         <Button
           type="button"
           leftIcon={<Plus size={16} />}
-          onClick={handleOpenAddRate}
+          onClick={handleOpenAddCountry}
         >
-          Add Rate
+          Add Country
         </Button>
-      </div>
-    );
+      );
+    }
+
+    return null;
   };
 
   const renderContent = () => {
@@ -418,7 +587,53 @@ export default function MerchantSettlement() {
       );
     }
 
-    return <MerchantSettlementReportView reports={reports} />;
+    if (activeTab === "countries") {
+      return (
+        <DataTable
+          title="Country Master"
+          columns={countryColumns}
+          page={countryPage}
+          pageSize={countryPageSize}
+          totalItems={countryMeta.total}
+          onPageChange={setCountryPage}
+          onRowsPerPageChange={setCountryPageSize}
+          isLoading={isCountriesLoading}
+          isFetching={isCountriesFetching}
+          itemLabel="countries"
+          isEmpty={countries.length === 0}
+          emptyTitle={
+            searchQuery.trim()
+              ? "No matching countries found."
+              : "No countries found."
+          }
+          emptyDescription={
+            searchQuery.trim()
+              ? "Try adjusting your search."
+              : "Country master records will appear here."
+          }
+          emptyIcon={Globe2}
+        >
+          {countries.map((country) => (
+            <MerchantSettlementCountryRow
+              key={country._id || country.id}
+              country={country}
+              onEdit={handleOpenEditCountry}
+              onDeactivate={setCountryDeactivateTarget}
+              onActivate={setCountryActivateTarget}
+              canManage={isAdmin}
+              isStatusPending={isCountryStatusPending}
+            />
+          ))}
+        </DataTable>
+      );
+    }
+
+    return (
+      <MerchantSettlementReportView
+        searchQuery={searchQuery}
+        onResetSearch={() => setSearchQuery("")}
+      />
+    );
   };
 
   return (
@@ -446,7 +661,9 @@ export default function MerchantSettlement() {
                 ? "Search transactions..."
                 : activeTab === "rates"
                   ? "Search rates..."
-                  : "Search reports..."
+                  : activeTab === "countries"
+                    ? "Search countries..."
+                    : "Search reports..."
             }
             className="w-full sm:w-80"
             onChange={(event) => {
@@ -458,6 +675,10 @@ export default function MerchantSettlement() {
 
               if (activeTab === "rates") {
                 setRatePage(1);
+              }
+
+              if (activeTab === "countries") {
+                setCountryPage(1);
               }
             }}
           />
@@ -703,6 +924,91 @@ export default function MerchantSettlement() {
           The merchant rate will become active and available for use again.
         </p>
       </Modal>
+
+      {/* Add / Edit Country modal */}
+      <Modal
+        open={isCountryModalOpen}
+        title={editingCountry ? "Edit Country" : "Add Country"}
+        description={
+          editingCountry
+            ? "Update the selected country master record."
+            : "Add a new country to the country master."
+        }
+        size="md"
+        onClose={handleCloseCountryModal}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleCloseCountryModal}
+              disabled={isSubmittingCountry}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="submit"
+              form="merchant-country-form"
+              disabled={isSubmittingCountry}
+              loading={isSubmittingCountry}
+            >
+              {editingCountry ? "Update Country" : "Add Country"}
+            </Button>
+          </>
+        }
+      >
+        <MerchantSettlementCountryForm
+          formId="merchant-country-form"
+          initialValues={editingCountry}
+          onSubmit={handleSubmitCountry}
+        />
+      </Modal>
+
+      {/* Reactivate country modal*/}
+      <Modal
+        open={Boolean(countryActivateTarget)}
+        title="Reactivate Country?"
+        description="This country will become active and available for matching again."
+        size="sm"
+        onClose={
+          isCountryStatusPending
+            ? undefined
+            : () => setCountryActivateTarget(null)
+        }
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isCountryStatusPending}
+              onClick={() => setCountryActivateTarget(null)}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              loading={isCountryStatusPending}
+              disabled={isCountryStatusPending}
+              onClick={handleConfirmCountryActivate}
+            >
+              Reactivate Country
+            </Button>
+          </>
+        }
+      />
+
+      {/* Delete Country modal */}
+      <DeleteModal
+        open={Boolean(countryDeactivateTarget)}
+        title="Deactivate Country?"
+        description="This country will remain in the country master but will no longer be active for matching."
+        confirmLabel="Deactivate Country"
+        isLoading={isCountryStatusPending}
+        onClose={() => setCountryDeactivateTarget(null)}
+        onConfirm={handleConfirmCountryDeactivate}
+      />
     </div>
   );
 }

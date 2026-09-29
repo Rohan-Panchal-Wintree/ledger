@@ -71,6 +71,35 @@ async function uploadMerchantRatesApi(file) {
   };
 }
 
+async function uploadCountryMasterApi(file) {
+  if (!file) {
+    throw new Error("Please select a country master file.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await merchantSettlementApi.post(
+    "/countries/upload",
+    formData,
+  );
+
+  const data = response?.data?.data || {};
+
+  return {
+    message: response?.data?.message || "Country master uploaded successfully.",
+
+    excelRows: Number(data.excelRows || 0),
+    countryRecordsProcessed: Number(data.countryRecordsProcessed || 0),
+    uniqueCountriesStored: Number(data.uniqueCountriesStored || 0),
+    euColumnRows: Number(data.euColumnRows || 0),
+    nonEuColumnRows: Number(data.nonEuColumnRows || 0),
+    specificColumnRows: Number(data.specificColumnRows || 0),
+    totalEuCountries: Number(data.totalEuCountries || 0),
+    totalNonEuCountries: Number(data.totalNonEuCountries || 0),
+  };
+}
+
 async function uploadSettlementBatchTransactionsApi({
   datestampFile = null,
   timestampFile = null,
@@ -331,6 +360,22 @@ export function useUploadMerchantRates() {
 
     onSuccess: () => {
       invalidateUploadQueries(queryClient);
+    },
+  });
+}
+
+export function useUploadCountryMaster() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: uploadCountryMasterApi,
+
+    onSuccess: async () => {
+      invalidateUploadQueries(queryClient);
+
+      await queryClient.invalidateQueries({
+        queryKey: ["merchant-settlement", "countries"],
+      });
     },
   });
 }

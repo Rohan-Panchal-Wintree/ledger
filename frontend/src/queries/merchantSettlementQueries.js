@@ -34,6 +34,37 @@ export const merchantSettlementKeys = {
     "list",
     params,
   ],
+
+  countries: () => [...merchantSettlementKeys.all, "countries"],
+
+  countryList: (params = {}) => [
+    ...merchantSettlementKeys.countries(),
+    "list",
+    params,
+  ],
+
+  countryDetail: (id) => [...merchantSettlementKeys.countries(), "detail", id],
+
+  reports: () => [...merchantSettlementKeys.all, "reports"],
+
+  reportList: (params = {}) => [
+    ...merchantSettlementKeys.reports(),
+    "list",
+    params,
+  ],
+
+  reportDetail: (id) => [...merchantSettlementKeys.reports(), "detail", id],
+
+  settlementBatches: () => [
+    ...merchantSettlementKeys.all,
+    "settlement-batches",
+  ],
+
+  settlementBatchList: (params = {}) => [
+    ...merchantSettlementKeys.settlementBatches(),
+    "list",
+    params,
+  ],
 };
 
 /*
@@ -381,5 +412,302 @@ export const useMerchantSettlementTransactions = (params = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.transactionList(params),
     queryFn: () => getMerchantSettlementTransactions(params),
+    placeholderData: (previousData) => previousData,
+  });
+
+/*
+|--------------------------------------------------------------------------
+| GET /countries
+|--------------------------------------------------------------------------
+*/
+
+export const getMerchantSettlementCountries = async (params = {}) => {
+  const cleanedParams = Object.fromEntries(
+    Object.entries(params).filter(
+      ([, value]) => value !== undefined && value !== null && value !== "",
+    ),
+  );
+
+  const response = await merchantSettlementApi.get("/countries", {
+    params: cleanedParams,
+  });
+
+  return {
+    items: response.data?.data || [],
+
+    meta: response.data?.meta || {
+      total: 0,
+      page: Number(params.page) || 1,
+      limit: Number(params.limit) || 100,
+      totalPages: 0,
+    },
+  };
+};
+
+export const useMerchantSettlementCountries = (params = {}) =>
+  useQuery({
+    queryKey: merchantSettlementKeys.countryList(params),
+    queryFn: () => getMerchantSettlementCountries(params),
+    placeholderData: (previousData) => previousData,
+  });
+
+/*
+|--------------------------------------------------------------------------
+| POST /countries
+|--------------------------------------------------------------------------
+*/
+
+export const createMerchantSettlementCountry = async (payload) => {
+  const response = await merchantSettlementApi.post("/countries", payload);
+
+  return response.data;
+};
+
+export const useCreateMerchantSettlementCountry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createMerchantSettlementCountry,
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: merchantSettlementKeys.countries(),
+      });
+    },
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| PUT /countries/:id
+|--------------------------------------------------------------------------
+*/
+
+export const updateMerchantSettlementCountry = async ({ id, payload }) => {
+  const response = await merchantSettlementApi.put(`/countries/${id}`, payload);
+
+  return response.data;
+};
+
+export const useUpdateMerchantSettlementCountry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateMerchantSettlementCountry,
+
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: merchantSettlementKeys.countries(),
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: merchantSettlementKeys.countryDetail(variables.id),
+        }),
+      ]);
+    },
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| DELETE /countries/:id
+|--------------------------------------------------------------------------
+*/
+
+export const deleteMerchantSettlementCountry = async (id) => {
+  const response = await merchantSettlementApi.delete(`/countries/${id}`);
+
+  return response.data;
+};
+
+export const useDeleteMerchantSettlementCountry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteMerchantSettlementCountry,
+
+    onSuccess: async (_data, id) => {
+      queryClient.removeQueries({
+        queryKey: merchantSettlementKeys.countryDetail(id),
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: merchantSettlementKeys.countries(),
+      });
+    },
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| GET /reports
+|--------------------------------------------------------------------------
+*/
+
+export const getMerchantSettlementReports = async (params = {}) => {
+  const response = await merchantSettlementApi.get("/reports", {
+    params: cleanParams(params),
+  });
+
+  return {
+    items: response.data?.data || [],
+
+    meta: response.data?.meta || {
+      total: 0,
+      page: Number(params.page) || 1,
+      limit: Number(params.limit) || 50,
+      totalPages: 0,
+    },
+  };
+};
+
+export const useMerchantSettlementReports = (params = {}) =>
+  useQuery({
+    queryKey: merchantSettlementKeys.reportList(params),
+
+    queryFn: () => getMerchantSettlementReports(params),
+
+    placeholderData: (previousData) => previousData,
+  });
+
+/*
+|--------------------------------------------------------------------------
+| GET /reports/:id
+|--------------------------------------------------------------------------
+*/
+
+export const getMerchantSettlementReport = async (id) => {
+  const response = await merchantSettlementApi.get(`/reports/${id}`);
+
+  return response.data?.data;
+};
+
+export const useMerchantSettlementReport = (id, options = {}) =>
+  useQuery({
+    queryKey: merchantSettlementKeys.reportDetail(id),
+
+    queryFn: () => getMerchantSettlementReport(id),
+
+    enabled: Boolean(id),
+
+    ...options,
+  });
+
+/*
+|--------------------------------------------------------------------------
+| POST /reports/:id/send-email
+|--------------------------------------------------------------------------
+*/
+
+export const sendMerchantSettlementReportEmail = async (id) => {
+  const response = await merchantSettlementApi.post(
+    `/reports/${id}/send-email`,
+  );
+
+  return response.data;
+};
+
+export const useSendMerchantSettlementReportEmail = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: sendMerchantSettlementReportEmail,
+
+    onSuccess: async (_data, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: merchantSettlementKeys.reports(),
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: merchantSettlementKeys.reportDetail(id),
+        }),
+      ]);
+    },
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| POST /settlement-batches/:batchId/send-all-emails
+|--------------------------------------------------------------------------
+*/
+
+export const sendAllSettlementEmailsForBatch = async (batchId) => {
+  const response = await merchantSettlementApi.post(
+    `/settlement-batches/${batchId}/send-all-emails`,
+  );
+
+  return response.data;
+};
+
+export const useSendAllSettlementEmailsForBatch = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: sendAllSettlementEmailsForBatch,
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: merchantSettlementKeys.reports(),
+      });
+    },
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| GET /reports/:id/download-pdf
+|--------------------------------------------------------------------------
+*/
+
+export const downloadMerchantSettlementReportPdf = async (id) => {
+  return merchantSettlementApi.get(`/reports/${id}/download-pdf`, {
+    responseType: "blob",
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| GET /reports/:id/download-excel
+|--------------------------------------------------------------------------
+*/
+
+export const downloadMerchantSettlementReportExcel = async (id) => {
+  return merchantSettlementApi.get(`/reports/${id}/download-excel`, {
+    responseType: "blob",
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
+| GET /settlement-batches
+|--------------------------------------------------------------------------
+*/
+
+export const getMerchantSettlementBatches = async (params = {}) => {
+  const response = await merchantSettlementApi.get("/settlement-batches", {
+    params: cleanParams(params),
+  });
+
+  return {
+    items: response.data?.data || [],
+
+    meta: response.data?.meta || {
+      total: 0,
+      page: Number(params.page) || 1,
+      limit: Number(params.limit) || 50,
+      totalPages: 0,
+    },
+  };
+};
+
+export const useMerchantSettlementBatches = (params = {}) =>
+  useQuery({
+    queryKey: merchantSettlementKeys.settlementBatchList(params),
+
+    queryFn: () => getMerchantSettlementBatches(params),
+
     placeholderData: (previousData) => previousData,
   });

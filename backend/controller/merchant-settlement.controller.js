@@ -3048,28 +3048,64 @@ const getReportTransactionQuery = (report, matchStatus = "matched") => {
 };
 
 export const listMerchantSettlementReports = async (req, res) => {
-  const { search, settlementBatchId, emailStatus } = req.query;
+  const {
+    search,
+    settlementBatchId,
+    emailStatus,
+    page = 1,
+    limit = 50,
+  } = req.query;
+
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const limitNumber = Math.min(Math.max(Number(limit) || 50, 1), 500);
+
+  const skip = (pageNumber - 1) * limitNumber;
 
   const query = {};
 
-  if (settlementBatchId) query.settlementBatchId = settlementBatchId;
-  if (emailStatus) query.emailStatus = emailStatus;
+  if (settlementBatchId) {
+    query.settlementBatchId = settlementBatchId;
+  }
+
+  if (emailStatus) {
+    query.emailStatus = emailStatus;
+  }
 
   if (search) {
+    const regex = new RegExp(String(search).trim(), "i");
+
     query.$or = [
-      { merchantName: new RegExp(search, "i") },
-      { memberId: new RegExp(search, "i") },
-      { emailTo: new RegExp(search, "i") },
+      { merchantName: regex },
+      { memberId: regex },
+      { emailTo: regex },
     ];
   }
 
-  const data = await MerchantSettlementReport.find(query)
-    .sort({ createdAt: -1 })
-    .lean();
+  const [data, total] = await Promise.all([
+    MerchantSettlementReport.find(query)
+      .populate(
+        "settlementBatchId",
+        "batchName reportDate fromDate toDate status",
+      )
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber)
+      .lean(),
+
+    MerchantSettlementReport.countDocuments(query),
+  ]);
 
   return res.json({
     success: true,
+
     data,
+
+    meta: {
+      total,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.ceil(total / limitNumber),
+    },
   });
 };
 
@@ -5565,6 +5601,49 @@ export const sendMerchantSettlementEmail = async (req, res) => {
   }
 };
 
+export const listMerchantSettlementBatches = async (req, res) => {
+  const { search, status, page = 1, limit = 50 } = req.query;
+
+  const pageNumber = Math.max(Number(page) || 1, 1);
+
+  const limitNumber = Math.min(Math.max(Number(limit) || 50, 1), 500);
+
+  const skip = (pageNumber - 1) * limitNumber;
+
+  const query = {};
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (search) {
+    query.batchName = new RegExp(String(search).trim(), "i");
+  }
+
+  const [data, total] = await Promise.all([
+    MerchantSettlementBatch.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber)
+      .lean(),
+
+    MerchantSettlementBatch.countDocuments(query),
+  ]);
+
+  return res.json({
+    success: true,
+
+    data,
+
+    meta: {
+      total,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.ceil(total / limitNumber),
+    },
+  });
+};
+
 export const sendAllSettlementEmailsForBatch = async (req, res) => {
   const reports = await MerchantSettlementReport.find({
     settlementBatchId: req.params.batchId,
@@ -6038,15 +6117,15 @@ export const updateCountryMaster = async (req, res) => {
     updatedBy: req.user._id,
   };
 
-  if (row.transactionCountryName) {
+  if (row?.transactionCountryName) {
     update.transactionCountryName = row.transactionCountryName;
   }
 
-  if (row.feeCountryCode) {
+  if (row?.feeCountryCode) {
     update.feeCountryCode = row.feeCountryCode;
   }
 
-  if (row.countryCategory) {
+  if (row?.countryCategory) {
     update.countryCategory = row.countryCategory;
   }
 
@@ -6056,8 +6135,13 @@ export const updateCountryMaster = async (req, res) => {
 
   const data = await CountryMaster.findByIdAndUpdate(
     req.params.id,
-    { $set: update },
-    { new: true },
+    {
+      $set: update,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
   );
 
   if (!data) {

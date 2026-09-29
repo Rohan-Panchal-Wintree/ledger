@@ -3,6 +3,7 @@ import {
   FileSpreadsheet,
   FileUp,
   Filter,
+  Globe2,
   X,
 } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -75,6 +76,7 @@ export default function Upload() {
     wireInputRef,
     paymentInputRef,
     ratesInputRef,
+    countryInputRef,
     settlementTransactionsInputRef,
 
     hasReviewIssues,
@@ -82,6 +84,8 @@ export default function Upload() {
     isWireSheet,
     isPaymentSheet,
     isRatesTab,
+    isCountriesTab,
+    countryFile,
     isSettlementTransactionsTab,
     hasBothSettlementTransactionFiles,
 
@@ -99,6 +103,8 @@ export default function Upload() {
     ratesFile,
     isRatesDragging,
     uploadMerchantRatesMutation,
+    isCountryDragging,
+    uploadCountryMasterMutation,
     settlementTransactionFileList,
     isSettlementTransactionsDragging,
     uploadSettlementTransactionsMutation,
@@ -123,6 +129,13 @@ export default function Upload() {
     handleRatesDrop,
     handleRemoveRatesFile,
     handleUploadRates,
+    handleCountryBrowseClick,
+    handleCountryInputChange,
+    handleCountryDragOver,
+    handleCountryDragLeave,
+    handleCountryDrop,
+    handleRemoveCountryFile,
+    handleUploadCountryMaster,
     handleSettlementTransactionsBrowseClick,
     handleSettlementTransactionsInputChange,
     handleSettlementTransactionsDragOver,
@@ -149,6 +162,10 @@ export default function Upload() {
     "finance",
     "settlement",
   ].includes(normalizedRole);
+
+  const canUploadCountries = ["admin", "finance", "settlement"].includes(
+    normalizedRole,
+  );
 
   const renderUploadTabs = () => (
     <div className="flex items-center justify-between">
@@ -184,6 +201,15 @@ export default function Upload() {
                 },
               ]
             : []),
+          ...(canUploadCountries
+            ? [
+                {
+                  label: "Countries",
+                  value: "countries",
+                  icon: Globe2,
+                },
+              ]
+            : []),
           ...(hasReviewIssues || isReviewTab
             ? [
                 {
@@ -205,11 +231,13 @@ export default function Upload() {
           <span className="text-on-surface-variant">
             {isRatesTab
               ? "Rates file selected"
-              : isSettlementTransactionsTab
-                ? "Transaction files selected"
-                : isWireSheet
-                  ? "Wiresheets selected"
-                  : "Payment sheets selected"}
+              : isCountriesTab
+                ? "Countries file selected"
+                : isSettlementTransactionsTab
+                  ? "Transaction files selected"
+                  : isWireSheet
+                    ? "Wiresheets selected"
+                    : "Payment sheets selected"}
           </span>
         </div>
       )}
@@ -374,6 +402,14 @@ export default function Upload() {
       />
 
       <input
+        ref={countryInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        className="hidden"
+        onChange={handleCountryInputChange}
+      />
+
+      <input
         ref={settlementTransactionsInputRef}
         type="file"
         accept=".xlsx,.csv"
@@ -402,6 +438,24 @@ export default function Upload() {
           onCancel={handleRemoveRatesFile}
           onProcess={handleUploadRates}
           isProcessing={uploadMerchantRatesMutation.isPending}
+        />
+      ) : isCountriesTab ? (
+        <UploadFile
+          simpleUpload
+          mode={countryFile ? "filled" : "empty"}
+          title="Upload Country Master"
+          description="Select one XLSX or CSV country master file. The server will process and update the country master."
+          dropLabel="Drop one country master file here"
+          selectedFile={countryFile}
+          isDragging={isCountryDragging}
+          onBrowse={handleCountryBrowseClick}
+          onDragOver={handleCountryDragOver}
+          onDragLeave={handleCountryDragLeave}
+          onDrop={handleCountryDrop}
+          onRemove={handleRemoveCountryFile}
+          onCancel={handleRemoveCountryFile}
+          onProcess={handleUploadCountryMaster}
+          isProcessing={uploadCountryMasterMutation.isPending}
         />
       ) : isSettlementTransactionsTab ? (
         <UploadFile

@@ -16,7 +16,7 @@ export function formatDate(value) {
 
   if (Number.isNaN(date.getTime())) return "-";
 
-  return date.toISOString().slice(0, 10);
+  return date.toLocaleDateString("en-GB");
 }
 
 export function formatDateTime(value) {
@@ -42,4 +42,14 @@ export function safeNumber(value, fallback = 0) {
   const number = Number(value);
 
   return Number.isNaN(number) ? fallback : number;
+}
+
+export function formatInteger(value) {
+  const number = Number(value);
+
+  if (Number.isNaN(number)) return "0";
+
+  return number.toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  });
 }
