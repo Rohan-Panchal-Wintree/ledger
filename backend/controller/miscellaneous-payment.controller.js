@@ -13,6 +13,18 @@ const entryTypeLabels = {
   other: "Other",
 };
 
+const MISCELLANEOUS_WITHOUT_BANK_AND_DATES = new Set([
+  "repayment",
+  "rr",
+  "agent",
+  "overcapped_rr_refund",
+  "chb_refund",
+  "adjustment",
+]);
+
+const shouldOmitBankAndDates = (entryType) =>
+  MISCELLANEOUS_WITHOUT_BANK_AND_DATES.has(entryType);
+
 const formatPaymentSheetDateLabel = (value) => {
   const date = new Date(value);
 
@@ -56,6 +68,8 @@ const withDisplayFields = (entry) => ({
 
 const normalizePayload = async (payload) => {
   const merchant = await Merchant.findById(payload.merchantId).lean();
+
+  const omitBankAndDates = shouldOmitBankAndDates(payload.entryType);
 
   if (!merchant) {
     return {
@@ -137,6 +151,14 @@ const normalizePayload = async (payload) => {
 
       settlementAmount: normalizeNumber(payload.settlementAmount),
       notes: String(payload.notes || "").trim() || undefined,
+
+      bankLabel: omitBankAndDates ? "" : String(payload.bankLabel || "").trim(),
+
+      startDate: omitBankAndDates
+        ? null
+        : normalizeOptionalDate(payload.startDate),
+
+      endDate: omitBankAndDates ? null : normalizeOptionalDate(payload.endDate),
     },
   };
 };

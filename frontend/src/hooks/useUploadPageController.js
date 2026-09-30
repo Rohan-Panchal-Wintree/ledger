@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { unstable_usePrompt, useBeforeUnload } from "react-router-dom";
 import toast from "react-hot-toast";
 
+import { readStoredTab } from "../component/UI/Tabs";
+
 import {
   useReconcileUnmatchedPaymentRows,
   useUnmatchedPaymentRows,
@@ -45,8 +47,19 @@ const EMPTY_REVIEW_FILTERS = {
   currency: "",
 };
 
+const UPLOAD_TABS = [
+  { label: "Wire-sheet", value: "wire" },
+  { label: "Payment Sheet", value: "payment" },
+  { label: "Transaction List", value: "settlement-transactions" },
+  { label: "Rates", value: "rates" },
+  { label: "Countries", value: "countries" },
+  { label: "Review Issues", value: "review" },
+];
+
 export const useUploadPageController = () => {
-  const [activeTab, setActiveTab] = useState("wire");
+  const [activeTab, setActiveTab] = useState(() =>
+    readStoredTab("upload", "wire", UPLOAD_TABS),
+  );
   const [tabState, setTabState] = useState(() =>
     createInitialUploadState(initialTabState),
   );

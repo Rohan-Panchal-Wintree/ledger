@@ -15,7 +15,7 @@ import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
-import Tabs from "../component/UI/Tabs";
+import Tabs, { readStoredTab } from "../component/UI/Tabs";
 
 import Modal from "../component/UI/Modal";
 import DashboardFilterForm from "../component/dashboard/DashboardFilterForm";
@@ -41,11 +41,20 @@ import {
 
 const DASHBOARD_FILTER_FORM_ID = "dashboard-filter-form";
 
+const DASHBOARD_VIEW_TABS = [
+  { label: "Table View", value: "table" },
+  { label: "Group View", value: "group" },
+  { label: "Miscellaneous", value: "miscellaneous" },
+];
+
 export default function Dashboard() {
   const currentUser = useSelector(selectCurrentUser);
 
   // UI state
-  const [activeView, setActiveView] = useState("table");
+  const [activeView, setActiveView] = useState(() =>
+    readStoredTab("dashboard-view", "table", DASHBOARD_VIEW_TABS),
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(readStoredRowsPerPage);
   const [currentPage, setCurrentPage] = useState(1);
@@ -66,6 +75,8 @@ export default function Dashboard() {
     toDate: "",
   });
 
+  const isDashboardDataView = activeView === "table" || activeView === "group";
+
   const hasSelectedSingleDate = Boolean(selectedReportPeriod.paymentDate);
 
   const hasSelectedRange = Boolean(
@@ -81,12 +92,12 @@ export default function Dashboard() {
 
   // Dashboard queries
   const latestDashboardQuery = useDashboardLatest({
-    enabled: !hasAppliedReportPeriod,
+    enabled: isDashboardDataView && !hasAppliedReportPeriod,
   });
 
   const periodDashboardQuery = useDashboardByPeriod({
     ...appliedReportPeriod,
-    enabled: hasAppliedReportPeriod,
+    enabled: isDashboardDataView && hasAppliedReportPeriod,
   });
 
   const activeDashboardQuery = hasAppliedReportPeriod
@@ -106,7 +117,7 @@ export default function Dashboard() {
       paymentSheetDate: appliedReportPeriod.paymentDate,
     },
     {
-      enabled: isMiscellaneousEnabled,
+      enabled: activeView === "miscellaneous" && isMiscellaneousEnabled,
     },
   );
 
@@ -117,6 +128,12 @@ export default function Dashboard() {
   const loading = activeDashboardQuery.isLoading;
   const isFetching = activeDashboardQuery.isFetching;
   const dashboardError = activeDashboardQuery.error;
+
+  useEffect(() => {
+    if (activeView === "miscellaneous" && !isMiscellaneousEnabled) {
+      setActiveView("table");
+    }
+  }, [activeView, isMiscellaneousEnabled]);
 
   // Filter options
   const merchantOptions = useMemo(() => {
@@ -495,17 +512,17 @@ export default function Dashboard() {
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <Tabs
+          persistenceKey="dashboard-view"
           activeTab={activeView}
           onChange={setActiveView}
-          tabs={[
-            { label: "Table View", value: "table" },
-            { label: "Group View", value: "group" },
-            {
-              label: "Miscellaneous",
-              value: "miscellaneous",
-              visible: isMiscellaneousEnabled,
-            },
-          ]}
+          tabs={DASHBOARD_VIEW_TABS.map((tab) =>
+            tab.value === "miscellaneous"
+              ? {
+                  ...tab,
+                  visible: isMiscellaneousEnabled,
+                }
+              : tab,
+          )}
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

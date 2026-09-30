@@ -1,6 +1,8 @@
 import FormField from "../UI/FormField";
 import SearchableDropdown from "../UI/SearchableDropdown";
 
+import { shouldHideMiscellaneousBankAndDates } from "../../utils/miscellaneousUtils";
+
 const entryTypes = [
   { value: "repayment", label: "Repayment" },
   { value: "bank_rr", label: "Bank RR" },
@@ -12,31 +14,6 @@ const entryTypes = [
   { value: "other", label: "Other" },
 ];
 
-function SearchableOptionInput({
-  id,
-  value,
-  options = [],
-  placeholder,
-  onChange,
-}) {
-  return (
-    <>
-      <input
-        type="text"
-        list={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="form-input"
-      />
-
-      <datalist id={id}>
-        <SelectOptions options={options} />
-      </datalist>
-    </>
-  );
-}
-
 export default function MiscellaneousEntryForm({
   form,
   paymentSheetOptions = [],
@@ -44,10 +21,11 @@ export default function MiscellaneousEntryForm({
   acquirerOptions = [],
   onChange,
 }) {
-  const isAgentEntry = form.entryType === "agent";
+  const hideBankAndDates = shouldHideMiscellaneousBankAndDates(form.entryType);
 
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      {/* Entry Type */}
       <FormField
         label="Entry Type"
         helper="Select the miscellaneous payment category."
@@ -63,6 +41,42 @@ export default function MiscellaneousEntryForm({
         />
       </FormField>
 
+      {/* Merchant */}
+      <FormField
+        label="Merchant Name"
+        helper="Merchant connected to this entry."
+        required
+      >
+        <SearchableDropdown
+          value={form.merchantName}
+          options={merchantOptions}
+          placeholder="Select merchant"
+          searchPlaceholder="Search merchant..."
+          onChange={(value) => onChange("merchantName", value)}
+        />
+      </FormField>
+
+      {/* MID */}
+      <FormField
+        label="MID No."
+        helper="Merchant MID associated with this entry."
+        required
+      >
+        <input
+          type="text"
+          inputMode="numeric"
+          value={form.mid}
+          onChange={(event) => {
+            const numericValue = event.target.value.replace(/\D/g, "");
+
+            onChange("mid", numericValue);
+          }}
+          placeholder="Merchant MID"
+          className="form-input"
+        />
+      </FormField>
+
+      {/* Payment Sheet */}
       <FormField
         label="Payment Sheet Label"
         helper="Select the payment sheet this entry belongs to."
@@ -90,71 +104,24 @@ export default function MiscellaneousEntryForm({
         />
       </FormField>
 
-      {isAgentEntry ? (
-        <FormField
-          label="Agent Name"
-          helper="Enter the agent name for this entry."
-          required
-          className="md:col-span-2"
-        >
-          <input
-            type="text"
-            value={form.merchantName}
-            onChange={(event) => onChange("merchantName", event.target.value)}
-            placeholder="Enter agent name"
-            className="form-input"
+      {/* Bank — only for extended entry types */}
+      {!hideBankAndDates ? (
+        <FormField label="Bank Label" helper="Bank or acquirer name." required>
+          <SearchableDropdown
+            value={form.bankLabel}
+            options={acquirerOptions}
+            placeholder="Select bank / acquirer"
+            searchPlaceholder="Search bank / acquirer..."
+            onChange={(value) => onChange("bankLabel", value)}
           />
         </FormField>
-      ) : (
-        <>
-          <FormField
-            label="Merchant Name"
-            helper="Merchant connected to this entry."
-            required
-          >
-            <SearchableDropdown
-              value={form.merchantName}
-              options={merchantOptions}
-              placeholder="Select merchant"
-              searchPlaceholder="Search merchant..."
-              onChange={(value) => onChange("merchantName", value)}
-            />
-          </FormField>
+      ) : null}
 
-          <FormField label="Connected MID" helper="Auto-filled from merchant.">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={form.mid}
-              onChange={(event) => {
-                const numericValue = event.target.value.replace(/\D/g, "");
-
-                onChange("mid", numericValue);
-              }}
-              placeholder="Merchant MID"
-              className="form-input"
-            />
-          </FormField>
-
-          <FormField
-            label="Bank Label"
-            helper="Bank or acquirer name."
-            required
-          >
-            <SearchableDropdown
-              value={form.bankLabel}
-              options={acquirerOptions}
-              placeholder="Select bank / acquirer"
-              searchPlaceholder="Search bank / acquirer..."
-              onChange={(value) => onChange("bankLabel", value)}
-            />
-          </FormField>
-        </>
-      )}
-
+      {/* Processing Currency */}
       <FormField
         label="Processing Currency"
         helper="Currency used for processing."
+        required
       >
         <input
           type="text"
@@ -171,24 +138,30 @@ export default function MiscellaneousEntryForm({
         />
       </FormField>
 
-      <FormField label="Start Date & Time">
-        <input
-          type="datetime-local"
-          value={form.startDate}
-          onChange={(event) => onChange("startDate", event.target.value)}
-          className="form-input"
-        />
-      </FormField>
+      {/* Dates — only for extended entry types */}
+      {!hideBankAndDates ? (
+        <>
+          <FormField label="Start Date & Time" required>
+            <input
+              type="datetime-local"
+              value={form.startDate}
+              onChange={(event) => onChange("startDate", event.target.value)}
+              className="form-input"
+            />
+          </FormField>
 
-      <FormField label="End Date & Time">
-        <input
-          type="datetime-local"
-          value={form.endDate}
-          onChange={(event) => onChange("endDate", event.target.value)}
-          className="form-input"
-        />
-      </FormField>
+          <FormField label="End Date & Time" required>
+            <input
+              type="datetime-local"
+              value={form.endDate}
+              onChange={(event) => onChange("endDate", event.target.value)}
+              className="form-input"
+            />
+          </FormField>
+        </>
+      ) : null}
 
+      {/* Processing Amount */}
       <FormField
         label="Processing Amount"
         helper="Original processing amount."
@@ -197,12 +170,15 @@ export default function MiscellaneousEntryForm({
         <input
           type="number"
           value={form.amountPaid}
+          min="0"
+          step="any"
           onChange={(event) => onChange("amountPaid", event.target.value)}
           placeholder="0.00"
           className="form-input"
         />
       </FormField>
 
+      {/* Rate */}
       <FormField label="Rate" helper="Settlement conversion rate." required>
         <input
           type="number"
@@ -215,6 +191,7 @@ export default function MiscellaneousEntryForm({
         />
       </FormField>
 
+      {/* Settlement Currency */}
       <FormField
         label="Settlement Currency"
         helper="Currency used for settlement."
@@ -223,14 +200,19 @@ export default function MiscellaneousEntryForm({
         <input
           type="text"
           value={form.settlementCurrency}
-          onChange={(event) =>
-            onChange("settlementCurrency", event.target.value.toUpperCase())
-          }
+          onChange={(event) => {
+            const textOnlyValue = event.target.value
+              .replace(/[^a-zA-Z]/g, "")
+              .toUpperCase();
+
+            onChange("settlementCurrency", textOnlyValue);
+          }}
           placeholder="USD"
           className="form-input uppercase"
         />
       </FormField>
 
+      {/* Settlement Amount */}
       <FormField
         label="Settlement Amount"
         helper="Auto-calculated but editable."
@@ -239,26 +221,27 @@ export default function MiscellaneousEntryForm({
         <input
           type="number"
           value={form.settlementAmount}
+          min="0"
+          step="any"
           onChange={(event) => onChange("settlementAmount", event.target.value)}
           placeholder="0.00"
           className="form-input"
         />
       </FormField>
 
-      {!isAgentEntry ? (
-        <FormField
-          label="Notes"
-          helper="Optional settlement/internal notes."
-          className="md:col-span-2"
-        >
-          <textarea
-            value={form.notes}
-            onChange={(event) => onChange("notes", event.target.value)}
-            placeholder="Optional notes"
-            className="form-textarea"
-          />
-        </FormField>
-      ) : null}
+      {/* Notes */}
+      <FormField
+        label="Notes"
+        helper="Optional settlement/internal notes."
+        className="md:col-span-2"
+      >
+        <textarea
+          value={form.notes}
+          onChange={(event) => onChange("notes", event.target.value)}
+          placeholder="Optional notes"
+          className="form-textarea"
+        />
+      </FormField>
     </div>
   );
 }

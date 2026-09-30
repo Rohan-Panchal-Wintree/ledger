@@ -19,8 +19,21 @@ export const miscellaneousInitialForm = {
   notes: "",
 };
 
+const MISCELLANEOUS_WITHOUT_BANK_AND_DATES = new Set([
+  "repayment",
+  "rr",
+  "agent",
+  "overcapped_rr_refund",
+  "chb_refund",
+  "adjustment",
+]);
+
+export function shouldHideMiscellaneousBankAndDates(entryType) {
+  return MISCELLANEOUS_WITHOUT_BANK_AND_DATES.has(entryType);
+}
+
 export function validateMiscellaneousForm(form) {
-  const isAgentEntry = form.entryType === "agent";
+  const hideBankAndDates = shouldHideMiscellaneousBankAndDates(form.entryType);
 
   const amountPaid = Number(form.amountPaid);
   const rate = Number(form.rate);
@@ -28,7 +41,21 @@ export function validateMiscellaneousForm(form) {
 
   const textOnlyPattern = /^[A-Za-z]+$/;
 
-  if (!form.entryType) return "Please select entry type.";
+  if (!form.entryType) {
+    return "Please select entry type.";
+  }
+
+  if (!form.merchantName) {
+    return "Please select merchant.";
+  }
+
+  if (!form.mid) {
+    return "Please enter MID.";
+  }
+
+  if (!/^\d+$/.test(String(form.mid))) {
+    return "MID should contain numbers only.";
+  }
 
   if (!form.paymentSheetDateLabel) {
     return "Please select payment sheet label.";
@@ -38,18 +65,22 @@ export function validateMiscellaneousForm(form) {
     return "Please select payment sheet date.";
   }
 
-  if (!form.merchantName) {
-    return isAgentEntry
-      ? "Please enter agent name."
-      : "Please select merchant.";
-  }
+  if (!hideBankAndDates) {
+    if (!form.bankLabel) {
+      return "Please select bank label.";
+    }
 
-  if (!isAgentEntry && !form.bankLabel) {
-    return "Please select bank label.";
-  }
+    if (!form.startDate) {
+      return "Please select start date and time.";
+    }
 
-  if (!isAgentEntry && form.mid && !/^\d+$/.test(form.mid)) {
-    return "Connected MID should contain numbers only.";
+    if (!form.endDate) {
+      return "Please select end date and time.";
+    }
+
+    if (new Date(form.startDate).getTime() > new Date(form.endDate).getTime()) {
+      return "Start date cannot be after end date.";
+    }
   }
 
   if (!form.processingCurrency) {
@@ -58,18 +89,6 @@ export function validateMiscellaneousForm(form) {
 
   if (!textOnlyPattern.test(form.processingCurrency)) {
     return "Processing currency should contain text only.";
-  }
-
-  if (!form.startDate) {
-    return "Please select start date and time.";
-  }
-
-  if (!form.endDate) {
-    return "Please select end date and time.";
-  }
-
-  if (new Date(form.startDate).getTime() > new Date(form.endDate).getTime()) {
-    return "Start date cannot be after end date.";
   }
 
   if (!form.amountPaid || Number.isNaN(amountPaid) || amountPaid <= 0) {
@@ -100,17 +119,19 @@ export function validateMiscellaneousForm(form) {
 }
 
 export function buildMiscellaneousPayload(form) {
+  const hideBankAndDates = shouldHideMiscellaneousBankAndDates(form.entryType);
+
   return {
     entryType: form.entryType,
     paymentSheetDate: form.paymentSheetDate,
     paymentSheetDateLabel: form.paymentSheetDateLabel,
-    bankLabel: form.bankLabel,
     merchantName: form.merchantName,
     merchantId: form.merchantId || undefined,
     merchantMappingId: form.merchantMappingId || undefined,
     mid: form.mid,
-    startDate: form.startDate || undefined,
-    endDate: form.endDate || undefined,
+    bankLabel: hideBankAndDates ? "" : form.bankLabel,
+    startDate: hideBankAndDates ? undefined : form.startDate || undefined,
+    endDate: hideBankAndDates ? undefined : form.endDate || undefined,
     processingCurrency: form.processingCurrency,
     amountPaid: safeNumber(form.amountPaid),
     rate: safeNumber(form.rate, 1),

@@ -112,14 +112,18 @@ export default function MerchantSettlementReportView({
     data: batchesResponse,
     isLoading: isBatchesLoading,
     isFetching: isBatchesFetching,
-  } = useMerchantSettlementBatches({
-    enabled: !selectedBatch,
-    search:
-      !selectedBatch && searchQuery.trim() ? searchQuery.trim() : undefined,
+  } = useMerchantSettlementBatches(
+    {
+      search:
+        !selectedBatch && searchQuery.trim() ? searchQuery.trim() : undefined,
 
-    page: batchPage,
-    limit: batchPageSize,
-  });
+      page: batchPage,
+      limit: batchPageSize,
+    },
+    {
+      enabled: !selectedBatch,
+    },
+  );
 
   const selectedBatchId = selectedBatch?._id || selectedBatch?.id || "";
 
@@ -127,17 +131,20 @@ export default function MerchantSettlementReportView({
     data: reportsResponse,
     isLoading: isReportsLoading,
     isFetching: isReportsFetching,
-  } = useMerchantSettlementReports({
-    settlementBatchId: selectedBatchId || undefined,
+  } = useMerchantSettlementReports(
+    {
+      settlementBatchId: selectedBatchId || undefined,
 
-    enabled: Boolean(selectedBatchId),
+      search:
+        selectedBatch && searchQuery.trim() ? searchQuery.trim() : undefined,
 
-    search:
-      selectedBatch && searchQuery.trim() ? searchQuery.trim() : undefined,
-
-    page: reportPage,
-    limit: reportPageSize,
-  });
+      page: reportPage,
+      limit: reportPageSize,
+    },
+    {
+      enabled: Boolean(selectedBatchId),
+    },
+  );
 
   const sendEmailMutation = useSendMerchantSettlementReportEmail();
 

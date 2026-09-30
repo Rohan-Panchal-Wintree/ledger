@@ -106,11 +106,13 @@ export const getMerchantSettlementFees = async (params = {}) => {
   };
 };
 
-export const useMerchantSettlementFees = (params = {}) =>
+export const useMerchantSettlementFees = (params = {}, options = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.feeList(params),
     queryFn: () => getMerchantSettlementFees(params),
     placeholderData: (previousData) => previousData,
+
+    ...options,
   });
 
 /*
@@ -408,11 +410,13 @@ export const getMerchantSettlementTransactions = async (params = {}) => {
   };
 };
 
-export const useMerchantSettlementTransactions = (params = {}) =>
+export const useMerchantSettlementTransactions = (params = {}, options = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.transactionList(params),
     queryFn: () => getMerchantSettlementTransactions(params),
     placeholderData: (previousData) => previousData,
+
+    ...options,
   });
 
 /*
@@ -444,11 +448,13 @@ export const getMerchantSettlementCountries = async (params = {}) => {
   };
 };
 
-export const useMerchantSettlementCountries = (params = {}) =>
+export const useMerchantSettlementCountries = (params = {}, options = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.countryList(params),
     queryFn: () => getMerchantSettlementCountries(params),
     placeholderData: (previousData) => previousData,
+
+    ...options,
   });
 
 /*

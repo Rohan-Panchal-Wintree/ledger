@@ -55,6 +55,7 @@ export default function SearchableDropdown({
           placeholder={searchPlaceholder}
           className="mb-2"
           inputClassName="h-9 rounded-lg bg-surface-container-low py-0"
+          debounceMs={0}
           onChange={(event) => setSearchValue(event.target.value)}
         />
 

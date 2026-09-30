@@ -7,7 +7,7 @@ import DataTable from "../component/UI/DataTable";
 import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
-import Tabs from "../component/UI/Tabs";
+import Tabs, { readStoredTab } from "../component/UI/Tabs";
 import PageHeader from "../component/UI/PageHeader";
 
 import PaymentSheetRow from "../component/sheets/PaymentSheetRow";
@@ -35,7 +35,9 @@ import {
 import { selectCurrentUser } from "../store/slices/Auth.slice";
 
 export default function Sheets() {
-  const [activeTab, setActiveTab] = useState("wiresheet");
+  const [activeTab, setActiveTab] = useState(() =>
+    readStoredTab("sheets", "wiresheet", SHEET_TABS),
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [backendSearch, setBackendSearch] = useState("");
 
@@ -89,8 +91,13 @@ export default function Sheets() {
     [backendSearch, dateFilters, limit, page],
   );
 
-  const wiresheetsQuery = useWiresheets(queryFilters);
-  const paymentSheetsQuery = usePaymentSheets(queryFilters);
+  const wiresheetsQuery = useWiresheets(queryFilters, {
+    enabled: isWiresheetTab,
+  });
+
+  const paymentSheetsQuery = usePaymentSheets(queryFilters, {
+    enabled: !isWiresheetTab,
+  });
 
   const activeQuery = isWiresheetTab ? wiresheetsQuery : paymentSheetsQuery;
 
@@ -166,17 +173,12 @@ export default function Sheets() {
     }
 
     if (shouldUseLocalSearch) {
+      setBackendSearch("");
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setBackendSearch(normalizedSearchTerm);
-      setPage(1);
-    }, 400);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    setBackendSearch(normalizedSearchTerm);
+    setPage(1);
   }, [normalizedSearchTerm, shouldUseLocalSearch]);
 
   useEffect(() => {
@@ -340,6 +342,7 @@ export default function Sheets() {
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <Tabs
+          persistenceKey="sheets"
           activeTab={activeTab}
           onChange={handleTabChange}
           tabs={SHEET_TABS}

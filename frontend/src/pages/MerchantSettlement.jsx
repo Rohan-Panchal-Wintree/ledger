@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import PageHeader from "../component/UI/PageHeader";
-import Tabs from "../component/UI/Tabs";
+import Tabs, { readStoredTab } from "../component/UI/Tabs";
 import SearchInput from "../component/UI/SearchInput";
 import Button from "../component/UI/Button";
 import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
@@ -94,7 +94,9 @@ const countryColumns = [
 ];
 
 export default function MerchantSettlement() {
-  const [activeTab, setActiveTab] = useState("transactions");
+  const [activeTab, setActiveTab] = useState(() =>
+    readStoredTab("merchant-settlement", "transactions", SETTLEMENT_TABS),
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [transactionPage, setTransactionPage] = useState(1);
   const [transactionPageSize, setTransactionPageSize] = useState(
@@ -132,32 +134,47 @@ export default function MerchantSettlement() {
     data: transactionsResponse,
     isLoading: isTransactionsLoading,
     isFetching: isTransactionsFetching,
-  } = useMerchantSettlementTransactions({
-    search: searchQuery.trim() || undefined,
-    page: transactionPage,
-    limit: transactionPageSize,
-  });
+  } = useMerchantSettlementTransactions(
+    {
+      search: searchQuery.trim() || undefined,
+      page: transactionPage,
+      limit: transactionPageSize,
+    },
+    {
+      enabled: activeTab === "transactions",
+    },
+  );
 
   const {
     data: ratesResponse,
     isLoading: isRatesLoading,
     isFetching: isRatesFetching,
-  } = useMerchantSettlementFees({
-    search: searchQuery.trim() || undefined,
-    page: ratePage,
-    limit: ratePageSize,
-  });
+  } = useMerchantSettlementFees(
+    {
+      search: searchQuery.trim() || undefined,
+      page: ratePage,
+      limit: ratePageSize,
+    },
+    {
+      enabled: activeTab === "rates",
+    },
+  );
 
   const {
     data: countriesResponse,
     isLoading: isCountriesLoading,
     isFetching: isCountriesFetching,
-  } = useMerchantSettlementCountries({
-    search: searchQuery.trim() || undefined,
-    status: "all",
-    page: countryPage,
-    limit: countryPageSize,
-  });
+  } = useMerchantSettlementCountries(
+    {
+      search: searchQuery.trim() || undefined,
+      status: "all",
+      page: countryPage,
+      limit: countryPageSize,
+    },
+    {
+      enabled: activeTab === "countries",
+    },
+  );
 
   const createRateMutation = useCreateMerchantSettlementFee();
   const updateRateMutation = useUpdateMerchantSettlementFee();
@@ -165,11 +182,15 @@ export default function MerchantSettlement() {
   const activateRateMutation = useActivateMerchantSettlementFee();
   const createCountryMutation = useCreateMerchantSettlementCountry();
   const updateCountryMutation = useUpdateMerchantSettlementCountry();
-  const deleteCountryMutation = useDeleteMerchantSettlementCountry();
   const { data: pendingApprovalRequests = [] } =
-    useMerchantSettlementFeeChangeRequests({
-      status: "PENDING_APPROVAL",
-    });
+    useMerchantSettlementFeeChangeRequests(
+      {
+        status: "PENDING_APPROVAL",
+      },
+      {
+        enabled: activeTab === "rates",
+      },
+    );
 
   const isCountryStatusPending = updateCountryMutation.isPending;
 
@@ -180,9 +201,14 @@ export default function MerchantSettlement() {
     data: approvalRequests = [],
     isLoading: isApprovalsLoading,
     isFetching: isApprovalsFetching,
-  } = useMerchantSettlementFeeChangeRequests({
-    status: approvalStatus,
-  });
+  } = useMerchantSettlementFeeChangeRequests(
+    {
+      status: approvalStatus,
+    },
+    {
+      enabled: activeTab === "rates" && isApprovalModalOpen,
+    },
+  );
 
   const approveRateMutation = useApproveMerchantSettlementFeeChangeRequest();
 
@@ -645,6 +671,7 @@ export default function MerchantSettlement() {
       />
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <Tabs
+          persistenceKey="merchant-settlement"
           activeTab={activeTab}
           onChange={(nextTab) => {
             setActiveTab(nextTab);

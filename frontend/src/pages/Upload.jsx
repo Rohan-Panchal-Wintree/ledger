@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   FileUp,
-  Filter,
   Globe2,
   X,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import UploadIssuesSection from "../component/upload/UploadIssuesSection";
 
 import { useUploadPageController } from "../hooks/useUploadPageController";
 import { selectCurrentUser } from "../store/slices/Auth.slice";
+import { useEffect, useMemo } from "react";
 
 const wirePreviewColumns = [
   { key: "merchantName", label: "Merchant Name" },
@@ -167,59 +167,81 @@ export default function Upload() {
     normalizedRole,
   );
 
+  const uploadTabs = useMemo(
+    () => [
+      {
+        label: "Wire-sheet",
+        value: "wire",
+        icon: FileSpreadsheet,
+      },
+      {
+        label: "Payment Sheet",
+        value: "payment",
+        icon: FileUp,
+      },
+      ...(canUploadSettlementTransactions
+        ? [
+            {
+              label: "Transaction List",
+              value: "settlement-transactions",
+              icon: FileUp,
+            },
+          ]
+        : []),
+      ...(canUploadRates
+        ? [
+            {
+              label: "Rates",
+              value: "rates",
+              icon: FileSpreadsheet,
+            },
+          ]
+        : []),
+      ...(canUploadCountries
+        ? [
+            {
+              label: "Countries",
+              value: "countries",
+              icon: Globe2,
+            },
+          ]
+        : []),
+      ...(hasReviewIssues || isReviewTab
+        ? [
+            {
+              label: "Review Issues",
+              value: "review",
+              icon: AlertTriangle,
+            },
+          ]
+        : []),
+    ],
+    [
+      canUploadSettlementTransactions,
+      canUploadRates,
+      canUploadCountries,
+      hasReviewIssues,
+      isReviewTab,
+    ],
+  );
+
+  useEffect(() => {
+    const isCurrentTabAvailable = uploadTabs.some(
+      (tab) => tab.value === activeTab,
+    );
+
+    if (!isCurrentTabAvailable) {
+      setActiveTab("wire");
+    }
+  }, [activeTab, uploadTabs, setActiveTab]);
+
   const renderUploadTabs = () => (
     <div className="flex items-center justify-between">
       <Tabs
+        persistenceKey="upload"
         activeTab={activeTab}
         onChange={setActiveTab}
-        tabs={[
-          {
-            label: "Wire-sheet",
-            value: "wire",
-            icon: FileSpreadsheet,
-          },
-          {
-            label: "Payment Sheet",
-            value: "payment",
-            icon: FileUp,
-          },
-          ...(canUploadSettlementTransactions
-            ? [
-                {
-                  label: "Transaction List",
-                  value: "settlement-transactions",
-                  icon: FileUp,
-                },
-              ]
-            : []),
-          ...(canUploadRates
-            ? [
-                {
-                  label: "Rates",
-                  value: "rates",
-                  icon: FileSpreadsheet,
-                },
-              ]
-            : []),
-          ...(canUploadCountries
-            ? [
-                {
-                  label: "Countries",
-                  value: "countries",
-                  icon: Globe2,
-                },
-              ]
-            : []),
-          ...(hasReviewIssues || isReviewTab
-            ? [
-                {
-                  label: "Review Issues",
-                  value: "review",
-                  icon: AlertTriangle,
-                },
-              ]
-            : []),
-        ]}
+        tabs={uploadTabs}
       />
 
       {!isReviewTab && (

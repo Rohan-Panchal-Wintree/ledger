@@ -18,6 +18,7 @@ import {
   filterMiscellaneousEntries,
   mapMiscellaneousEntryToForm,
   miscellaneousInitialForm,
+  shouldHideMiscellaneousBankAndDates,
   validateMiscellaneousForm,
 } from "../utils/miscellaneousUtils";
 
@@ -111,6 +112,7 @@ export default function Miscellaneous() {
       .map((merchant) => ({
         label: merchant.merchantName,
         value: merchant.merchantName,
+        merchantId: merchant._id,
         mid: merchant.mid,
       }));
   }, [merchantsQuery.data]);
@@ -143,14 +145,17 @@ export default function Miscellaneous() {
     (field, value) => {
       setForm((prev) => {
         if (field === "entryType") {
+          const hideBankAndDates = shouldHideMiscellaneousBankAndDates(value);
+
           return {
             ...prev,
             entryType: value,
-            ...(value === "agent"
+
+            ...(hideBankAndDates
               ? {
-                  merchantName: "",
-                  mid: "",
                   bankLabel: "",
+                  startDate: "",
+                  endDate: "",
                 }
               : {}),
           };
@@ -173,10 +178,12 @@ export default function Miscellaneous() {
           const selectedMerchant = merchantOptions.find(
             (option) => option.value === value,
           );
-
           return {
             ...prev,
+
             merchantName: value,
+            merchantId: selectedMerchant?.merchantId || "",
+            merchantMappingId: "",
             mid: selectedMerchant?.mid || "",
           };
         }

@@ -135,18 +135,22 @@ export async function downloadSheetUpload(id, fileName) {
   return downloadUrl;
 }
 
-export function useWiresheets(filters = {}) {
+export function useWiresheets(filters = {}, options = {}) {
   return useQuery({
     queryKey: sheetsQueryKeys.wiresheets.list(filters),
     queryFn: () => getWiresheetsApi(filters),
     placeholderData: (previousData) => previousData,
+
+    ...options,
   });
 }
 
-export function usePaymentSheets(filters = {}) {
+export function usePaymentSheets(filters = {}, options = {}) {
   return useQuery({
     queryKey: sheetsQueryKeys.paymentSheets.list(filters),
     queryFn: () => getPaymentSheetsApi(filters),
     placeholderData: (previousData) => previousData,
+
+    ...options,
   });
 }
