@@ -1,11 +1,15 @@
 // AWS
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import s3 from "../utils/s3Client.js";
-import { SettlementUpload } from "../models/settlement-upload.model.js";
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
+
+// FILE SYSTEM
+import fs from "fs/promises";
+import fsStream from "fs";
 
 // MODELS
 import { Merchant } from "../models/merchant.model.js";
+import { SettlementUpload } from "../models/settlement-upload.model.js";
 import { MerchantAccount } from "../models/merchant-account.model.js";
 import { Acquirer } from "../models/acquirer.model.js";
 import { Wiresheet } from "../models/wiresheet.model.js";
@@ -16,6 +20,7 @@ import {
 	parseExcelFile,
 	extractWorkbookBankName,
 } from "../utils/excelParser.js";
+
 import { parseFlexibleSheetDate } from "../utils/dateUtils.js";
 
 // CURRENCY
@@ -27,6 +32,8 @@ import {
 
 // FILE READ FROM EXCEL FILE
 import { extractBankNameFromFileName } from "../utils/ManagedVariables.js";
+
+import { safeDeleteTempFile } from "../utils/tempFile.js";
 
 // Clean text → remove extra spaces + make uppercase
 const normalizeText = (value) =>
@@ -431,7 +438,11 @@ const storeOriginalWiresheetUpload = async ({ file, userId, wiresheetId }) => {
 		new PutObjectCommand({
 			Bucket: S3_BUCKET_NAME,
 			Key: s3Key,
-			Body: file.buffer,
+
+			Body: fsStream.createReadStream(file.path),
+
+			ContentLength: file.size,
+
 			ContentType:
 				file.mimetype ||
 				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -511,7 +522,110 @@ const storeOriginalWiresheetUpload = async ({ file, userId, wiresheetId }) => {
 // 	});
 // };
 
-// UPLOAD WIRESHEET
+// UPLOAD WIRESHEET this current change on the 30-09-26
+// export const uploadWiresheet = async (req, res) => {
+// 	const files = [...(req.files?.file || []), ...(req.files?.files || [])];
+
+// 	if (!files.length) {
+// 		return res.status(400).json({
+// 			success: false,
+// 			message: "At least one wiresheet file is required",
+// 		});
+// 	}
+
+// 	const results = [];
+
+// 	for (const file of files) {
+// 		try {
+// 			// Compatibility with existing parser.
+// 			// Only ONE file is loaded because your loop is sequential.
+// 			file.buffer = await fs.readFile(file.path);
+
+// 			const result = await processSingleWiresheet({
+// 				file,
+// 				acquirerId: req.body.acquirerId,
+// 			});
+
+// 			// The Excel parser has finished.
+// 			// Stop retaining this Buffer.
+// 			file.buffer = undefined;
+
+// 			if (result.success) {
+// 				const uploadRecord = await storeOriginalWiresheetUpload({
+// 					file,
+// 					userId: req.user._id,
+// 					wiresheetId: result.wiresheetId,
+// 				});
+
+// 				result.uploadRecord = {
+// 					id: uploadRecord._id,
+// 					s3Key: uploadRecord.s3Key,
+// 				};
+// 			}
+
+// 			results.push(result);
+// 		} catch (error) {
+// 			results.push({
+// 				success: false,
+// 				fileName: file.originalname,
+
+// 				message: error.message || "Wiresheet upload failed",
+// 			});
+// 		} finally {
+// 			file.buffer = undefined;
+
+// 			await safeDeleteTempFile(file.path);
+// 		}
+// 	}
+
+// 	const processedFiles = results.filter((item) => item.success);
+// 	const duplicateFiles = results.filter((item) => item.duplicate);
+// 	const failedFiles = results.filter(
+// 		(item) => !item.success && !item.duplicate,
+// 	);
+
+// 	const processedCount = processedFiles.length;
+// 	const duplicateCount = duplicateFiles.length;
+// 	const failedCount = failedFiles.length;
+
+// 	let statusCode = 201;
+// 	let success = true;
+// 	let message = "Wiresheets uploaded successfully";
+
+// 	if (processedCount === 0 && duplicateCount > 0 && failedCount === 0) {
+// 		statusCode = 409;
+// 		success = false;
+// 		message = duplicateFiles[0]?.message || "Wiresheet already exists";
+// 	} else if (processedCount === 0 && failedCount > 0) {
+// 		statusCode = 400;
+// 		success = false;
+
+// 		if (failedFiles.length === 1) {
+// 			message = failedFiles[0].message;
+// 		} else {
+// 			message = `${failedCount} wiresheet(s) failed to upload`;
+// 		}
+// 	} else if (processedCount > 0 && (duplicateCount > 0 || failedCount > 0)) {
+// 		statusCode = 207;
+// 		success = true;
+// 		message = "Some wiresheets uploaded, some files had issues";
+// 	}
+
+// 	return res.status(statusCode).json({
+// 		success,
+// 		message,
+// 		data: {
+// 			totalFiles: files.length,
+// 			processedCount,
+// 			duplicateCount,
+// 			failedCount,
+// 			processedFiles,
+// 			duplicateFiles,
+// 			failedFiles,
+// 		},
+// 	});
+// };
+
 export const uploadWiresheet = async (req, res) => {
 	const files = [...(req.files?.file || []), ...(req.files?.files || [])];
 
@@ -526,10 +640,25 @@ export const uploadWiresheet = async (req, res) => {
 
 	for (const file of files) {
 		try {
+			/*
+			 * Temporary compatibility:
+			 * Existing Excel parser still requires Buffer.
+			 *
+			 * Important:
+			 * Only ONE file is loaded at a time.
+			 */
+			file.buffer = await fs.readFile(file.path);
+
 			const result = await processSingleWiresheet({
 				file,
 				acquirerId: req.body.acquirerId,
 			});
+
+			/*
+			 * Excel parsing is complete.
+			 * Stop retaining Buffer before S3 upload.
+			 */
+			file.buffer = undefined;
 
 			if (result.success) {
 				const uploadRecord = await storeOriginalWiresheetUpload({
@@ -546,22 +675,38 @@ export const uploadWiresheet = async (req, res) => {
 
 			results.push(result);
 		} catch (error) {
+			console.error(`Wiresheet processing failed: ${file.originalname}`, error);
+
 			results.push({
 				success: false,
 				fileName: file.originalname,
 				message: error.message || "Wiresheet upload failed",
 			});
+		} finally {
+			/*
+			 * Release any buffer reference.
+			 */
+			file.buffer = undefined;
+
+			/*
+			 * Delete Multer temporary disk file.
+			 */
+			await safeDeleteTempFile(file.path);
 		}
 	}
 
 	const processedFiles = results.filter((item) => item.success);
+
 	const duplicateFiles = results.filter((item) => item.duplicate);
+
 	const failedFiles = results.filter(
 		(item) => !item.success && !item.duplicate,
 	);
 
 	const processedCount = processedFiles.length;
+
 	const duplicateCount = duplicateFiles.length;
+
 	const failedCount = failedFiles.length;
 
 	let statusCode = 201;
@@ -571,25 +716,27 @@ export const uploadWiresheet = async (req, res) => {
 	if (processedCount === 0 && duplicateCount > 0 && failedCount === 0) {
 		statusCode = 409;
 		success = false;
+
 		message = duplicateFiles[0]?.message || "Wiresheet already exists";
 	} else if (processedCount === 0 && failedCount > 0) {
 		statusCode = 400;
 		success = false;
 
-		if (failedFiles.length === 1) {
-			message = failedFiles[0].message;
-		} else {
-			message = `${failedCount} wiresheet(s) failed to upload`;
-		}
+		message =
+			failedFiles.length === 1
+				? failedFiles[0].message
+				: `${failedCount} wiresheet(s) failed to upload`;
 	} else if (processedCount > 0 && (duplicateCount > 0 || failedCount > 0)) {
 		statusCode = 207;
 		success = true;
+
 		message = "Some wiresheets uploaded, some files had issues";
 	}
 
 	return res.status(statusCode).json({
 		success,
 		message,
+
 		data: {
 			totalFiles: files.length,
 			processedCount,
