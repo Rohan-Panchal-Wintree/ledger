@@ -35,9 +35,7 @@ import {
 const router = Router();
 
 router.use(middlewares.authMiddleware);
-router.use(
-  middlewares.roleMiddleware(["admin", "finance", "settlement", "viewer"]),
-);
+router.use(middlewares.roleMiddleware(["admin", "support", "settlement"]));
 
 /*
 |--------------------------------------------------------------------------
@@ -48,7 +46,7 @@ router.use(
 router.post(
   "/fees/upload",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
   asyncHandler(uploadMerchantFees),
 );
@@ -56,7 +54,7 @@ router.post(
 router.post(
   "/fees",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(createMerchantFee),
 );
 
@@ -71,14 +69,14 @@ router.get(
 router.post(
   "/fees/change-requests/:id/approve",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(approveMerchantFeeChangeRequest),
 );
 
 router.post(
   "/fees/change-requests/:id/reject",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(rejectMerchantFeeChangeRequest),
 );
 
@@ -87,21 +85,21 @@ router.get("/fees/:id", asyncHandler(getMerchantFee));
 router.put(
   "/fees/:id",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(updateMerchantFee),
 );
 
 router.delete(
   "/fees/:id",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(deleteMerchantFee),
 );
 
 router.patch(
   "/fees/:id/activate",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(activateMerchantFee),
 );
 
@@ -110,7 +108,7 @@ router.patch(
 router.post(
   "/countries/upload",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
   asyncHandler(uploadCountryMaster),
 );
@@ -118,7 +116,7 @@ router.post(
 router.post(
   "/countries",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(createCountryMaster),
 );
 
@@ -129,14 +127,14 @@ router.get("/countries/:id", asyncHandler(getCountryMaster));
 router.put(
   "/countries/:id",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
+  middlewares.roleMiddleware(["admin, support", "settlement"]),
   asyncHandler(updateCountryMaster),
 );
 
 router.delete(
   "/countries/:id",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(deleteCountryMaster),
 );
 
@@ -149,7 +147,7 @@ router.delete(
 router.post(
   "/settlement-batches/upload",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   middlewares.uploadMiddleware.fields([
     { name: "datestampFile", maxCount: 1 },
     { name: "timestampFile", maxCount: 1 },
@@ -174,7 +172,7 @@ router.get("/transactions", asyncHandler(listMerchantTransactions));
 router.post(
   "/reports/generate",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(generateMerchantSettlementReport),
 );
 
@@ -194,7 +192,7 @@ router.get(
 router.post(
   "/reports/:id/send-email",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(sendMerchantSettlementEmail),
 );
 
@@ -203,7 +201,7 @@ router.get("/settlement-batches", asyncHandler(listMerchantSettlementBatches));
 router.post(
   "/settlement-batches/:batchId/send-all-emails",
   authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+  middlewares.roleMiddleware(["admin", "support", "settlement"]),
   asyncHandler(sendAllSettlementEmailsForBatch),
 );
 

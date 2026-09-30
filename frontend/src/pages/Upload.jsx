@@ -159,11 +159,11 @@ export default function Upload() {
 
   const canUploadSettlementTransactions = [
     "admin",
-    "finance",
+    "support",
     "settlement",
   ].includes(normalizedRole);
 
-  const canUploadCountries = ["admin", "finance", "settlement"].includes(
+  const canUploadCountries = ["admin", "support", "settlement"].includes(
     normalizedRole,
   );
 
