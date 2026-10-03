@@ -41,19 +41,23 @@ export function validateMiscellaneousForm(form) {
 
   const textOnlyPattern = /^[A-Za-z]+$/;
 
+  const isAgentEntry = form.entryType === "agent";
+
   if (!form.entryType) {
     return "Please select entry type.";
   }
 
   if (!form.merchantName) {
-    return "Please select merchant.";
+    return isAgentEntry
+      ? "Please enter agent name."
+      : "Please select merchant.";
   }
 
-  if (!form.mid) {
+  if (!isAgentEntry && !form.mid) {
     return "Please enter MID.";
   }
 
-  if (!/^\d+$/.test(String(form.mid))) {
+  if (!isAgentEntry && form.mid && !/^\d+$/.test(String(form.mid))) {
     return "MID should contain numbers only.";
   }
 
@@ -126,9 +130,11 @@ export function buildMiscellaneousPayload(form) {
     paymentSheetDate: form.paymentSheetDate,
     paymentSheetDateLabel: form.paymentSheetDateLabel,
     merchantName: form.merchantName,
-    merchantId: form.merchantId || undefined,
-    merchantMappingId: form.merchantMappingId || undefined,
-    mid: form.mid,
+    merchantId: isAgentEntry ? undefined : form.merchantId || undefined,
+    merchantMappingId: isAgentEntry
+      ? undefined
+      : form.merchantMappingId || undefined,
+    mid: isAgentEntry ? undefined : form.mid,
     bankLabel: hideBankAndDates ? "" : form.bankLabel,
     startDate: hideBankAndDates ? undefined : form.startDate || undefined,
     endDate: hideBankAndDates ? undefined : form.endDate || undefined,

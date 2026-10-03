@@ -256,36 +256,53 @@ export const getMiscellaneousPayment = async (req, res) => {
 };
 
 export const createMiscellaneousPayment = async (req, res) => {
+  const isAgentEntry = payload.entryType === "agent";
   const payload = { ...req.body };
 
   let merchant = null;
 
-  if (payload.merchantId) {
-    merchant = await Merchant.findById(payload.merchantId);
+  if (!isAgentEntry && !payload.merchantId && !payload.merchantName) {
+    return res.status(400).json({
+      success: false,
+      message: "Merchant is required",
+    });
+  }
 
-    if (!merchant) {
-      return res.status(404).json({
-        success: false,
-        message: "Merchant not found",
-      });
-    }
-  } else {
-    const merchantName = payload.merchantName.trim();
+  if (isAgentEntry && !String(payload.merchantName || "").trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Agent name is required",
+    });
+  }
 
-    merchant = await Merchant.findOne({ merchantName }).lean();
+  if (!isAgentEntry) {
+    if (payload.merchantId) {
+      merchant = await Merchant.findById(payload.merchantId);
 
-    if (!merchant) {
-      try {
-        merchant = await Merchant.create({
-          merchantName,
-          merchantTag: resolveMerchantTag(merchantName),
-          status: "active",
+      if (!merchant) {
+        return res.status(404).json({
+          success: false,
+          message: "Merchant not found",
         });
-      } catch (error) {
-        if (error.code === 11000) {
-          merchant = await Merchant.findOne({ merchantName }).lean();
-        } else {
-          throw error;
+      }
+    } else {
+      const merchantName = String(payload.merchantName || "").trim();
+
+      merchant = await Merchant.findOne({ merchantName }).lean();
+
+      if (!merchant) {
+        try {
+          merchant = await Merchant.create({
+            merchantName,
+            merchantTag: resolveMerchantTag(merchantName),
+            status: "active",
+          });
+        } catch (error) {
+          if (error.code === 11000) {
+            merchant = await Merchant.findOne({ merchantName }).lean();
+          } else {
+            throw error;
+          }
         }
       }
     }
@@ -317,11 +334,13 @@ export const createMiscellaneousPayment = async (req, res) => {
 
     bankLabel: payload.bankLabel,
 
-    merchantId: merchant._id,
-    merchantName: merchant.merchantName,
-    merchantMappingId,
+    merchantId: isAgentEntry ? null : merchant?._id,
+    merchantName: isAgentEntry
+      ? String(payload.merchantName || "").trim()
+      : merchant?.merchantName,
+    merchantMappingId: isAgentEntry ? null : merchantMappingId,
 
-    mid: payload.mid,
+    mid: isAgentEntry ? undefined : payload.mid,
     startDate: payload.startDate ? new Date(payload.startDate) : undefined,
     endDate: payload.endDate ? new Date(payload.endDate) : undefined,
 

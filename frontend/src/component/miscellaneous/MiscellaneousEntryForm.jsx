@@ -21,6 +21,7 @@ export default function MiscellaneousEntryForm({
   acquirerOptions = [],
   onChange,
 }) {
+  const isAgentEntry = form.entryType === "agent";
   const hideBankAndDates = shouldHideMiscellaneousBankAndDates(form.entryType);
 
   return (
@@ -41,40 +42,57 @@ export default function MiscellaneousEntryForm({
         />
       </FormField>
 
-      {/* Merchant */}
-      <FormField
-        label="Merchant Name"
-        helper="Merchant connected to this entry."
-        required
-      >
-        <SearchableDropdown
-          value={form.merchantName}
-          options={merchantOptions}
-          placeholder="Select merchant"
-          searchPlaceholder="Search merchant..."
-          onChange={(value) => onChange("merchantName", value)}
-        />
-      </FormField>
+      {isAgentEntry ? (
+        <FormField
+          label="Agent Name"
+          helper="Enter the agent name for this entry."
+          required
+          className="md:col-span-2"
+        >
+          <input
+            type="text"
+            value={form.merchantName}
+            onChange={(event) => onChange("merchantName", event.target.value)}
+            placeholder="Enter agent name"
+            className="form-input"
+          />
+        </FormField>
+      ) : (
+        <>
+          <FormField
+            label="Merchant Name"
+            helper="Merchant connected to this entry."
+            required
+          >
+            <SearchableDropdown
+              value={form.merchantName}
+              options={merchantOptions}
+              placeholder="Select merchant"
+              searchPlaceholder="Search merchant..."
+              onChange={(value) => onChange("merchantName", value)}
+            />
+          </FormField>
 
-      {/* MID */}
-      <FormField
-        label="MID No."
-        helper="Merchant MID associated with this entry."
-        required
-      >
-        <input
-          type="text"
-          inputMode="numeric"
-          value={form.mid}
-          onChange={(event) => {
-            const numericValue = event.target.value.replace(/\D/g, "");
+          <FormField
+            label="MID No."
+            helper="Merchant MID associated with this entry."
+            required
+          >
+            <input
+              type="text"
+              inputMode="numeric"
+              value={form.mid}
+              onChange={(event) => {
+                const numericValue = event.target.value.replace(/\D/g, "");
 
-            onChange("mid", numericValue);
-          }}
-          placeholder="Merchant MID"
-          className="form-input"
-        />
-      </FormField>
+                onChange("mid", numericValue);
+              }}
+              placeholder="Merchant MID"
+              className="form-input"
+            />
+          </FormField>
+        </>
+      )}
 
       {/* Payment Sheet */}
       <FormField

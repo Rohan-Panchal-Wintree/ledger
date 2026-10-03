@@ -158,6 +158,15 @@ export default function Miscellaneous() {
                   endDate: "",
                 }
               : {}),
+
+            ...(value === "agent"
+              ? {
+                  merchantName: "",
+                  merchantId: "",
+                  merchantMappingId: "",
+                  mid: "",
+                }
+              : {}),
           };
         }
 
