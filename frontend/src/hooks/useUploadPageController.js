@@ -14,7 +14,7 @@ import {
   useUploadCountryMaster,
 } from "../queries/uploadQueries";
 
-import { getErrorMessage } from "../utils/appUtils";
+import { formatDateShortMonth, getErrorMessage } from "../utils/appUtils";
 import { parseUploadFileInWorker } from "../utils/uploadWorkerClient";
 
 import {
@@ -753,10 +753,19 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
       return;
     }
 
+    const uploadDate = new Date();
+
+    const reportDate = uploadDate.toISOString().slice(0, 10);
+
+    const batchName = `${formatDateShortMonth(uploadDate)} Settlement`;
+    s;
+
     try {
       const response = await uploadSettlementTransactionsMutation.mutateAsync({
         datestampFile,
         timestampFile,
+        reportDate,
+        batchName,
       });
 
       setSettlementTransactionFiles({

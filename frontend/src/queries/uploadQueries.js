@@ -103,9 +103,19 @@ async function uploadCountryMasterApi(file) {
 async function uploadSettlementBatchTransactionsApi({
   datestampFile = null,
   timestampFile = null,
+  reportDate = "",
+  batchName = "",
 } = {}) {
   if (!datestampFile && !timestampFile) {
     throw new Error("Please select at least one settlement transaction file.");
+  }
+
+  if (!reportDate) {
+    throw new Error("Report date is required.");
+  }
+
+  if (!batchName) {
+    throw new Error("Batch name is required.");
   }
 
   const formData = new FormData();
@@ -117,6 +127,9 @@ async function uploadSettlementBatchTransactionsApi({
   if (timestampFile) {
     formData.append("timestampFile", timestampFile);
   }
+
+  formData.append("reportDate", reportDate);
+  formData.append("batchName", batchName);
 
   const response = await merchantSettlementApi.post(
     "/settlement-batches/upload",

@@ -53,3 +53,17 @@ export function formatInteger(value) {
     maximumFractionDigits: 0,
   });
 }
+
+export function formatDateShortMonth(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
