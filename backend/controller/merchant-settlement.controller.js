@@ -317,47 +317,112 @@ const parseAccountIds = (value) =>
 |--------------------------------------------------------------------------
 | Status rules
 |--------------------------------------------------------------------------
+|
+| TEAM RULE
+|
+| DATESTAMP
+| Failed:
+| - AUTH FAILED
+| - CONFIRMATION STARTED
+|
+| Success:
+| - CAPTURE SUCCESSFUL
+| - SETTLED
+| - RR SENT
+| - REVERSED
+| - CHARGEBACK
+| - CHARGEBACK REVERSED
+|
+| TIMESTAMP
+| Adjustments only:
+| - REVERSED
+| - CHARGEBACK
+| - CHARGEBACK REVERSED
+|
 */
 
-const DATESTAMP_ALLOWED_STATUSES = new Set([
-	"SETTLED",
+const DATESTAMP_SUCCESS_STATUSES = new Set([
 	"CAPTURE SUCCESSFUL",
+	"SETTLED",
+	"RR SENT",
+	"REVERSED",
+	"CHARGEBACK",
+	"CHARGEBACK REVERSED",
+
+	/*
+	 * Keep these two aliases because your old code already supported them.
+	 * If upstream guarantees they never occur, they can later be removed.
+	 */
 	"CAPTURED",
 	"RR SETTLE",
+]);
+
+const DATESTAMP_FAILED_STATUSES = new Set([
 	"AUTH FAILED",
+	"CONFIRMATION STARTED",
 ]);
 
-const TIMESTAMP_ALLOWED_STATUSES = new Set(["REVERSED", "CHARGEBACK"]);
-
-const SUCCESS_STATUSES = new Set([
-	"SETTLED",
-	"CAPTURE SUCCESSFUL",
-	"CAPTURED",
-	"RR SETTLE",
+const TIMESTAMP_ADJUSTMENT_STATUSES = new Set([
+	"REVERSED",
+	"CHARGEBACK",
+	"CHARGEBACK REVERSED",
 ]);
 
-const DECLINE_STATUSES = new Set(["AUTH FAILED"]);
-const REVERSAL_STATUSES = new Set(["REVERSED"]);
-const CHARGEBACK_STATUSES = new Set(["CHARGEBACK"]);
+const isDatestampSource = (sourceFileType) =>
+	normalizeUpper(sourceFileType) === "DATESTAMP";
+
+const isTimestampSource = (sourceFileType) =>
+	normalizeUpper(sourceFileType) === "TIMESTAMP";
+
+/*
+ * Success means SUCCESS only from DATESTAMP.
+ * A timestamp CHARGEBACK / REVERSED is NOT success.
+ */
+const isSuccessStatus = (status, sourceFileType) =>
+	isDatestampSource(sourceFileType) &&
+	DATESTAMP_SUCCESS_STATUSES.has(normalizeUpper(status));
+
+/*
+ * Failed means only DATESTAMP:
+ * AUTH FAILED or CONFIRMATION STARTED.
+ */
+const isDeclineStatus = (status, sourceFileType) =>
+	isDatestampSource(sourceFileType) &&
+	DATESTAMP_FAILED_STATUSES.has(normalizeUpper(status));
+
+/*
+ * Adjustments come only from TIMESTAMP.
+ */
+const isAdjustmentStatus = (status, sourceFileType) =>
+	isTimestampSource(sourceFileType) &&
+	TIMESTAMP_ADJUSTMENT_STATUSES.has(normalizeUpper(status));
+
+const isReversalStatus = (status, sourceFileType) =>
+	isTimestampSource(sourceFileType) && normalizeUpper(status) === "REVERSED";
+
+const isChargebackStatus = (status, sourceFileType) =>
+	isTimestampSource(sourceFileType) && normalizeUpper(status) === "CHARGEBACK";
+
+const isChargebackReversedStatus = (status, sourceFileType) =>
+	isTimestampSource(sourceFileType) &&
+	normalizeUpper(status) === "CHARGEBACK REVERSED";
 
 const isAllowedStatusForSource = (status, sourceFileType) => {
 	const value = normalizeUpper(status);
 
-	if (sourceFileType === "timestamp") {
-		return TIMESTAMP_ALLOWED_STATUSES.has(value);
+	if (isTimestampSource(sourceFileType)) {
+		return TIMESTAMP_ADJUSTMENT_STATUSES.has(value);
 	}
 
-	return DATESTAMP_ALLOWED_STATUSES.has(value);
-};
+	if (isDatestampSource(sourceFileType)) {
+		return (
+			DATESTAMP_SUCCESS_STATUSES.has(value) ||
+			DATESTAMP_FAILED_STATUSES.has(value)
+		);
+	}
 
-const isSuccessStatus = (status) =>
-	SUCCESS_STATUSES.has(normalizeUpper(status));
-const isDeclineStatus = (status) =>
-	DECLINE_STATUSES.has(normalizeUpper(status));
-const isReversalStatus = (status) =>
-	REVERSAL_STATUSES.has(normalizeUpper(status));
-const isChargebackStatus = (status) =>
-	CHARGEBACK_STATUSES.has(normalizeUpper(status));
+	return false;
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -1503,25 +1568,47 @@ const isMissingRequiredTransactionField = (row) =>
 	!row.paymentBrand ||
 	row.paymentBrand === "NA";
 
-const calculateFees = ({ row, fee }) => {
+const calculateFees = ({ row, fee, sourceFileType }) => {
 	const status = normalizeUpper(row.status);
 
-	const isSuccess = isSuccessStatus(status);
-	const isDecline = isDeclineStatus(status);
-	const isReversal = isReversalStatus(status);
-	const isChargeback = isChargebackStatus(status);
+	const isSuccess = isSuccessStatus(status, sourceFileType);
+	const isDecline = isDeclineStatus(status, sourceFileType);
 
+	const isReversalAdjustment = isReversalStatus(status, sourceFileType);
+
+	const isChargebackAdjustment = isChargebackStatus(status, sourceFileType);
+
+	const isChargebackReversedAdjustment = isChargebackReversedStatus(
+		status,
+		sourceFileType,
+	);
+
+	/*
+	 * DATESTAMP SUCCESS
+	 *
+	 * All statuses that the team considers successful use the
+	 * captured/auth amount as the successful transaction amount.
+	 *
+	 * This includes REVERSED / CHARGEBACK in DATESTAMP because
+	 * the team explicitly classifies those DATESTAMP rows as success.
+	 */
 	const salesAmount = isSuccess
 		? Number(row.capturedAmountFromFile || row.authAmount || 0)
 		: 0;
 
-	const reversalAmount = isReversal
+	/*
+	 * TIMESTAMP REVERSED = adjustment.
+	 */
+	const reversalAmount = isReversalAdjustment
 		? Number(
 				row.refundAmount || row.capturedAmountFromFile || row.authAmount || 0,
 			)
 		: 0;
 
-	const chargebackAmountValue = isChargeback
+	/*
+	 * TIMESTAMP CHARGEBACK = adjustment.
+	 */
+	const chargebackAmountValue = isChargebackAdjustment
 		? Number(
 				row.chargebackAmount ||
 					row.capturedAmountFromFile ||
@@ -1531,39 +1618,49 @@ const calculateFees = ({ row, fee }) => {
 		: 0;
 
 	/*
-	Business rule:
-	Successful settled activity includes sales + reversals + chargebacks.
-	Therefore MDR and approval are applied to all three.
-*/
-	const isSettledActivity = isSuccess || isReversal || isChargeback;
+	 * IMPORTANT:
+	 * CHARGEBACK REVERSED is classified as an adjustment,
+	 * but the team has only given us the COUNT classification.
+	 *
+	 * Do not invent a debit/credit amount here until they confirm
+	 * its financial treatment.
+	 */
+	const chargebackReversedAmountValue = isChargebackReversedAdjustment ? 0 : 0;
 
-	const capturedAmount = isSuccess
-		? salesAmount
-		: isReversal
-			? reversalAmount
-			: isChargeback
-				? chargebackAmountValue
-				: 0;
+	/*
+	 * Settled / success amount comes ONLY from DATESTAMP success.
+	 *
+	 * Timestamp adjustments must not increase success amount.
+	 */
+	const capturedAmount = salesAmount;
 
 	const capturedCents = toCents(capturedAmount);
 
-	const mdrFee = isSettledActivity
+	/*
+	 * MDR, Approval and RR apply to actual successful processing rows,
+	 * not timestamp adjustment rows.
+	 */
+	const mdrFee = isSuccess
 		? fromCents(percentFeeCents(capturedCents, fee.mdrPercent))
 		: 0;
 
-	const rollingReserveAmount = isSettledActivity
+	const rollingReserveAmount = isSuccess
 		? fromCents(percentFeeCents(capturedCents, fee.rollingReservePercent))
 		: 0;
 
-	const approvalFee = isSettledActivity ? roundMoney(fee.approvalFee) : 0;
-	const declineFee = isDecline ? roundMoney(fee.declineFee) : 0;
-	const reversalFee = isReversal ? roundMoney(fee.reversalFee) : 0;
-	const chargebackFee = isChargeback ? roundMoney(fee.chargebackFee) : 0;
+	const approvalFee = isSuccess ? roundMoney(fee.approvalFee) : 0;
 
 	/*
-		Settlement expense is intentionally 0 here.
-		It must be calculated later at report level after all base deductions.
-	*/
+	 * CONFIRMATION STARTED belongs to FAILED according to team rule.
+	 */
+	const declineFee = isDecline ? roundMoney(fee.declineFee) : 0;
+
+	const reversalFee = isReversalAdjustment ? roundMoney(fee.reversalFee) : 0;
+
+	const chargebackFee = isChargebackAdjustment
+		? roundMoney(fee.chargebackFee)
+		: 0;
+
 	const settlementExpense = 0;
 
 	const totalFees = roundMoney(
@@ -1574,13 +1671,22 @@ const calculateFees = ({ row, fee }) => {
 			chargebackFee +
 			rollingReserveAmount +
 			reversalAmount +
-			chargebackAmountValue,
+			chargebackAmountValue +
+			chargebackReversedAmountValue,
 	);
 
+	/*
+	 * For timestamp adjustment:
+	 * capturedAmount = 0
+	 *
+	 * therefore reversal / chargeback naturally produces
+	 * negative settlement impact.
+	 */
 	const netSettlement = roundMoney(capturedAmount - totalFees);
 
 	return {
 		capturedAmount,
+
 		reversalAmount,
 		chargebackAmountValue,
 
@@ -1693,16 +1799,22 @@ const processTransactionFile = async ({
 		row = normalizeTransactionForMatching(row);
 
 		/*
-		 * Datestamp:
-		 * SETTLED
+		 * Datestamp SUCCESS:
 		 * CAPTURE SUCCESSFUL
-		 * CAPTURED
-		 * RR SETTLE
-		 * AUTH FAILED
-		 *
-		 * Timestamp:
+		 * SETTLED
+		 * RR SENT
 		 * REVERSED
 		 * CHARGEBACK
+		 * CHARGEBACK REVERSED
+		 *
+		 * Datestamp FAILED:
+		 * AUTH FAILED
+		 * CONFIRMATION STARTED
+		 *
+		 * Timestamp ADJUSTMENTS:
+		 * REVERSED
+		 * CHARGEBACK
+		 * CHARGEBACK REVERSED
 		 */
 		if (!isAllowedStatusForSource(row.status, sourceFileType)) {
 			skippedRows += 1;
@@ -1745,6 +1857,7 @@ const processTransactionFile = async ({
 			const feeAmounts = calculateFees({
 				row,
 				fee,
+				sourceFileType,
 			});
 
 			matchedRows += 1;
@@ -2315,30 +2428,92 @@ const buildMerchantReportData = async ({
 		const currency = txn.currency || "UNKNOWN";
 		const brandGroup = getPaymentBrandGroup(txn.paymentBrand);
 		const fee = txn.feeConfigId || {};
-		const isSuccessTxn = isSuccessStatus(status);
-		const isDeclineTxn = isDeclineStatus(status);
-		const isAdjustmentTxn =
-			isReversalStatus(status) || isChargebackStatus(status);
+
+		const sourceFileType = txn.sourceFileType;
+
+		const isSuccessTxn = isSuccessStatus(status, sourceFileType);
+
+		const isDeclineTxn = isDeclineStatus(status, sourceFileType);
+
+		const isAdjustmentTxn = isAdjustmentStatus(status, sourceFileType);
+
+		const isReversalTxn = isReversalStatus(status, sourceFileType);
+
+		const isChargebackTxn = isChargebackStatus(status, sourceFileType);
+
+		const isChargebackReversedTxn = isChargebackReversedStatus(
+			status,
+			sourceFileType,
+		);
+
 		const day = txn.transactionDate
 			? new Date(txn.transactionDate).toISOString().slice(0, 10)
 			: "UNKNOWN";
 
-		const isSettledActivityTxn =
-			isSuccessStatus(status) ||
-			isReversalStatus(status) ||
-			isChargebackStatus(status);
+		/*
+		 * HEADLINE COUNTS
+		 */
+		if (isSuccessTxn) {
+			summary.successTransactions += 1;
+		}
 
-		if (isSettledActivityTxn) summary.successTransactions += 1;
-		if (isDeclineStatus(status)) summary.declinedTransactions += 1;
-		if (isReversalStatus(status)) summary.reversalTransactions += 1;
-		if (isChargebackStatus(status)) summary.chargebackTransactions += 1;
+		if (isDeclineTxn) {
+			summary.declinedTransactions += 1;
+		}
 
-		if (status === "SETTLED") summary.settledTransactions += 1;
-		if (status === "CAPTURE SUCCESSFUL" || status === "CAPTURED") {
+		/*
+		 * Adjustments are kept OUT of successful.
+		 */
+		if (isReversalTxn) {
+			summary.reversalTransactions += 1;
+		}
+
+		/*
+		 * Keep CHARGEBACK REVERSED inside chargebackTransactions
+		 * so your existing PDF:
+		 *
+		 * reversals + chargebacks = adjustments
+		 *
+		 * still works without changing your Mongo summary schema.
+		 */
+		if (isChargebackTxn || isChargebackReversedTxn) {
+			summary.chargebackTransactions += 1;
+		}
+
+		/*
+		 * Detail counters.
+		 */
+		if (isDatestampSource(sourceFileType) && status === "SETTLED") {
+			summary.settledTransactions += 1;
+		}
+
+		if (
+			isDatestampSource(sourceFileType) &&
+			(status === "CAPTURE SUCCESSFUL" || status === "CAPTURED")
+		) {
 			summary.captureSuccessfulTransactions += 1;
 		}
-		if (status === "RR SETTLE") summary.rrSettleTransactions += 1;
-		if (status === "AUTH FAILED") summary.authFailedTransactions += 1;
+
+		if (
+			isDatestampSource(sourceFileType) &&
+			(status === "RR SENT" || status === "RR SETTLE")
+		) {
+			summary.rrSettleTransactions += 1;
+		}
+
+		if (
+			isDatestampSource(sourceFileType) &&
+			(status === "AUTH FAILED" || status === "CONFIRMATION STARTED")
+		) {
+			summary.authFailedTransactions += 1;
+		}
+
+		// if (status === "SETTLED") summary.settledTransactions += 1;
+		// if (status === "CAPTURE SUCCESSFUL" || status === "CAPTURED") {
+		// 	summary.captureSuccessfulTransactions += 1;
+		// }
+		// if (status === "RR SETTLE") summary.rrSettleTransactions += 1;
+		// if (status === "AUTH FAILED") summary.authFailedTransactions += 1;
 
 		summaryCents.grossAmount = addCents(
 			summaryCents.grossAmount,
@@ -2417,7 +2592,11 @@ const buildMerchantReportData = async ({
 
 		currencySummary[currency] = currencySummary[currency] || {
 			currency,
+
 			txns: 0,
+			successTxns: 0,
+			failedTxns: 0,
+			adjustmentTxns: 0,
 
 			capturedAmount: 0,
 			reversalAmount: 0,
@@ -2440,6 +2619,18 @@ const buildMerchantReportData = async ({
 		};
 
 		currencySummary[currency].txns += 1;
+
+		if (isSuccessTxn) {
+			currencySummary[currency].successTxns += 1;
+		}
+
+		if (isDeclineTxn) {
+			currencySummary[currency].failedTxns += 1;
+		}
+
+		if (isAdjustmentTxn) {
+			currencySummary[currency].adjustmentTxns += 1;
+		}
 		addMoneyToBucket(
 			currencySummary[currency],
 			"capturedAmount",
@@ -2594,7 +2785,7 @@ const buildMerchantReportData = async ({
 			const bucket = adjustmentSummary[adjustmentKey];
 
 			if (
-				isReversalStatus(status) &&
+				isReversalStatus(status, sourceFileType) &&
 				!Number(bucket.reversalFeeRate || 0) &&
 				Number(fee.reversalFee || 0)
 			) {
@@ -2602,7 +2793,7 @@ const buildMerchantReportData = async ({
 			}
 
 			if (
-				isChargebackStatus(status) &&
+				isChargebackStatus(status, sourceFileType) &&
 				!Number(bucket.chargebackFeeRate || 0) &&
 				Number(fee.chargebackFee || 0)
 			) {
@@ -2634,10 +2825,7 @@ const buildMerchantReportData = async ({
 			modeSummary[txn.transactionMode].txns += 1;
 		}
 
-		if (
-			(isSuccessTxn || isAdjustmentTxn) &&
-			Number(txn.capturedAmount || 0) > 0
-		) {
+		if (isSuccessTxn && Number(txn.capturedAmount || 0) > 0) {
 			const matchedFeeCountryScope =
 				txn.matchedFeeCountryScope || fee.countryScope || "";
 			const matchedFeeCountryCode =
@@ -2736,9 +2924,12 @@ const buildMerchantReportData = async ({
 			daySummaryMap[dayKey] = daySummaryMap[dayKey] || {
 				date: day,
 				currency,
+
 				totalTxns: 0,
 				successTxns: 0,
 				failedTxns: 0,
+				adjustmentTxns: 0,
+
 				capturedAmount: 0,
 				totalFees: 0,
 				netSettlement: 0,
@@ -2748,7 +2939,7 @@ const buildMerchantReportData = async ({
 
 			bucket.totalTxns += 1;
 
-			if (isSuccessTxn || isAdjustmentTxn) {
+			if (isSuccessTxn) {
 				bucket.successTxns += 1;
 			}
 
@@ -2756,8 +2947,14 @@ const buildMerchantReportData = async ({
 				bucket.failedTxns += 1;
 			}
 
+			if (isAdjustmentTxn) {
+				bucket.adjustmentTxns += 1;
+			}
+
 			addMoneyToBucket(bucket, "capturedAmount", txn.capturedAmount);
+
 			addMoneyToBucket(bucket, "totalFees", txn.totalFees);
+
 			addMoneyToBucket(bucket, "netSettlement", txn.netSettlement);
 		}
 	}
@@ -4666,6 +4863,95 @@ export const buildSettlementPdfBuffer = async (report) =>
 
 		doc.y = cardY + cardHeight + 22;
 
+		/*
+|--------------------------------------------------------------------------
+| Transaction Count by Currency
+|--------------------------------------------------------------------------
+*/
+
+		const currencyTransactionRows = Object.values(currencySummary || {})
+			.map((row) => ({
+				currency: row.currency || "-",
+				successTxns: Number(row.successTxns || 0),
+				failedTxns: Number(row.failedTxns || 0),
+				adjustmentTxns: Number(row.adjustmentTxns || 0),
+				totalTxns: Number(row.txns || 0),
+			}))
+			.sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
+
+		const currencyTransactionTotalRow = {
+			currency: "TOTAL",
+
+			successTxns: currencyTransactionRows.reduce(
+				(total, row) => total + row.successTxns,
+				0,
+			),
+
+			failedTxns: currencyTransactionRows.reduce(
+				(total, row) => total + row.failedTxns,
+				0,
+			),
+
+			adjustmentTxns: currencyTransactionRows.reduce(
+				(total, row) => total + row.adjustmentTxns,
+				0,
+			),
+
+			totalTxns: currencyTransactionRows.reduce(
+				(total, row) => total + row.totalTxns,
+				0,
+			),
+
+			_bold: true,
+			_highlight: true,
+		};
+
+		drawPdfTable({
+			doc,
+			FONT,
+			title: "Transaction Count by Currency",
+
+			columns: [
+				{
+					label: "Currency",
+					key: "currency",
+					width: usableWidth * 0.2,
+					bold: true,
+				},
+				{
+					label: "Success",
+					value: (row) => formatInt(row.successTxns || 0),
+					width: usableWidth * 0.2,
+					align: "right",
+				},
+				{
+					label: "Failed",
+					value: (row) => formatInt(row.failedTxns || 0),
+					width: usableWidth * 0.2,
+					align: "right",
+				},
+				{
+					label: "Adjustments",
+					value: (row) => formatInt(row.adjustmentTxns || 0),
+					width: usableWidth * 0.2,
+					align: "right",
+				},
+				{
+					label: "Total",
+					value: (row) => formatInt(row.totalTxns || 0),
+					width: usableWidth * 0.2,
+					align: "right",
+					bold: true,
+				},
+			],
+
+			rows: [...currencyTransactionRows, currencyTransactionTotalRow],
+
+			fontSize: 8,
+			minRowHeight: 28,
+			rowPaddingY: 7,
+		});
+
 		const detailedBrandSections = buildDetailedBrandSections({
 			feeRateSummary,
 			declinedBrandSummary,
@@ -5415,48 +5701,54 @@ export const buildSettlementPdfBuffer = async (report) =>
 				{
 					label: "Date",
 					key: "date",
-					width: usableWidth * 0.16,
+					width: usableWidth * 0.14,
 					bold: true,
 				},
 				{
 					label: "Currency",
 					key: "currency",
-					width: usableWidth * 0.1,
+					width: usableWidth * 0.09,
 				},
 				{
 					label: "Total",
 					value: (row) => row.totalTxns ?? row.txns ?? 0,
-					width: usableWidth * 0.09,
+					width: usableWidth * 0.08,
 					align: "right",
 				},
 				{
 					label: "Success",
 					value: (row) => row.successTxns ?? 0,
-					width: usableWidth * 0.1,
+					width: usableWidth * 0.09,
 					align: "right",
 				},
 				{
 					label: "Failed",
 					value: (row) => row.failedTxns ?? 0,
-					width: usableWidth * 0.1,
+					width: usableWidth * 0.09,
+					align: "right",
+				},
+				{
+					label: "Adjust.",
+					value: (row) => row.adjustmentTxns ?? 0,
+					width: usableWidth * 0.09,
 					align: "right",
 				},
 				{
 					label: "Settled Activity",
 					value: (row) => formatMoney(row.capturedAmount, row.currency),
-					width: usableWidth * 0.18,
+					width: usableWidth * 0.17,
 					align: "right",
 				},
 				{
 					label: "Charges",
 					value: (row) => formatMoney(row.totalFees, row.currency),
-					width: usableWidth * 0.13,
+					width: usableWidth * 0.12,
 					align: "right",
 				},
 				{
 					label: "Net",
 					value: (row) => formatMoney(row.netSettlement, row.currency),
-					width: usableWidth * 0.14,
+					width: usableWidth * 0.13,
 					align: "right",
 					bold: true,
 				},
@@ -5466,6 +5758,26 @@ export const buildSettlementPdfBuffer = async (report) =>
 
 		doc.end();
 	});
+
+// export const downloadMerchantSettlementPdf = async (req, res) => {
+// 	const report = await MerchantSettlementReport.findById(req.params.id).lean();
+
+// 	if (!report) {
+// 		return res.status(404).json({
+// 			success: false,
+// 			message: "Report not found",
+// 		});
+// 	}
+
+// 	const buffer = await buildSettlementPdfBuffer(report);
+
+// 	const fileName = `${slugify(report.merchantName)}-${report.memberId}-settlement.pdf`;
+
+// 	res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+// 	res.setHeader("Content-Type", "application/pdf");
+
+// 	return res.send(buffer);
+// };
 
 export const downloadMerchantSettlementPdf = async (req, res) => {
 	const report = await MerchantSettlementReport.findById(req.params.id).lean();
@@ -5479,10 +5791,22 @@ export const downloadMerchantSettlementPdf = async (req, res) => {
 
 	const buffer = await buildSettlementPdfBuffer(report);
 
-	const fileName = `${slugify(report.merchantName)}-${report.memberId}-settlement.pdf`;
+	const merchantName = slugify(report.merchantName || "merchant") || "merchant";
 
-	res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+	const memberId = cleanText(report.memberId || "unknown");
+
+	const fileName = `${merchantName}-${memberId}-settlement.pdf`;
+
 	res.setHeader("Content-Type", "application/pdf");
+
+	res.setHeader(
+		"Content-Disposition",
+		`attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+	);
+
+	res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+
+	res.setHeader("Content-Length", buffer.length);
 
 	return res.send(buffer);
 };
@@ -5639,19 +5963,23 @@ export const buildSettlementExcelBuffer = async (report) => {
 	);
 
 	const successfulRows = matchedTransactions
-		.filter((txn) => isSuccessStatus(txn.status))
+		.filter((txn) => isSuccessStatus(txn.status, txn.sourceFileType))
 		.map(transactionToExcelRow);
 
 	const declinedRows = matchedTransactions
-		.filter((txn) => isDeclineStatus(txn.status))
+		.filter((txn) => isDeclineStatus(txn.status, txn.sourceFileType))
 		.map(transactionToExcelRow);
 
 	const reversalRows = matchedTransactions
-		.filter((txn) => isReversalStatus(txn.status))
+		.filter((txn) => isReversalStatus(txn.status, txn.sourceFileType))
 		.map(transactionToExcelRow);
 
 	const chargebackRows = matchedTransactions
-		.filter((txn) => isChargebackStatus(txn.status))
+		.filter(
+			(txn) =>
+				isChargebackStatus(txn.status, txn.sourceFileType) ||
+				isChargebackReversedStatus(txn.status, txn.sourceFileType),
+		)
 		.map(transactionToExcelRow);
 
 	xlsx.utils.book_append_sheet(
@@ -5696,6 +6024,31 @@ export const buildSettlementExcelBuffer = async (report) => {
 	});
 };
 
+// export const downloadMerchantSettlementExcel = async (req, res) => {
+// 	const report = await MerchantSettlementReport.findById(req.params.id).lean();
+
+// 	if (!report) {
+// 		return res.status(404).json({
+// 			success: false,
+// 			message: "Report not found",
+// 		});
+// 	}
+
+// 	const buffer = await buildSettlementExcelBuffer(report);
+
+// 	res.setHeader(
+// 		"Content-Disposition",
+// 		`attachment; filename=merchant-settlement-${report.memberId}.xlsx`,
+// 	);
+
+// 	res.setHeader(
+// 		"Content-Type",
+// 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+// 	);
+
+// 	return res.send(buffer);
+// };
+
 export const downloadMerchantSettlementExcel = async (req, res) => {
 	const report = await MerchantSettlementReport.findById(req.params.id).lean();
 
@@ -5708,15 +6061,25 @@ export const downloadMerchantSettlementExcel = async (req, res) => {
 
 	const buffer = await buildSettlementExcelBuffer(report);
 
-	res.setHeader(
-		"Content-Disposition",
-		`attachment; filename=merchant-settlement-${report.memberId}.xlsx`,
-	);
+	const merchantName = slugify(report.merchantName || "merchant") || "merchant";
+
+	const memberId = cleanText(report.memberId || "unknown");
+
+	const fileName = `${merchantName}-${memberId}-settlement.xlsx`;
 
 	res.setHeader(
 		"Content-Type",
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 	);
+
+	res.setHeader(
+		"Content-Disposition",
+		`attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+	);
+
+	res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+
+	res.setHeader("Content-Length", buffer.length);
 
 	return res.send(buffer);
 };
