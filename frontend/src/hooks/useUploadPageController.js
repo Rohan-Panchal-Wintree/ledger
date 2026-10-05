@@ -758,7 +758,6 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
     const reportDate = uploadDate.toISOString().slice(0, 10);
 
     const batchName = `${formatDateShortMonth(uploadDate)} Settlement`;
-    s;
 
     try {
       const response = await uploadSettlementTransactionsMutation.mutateAsync({
