@@ -16,6 +16,7 @@ import Spinner from "../component/UI/Spinner";
 import Tabs from "../component/UI/Tabs";
 import Button from "../component/UI/Button";
 import Modal from "../component/UI/Modal";
+import DatePicker from "../component/UI/DatePicker";
 
 import UploadIssuesSection from "../component/upload/UploadIssuesSection";
 
@@ -88,6 +89,7 @@ export default function Upload() {
     countryFile,
     isSettlementTransactionsTab,
     hasBothSettlementTransactionFiles,
+    hasValidSettlementPeriod,
 
     currentFileLimit,
     currentFileCount,
@@ -108,6 +110,9 @@ export default function Upload() {
     settlementTransactionFileList,
     isSettlementTransactionsDragging,
     uploadSettlementTransactionsMutation,
+
+    settlementDateMode,
+    settlementDateValue,
 
     reconcileUnmatchedMutation,
     reviewRowsQuery,
@@ -144,6 +149,9 @@ export default function Upload() {
     handleRemoveSettlementTransactionFiles,
     handleRemoveSettlementTransactionFile,
     handleUploadSettlementTransactions,
+    handleSettlementDateModeChange,
+    handleSettlementDateChange,
+    handleClearSettlementDate,
     handleEditInvalidRow,
     handleCloseInvalidRowModal,
     handleSaveInvalidRow,
@@ -480,24 +488,55 @@ export default function Upload() {
           isProcessing={uploadCountryMasterMutation.isPending}
         />
       ) : isSettlementTransactionsTab ? (
-        <UploadFile
-          simpleUpload
-          mode={settlementTransactionFileList.length > 0 ? "filled" : "empty"}
-          title="Upload Settlement Transaction Files"
-          description='Select exactly two XLSX or CSV files: one filename containing "datestamp" and one containing "timestamp". Both files are required.'
-          dropLabel="Drop datestamp or timestamp files here"
-          selectedFiles={settlementTransactionFileList}
-          isDragging={isSettlementTransactionsDragging}
-          onBrowse={handleSettlementTransactionsBrowseClick}
-          onDragOver={handleSettlementTransactionsDragOver}
-          onDragLeave={handleSettlementTransactionsDragLeave}
-          onDrop={handleSettlementTransactionsDrop}
-          onRemoveFile={handleRemoveSettlementTransactionFile}
-          onCancel={handleRemoveSettlementTransactionFiles}
-          onProcess={handleUploadSettlementTransactions}
-          isProcessing={uploadSettlementTransactionsMutation.isPending}
-          processDisabled={!hasBothSettlementTransactionFiles}
-        />
+        <div className="space-y-5">
+          <UploadFile
+            simpleUpload
+            mode={settlementTransactionFileList.length > 0 ? "filled" : "empty"}
+            title="Upload Settlement Transaction Files"
+            description='Select exactly two XLSX or CSV files: one filename containing "datestamp" and one containing "timestamp". Both files are required.'
+            dropLabel="Drop datestamp or timestamp files here"
+            selectedFiles={settlementTransactionFileList}
+            isDragging={isSettlementTransactionsDragging}
+            onBrowse={handleSettlementTransactionsBrowseClick}
+            onDragOver={handleSettlementTransactionsDragOver}
+            onDragLeave={handleSettlementTransactionsDragLeave}
+            onDrop={handleSettlementTransactionsDrop}
+            onRemoveFile={handleRemoveSettlementTransactionFile}
+            onCancel={handleRemoveSettlementTransactionFiles}
+            onProcess={handleUploadSettlementTransactions}
+            isProcessing={uploadSettlementTransactionsMutation.isPending}
+            processDisabled={
+              !hasBothSettlementTransactionFiles || !hasValidSettlementPeriod
+            }
+          />
+
+          {hasBothSettlementTransactionFiles ? (
+            <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-5">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-on-surface">
+                  Settlement Period
+                </h3>
+
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Select the date or date range covered by these transaction
+                  files.
+                </p>
+              </div>
+
+              <DatePicker
+                mode={settlementDateMode}
+                value={settlementDateValue}
+                allowModeSwitch
+                showApply={false}
+                showClear
+                disabled={uploadSettlementTransactionsMutation.isPending}
+                onModeChange={handleSettlementDateModeChange}
+                onChange={handleSettlementDateChange}
+                onClear={handleClearSettlementDate}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : (
         <>
           {renderFileTabs()}

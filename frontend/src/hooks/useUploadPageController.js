@@ -14,7 +14,11 @@ import {
   useUploadCountryMaster,
 } from "../queries/uploadQueries";
 
-import { formatDateShortMonth, getErrorMessage } from "../utils/appUtils";
+import {
+  formatDateShortMonth,
+  getErrorMessage,
+  formatDate,
+} from "../utils/appUtils";
 import { parseUploadFileInWorker } from "../utils/uploadWorkerClient";
 
 import {
@@ -93,6 +97,10 @@ export const useUploadPageController = () => {
     datestampFile: null,
     timestampFile: null,
   });
+
+  const [settlementDateMode, setSettlementDateMode] = useState("single");
+
+  const [settlementDateValue, setSettlementDateValue] = useState("");
 
   const [
     isSettlementTransactionsDragging,
@@ -174,6 +182,16 @@ export const useUploadPageController = () => {
 
     return hasDatestampFile && hasTimestampFile;
   }, [settlementTransactionFileList]);
+
+  const hasValidSettlementPeriod = useMemo(() => {
+    if (settlementDateMode === "range") {
+      return Boolean(
+        settlementDateValue?.startDate && settlementDateValue?.endDate,
+      );
+    }
+
+    return Boolean(settlementDateValue);
+  }, [settlementDateMode, settlementDateValue]);
 
   const currentTab = tabState[activeTab] || initialTabState;
   const activeFile = currentTab.files[currentTab.activeFileIndex] || null;
@@ -716,6 +734,9 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
       timestampFile: null,
     });
 
+    setSettlementDateMode("single");
+    setSettlementDateValue("");
+
     if (settlementTransactionsInputRef.current) {
       settlementTransactionsInputRef.current.value = "";
     }
@@ -743,6 +764,36 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
     });
   }, []);
 
+  // Transaction list dater picker handleres
+
+  const handleSettlementDateModeChange = useCallback((nextMode) => {
+    setSettlementDateMode(nextMode);
+
+    setSettlementDateValue(
+      nextMode === "range"
+        ? {
+            startDate: "",
+            endDate: "",
+          }
+        : "",
+    );
+  }, []);
+
+  const handleSettlementDateChange = useCallback((value) => {
+    setSettlementDateValue(value);
+  }, []);
+
+  const handleClearSettlementDate = useCallback(() => {
+    setSettlementDateValue(
+      settlementDateMode === "range"
+        ? {
+            startDate: "",
+            endDate: "",
+          }
+        : "",
+    );
+  }, [settlementDateMode]);
+
   const handleUploadSettlementTransactions = useCallback(async () => {
     const { datestampFile, timestampFile } = settlementTransactionFiles;
 
@@ -753,11 +804,20 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
       return;
     }
 
-    const uploadDate = new Date();
+    if (!hasValidSettlementPeriod) {
+      toast.error("Please select the settlement period before uploading.");
+      return;
+    }
 
-    const reportDate = uploadDate.toISOString().slice(0, 10);
+    const isRange = settlementDateMode === "range";
 
-    const batchName = `${formatDateShortMonth(uploadDate)} Settlement`;
+    const reportDate = isRange
+      ? `${formatDate(settlementDateValue.startDate)} - ${formatDate(
+          settlementDateValue.endDate,
+        )}`
+      : formatDate(settlementDateValue);
+
+    const batchName = `${reportDate} Settlement`;
 
     try {
       const response = await uploadSettlementTransactionsMutation.mutateAsync({
@@ -771,6 +831,9 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
         datestampFile: null,
         timestampFile: null,
       });
+
+      setSettlementDateMode("single");
+      setSettlementDateValue("");
 
       if (settlementTransactionsInputRef.current) {
         settlementTransactionsInputRef.current.value = "";
@@ -798,7 +861,13 @@ Skipped rows: ${response?.skippedRows || 0}`,
         ),
       );
     }
-  }, [settlementTransactionFiles, uploadSettlementTransactionsMutation]);
+  }, [
+    settlementTransactionFiles,
+    settlementDateMode,
+    settlementDateValue,
+    hasValidSettlementPeriod,
+    uploadSettlementTransactionsMutation,
+  ]);
 
   const handleFileSelect = useCallback(
     async (files, tab) => {
@@ -1278,7 +1347,10 @@ Skipped: ${response?.skippedCount || 0}`,
       uploadCountryMasterMutation,
       settlementTransactionFiles,
       settlementTransactionFileList,
+      settlementDateMode,
+      settlementDateValue,
       isSettlementTransactionsDragging,
+      hasValidSettlementPeriod,
       uploadSettlementTransactionsMutation,
 
       reconcileUnmatchedMutation,
@@ -1316,6 +1388,9 @@ Skipped: ${response?.skippedCount || 0}`,
       handleRemoveSettlementTransactionFiles,
       handleRemoveSettlementTransactionFile,
       handleUploadSettlementTransactions,
+      handleSettlementDateModeChange,
+      handleSettlementDateChange,
+      handleClearSettlementDate,
       handleApplyReviewSearch,
       handleClearReviewSearch,
       handleOpenReviewFilters,
@@ -1340,6 +1415,8 @@ Skipped: ${response?.skippedCount || 0}`,
       displayedRows,
       settlementTransactionFileList,
       hasBothSettlementTransactionFiles,
+      settlementDateMode,
+      settlementDateValue,
       handleBrowseClick,
       handleCancel,
       handleCloseInvalidRowModal,
@@ -1363,6 +1440,9 @@ Skipped: ${response?.skippedCount || 0}`,
       handleRemoveSettlementTransactionFiles,
       handleRemoveSettlementTransactionFile,
       handleUploadSettlementTransactions,
+      handleSettlementDateModeChange,
+      handleSettlementDateChange,
+      handleClearSettlementDate,
       hasReviewIssues,
       isCurrentTabBusy,
       isCurrentTabExtracting,
@@ -1372,6 +1452,7 @@ Skipped: ${response?.skippedCount || 0}`,
       isWireSheet,
       isSettlementTransactionsDragging,
       isSettlementTransactionsTab,
+      hasValidSettlementPeriod,
       uploadSettlementTransactionsMutation,
       reconcileUnmatchedMutation,
       reviewMeta,
