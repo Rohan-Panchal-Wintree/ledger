@@ -210,7 +210,6 @@ const parseWorkbookSheets = (filePath) => {
 
 		return {
 			sheetName,
-
 			rows: rows.map((row, index) => {
 				const normalizedRow = {};
 
@@ -389,13 +388,10 @@ const normalizePaymentUploadRows = ({
 					rawRow,
 					normalizedRow: row,
 					missingFields,
-
 					message:
 						`${row.sheetName} row ${row.excelRowNumber} ` +
 						`is missing: ${missingFields.join(", ")}`,
-
 					paymentSheetDate: parseSheetDate(finalPaymentDate),
-
 					paymentSheetDateLabel,
 				});
 
@@ -1241,6 +1237,15 @@ const buildPaymentSheetS3Key = (fileName) => {
 };
 
 const storeOriginalPaymentSheetUpload = async ({ file, userId }) => {
+	const existingUpload = await SettlementUpload.findOne({
+		type: "payment_sheet",
+		fileName: file.originalname,
+	});
+
+	if (existingUpload) {
+		return existingUpload;
+	}
+
 	const s3Key = buildPaymentSheetS3Key(file.originalname);
 
 	await s3.send(
