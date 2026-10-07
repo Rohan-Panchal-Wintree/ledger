@@ -1,14 +1,7 @@
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import {
-  ArrowRightLeft,
-  FileSpreadsheet,
-  Globe2,
-  Plus,
-  ReceiptText,
-  Upload,
-} from "lucide-react";
+import { FileSpreadsheet, Globe2, Plus, ReceiptText } from "lucide-react";
 
 import PageHeader from "../component/UI/PageHeader";
 import Tabs, { readStoredTab } from "../component/UI/Tabs";
@@ -20,7 +13,6 @@ import DeleteModal from "../component/UI/DeleteModal";
 
 import { selectCurrentUser } from "../store/slices/Auth.slice.js";
 
-import MerchantSettlementTransactionRow from "../component/merchant-settlement/MerchantSettlementTransactionRow";
 import MerchantSettlementRateRow from "../component/merchant-settlement/MerchantSettlementRateRow";
 import MerchantSettlementRateForm from "../component/merchant-settlement/MerchantSettlementRateForm";
 import MerchantSettlementApprovalRow from "../component/merchant-settlement/MerchantSettlementApprovalRow";
@@ -30,7 +22,6 @@ import MerchantSettlementCountryRow from "../component/merchant-settlement/Merch
 import MerchantSettlementCountryForm from "../component/merchant-settlement/MerchantSettlementCountryForm";
 
 import {
-  useMerchantSettlementTransactions,
   useMerchantSettlementFees,
   useCreateMerchantSettlementFee,
   useUpdateMerchantSettlementFee,
@@ -46,7 +37,7 @@ import {
 } from "../queries/merchantSettlementQueries";
 
 const SETTLEMENT_TABS = [
-  { label: "Transaction Lists", value: "transactions", icon: ArrowRightLeft },
+  // { label: "Transaction Lists", value: "transactions", icon: ArrowRightLeft },
   { label: "Rates", value: "rates", icon: FileSpreadsheet },
   { label: "Countries", value: "countries", icon: Globe2 },
   { label: "Reports", value: "reports", icon: ReceiptText },
@@ -95,13 +86,10 @@ const countryColumns = [
 
 export default function MerchantSettlement() {
   const [activeTab, setActiveTab] = useState(() =>
-    readStoredTab("merchant-settlement", "transactions", SETTLEMENT_TABS),
+    readStoredTab("merchant-settlement", "rates", SETTLEMENT_TABS),
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [transactionPage, setTransactionPage] = useState(1);
-  const [transactionPageSize, setTransactionPageSize] = useState(
-    readStoredRowsPerPage,
-  );
+
   const [ratePage, setRatePage] = useState(1);
   const [ratePageSize, setRatePageSize] = useState(readStoredRowsPerPage);
 
@@ -130,20 +118,20 @@ export default function MerchantSettlement() {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [approvalStatus, setApprovalStatus] = useState("PENDING_APPROVAL");
 
-  const {
-    data: transactionsResponse,
-    isLoading: isTransactionsLoading,
-    isFetching: isTransactionsFetching,
-  } = useMerchantSettlementTransactions(
-    {
-      search: searchQuery.trim() || undefined,
-      page: transactionPage,
-      limit: transactionPageSize,
-    },
-    {
-      enabled: activeTab === "transactions",
-    },
-  );
+  // const {
+  //   data: transactionsResponse,
+  //   isLoading: isTransactionsLoading,
+  //   isFetching: isTransactionsFetching,
+  // } = useMerchantSettlementTransactions(
+  //   {
+  //     search: searchQuery.trim() || undefined,
+  //     page: transactionPage,
+  //     limit: transactionPageSize,
+  //   },
+  //   {
+  //     enabled: activeTab === "transactions",
+  //   },
+  // );
 
   const {
     data: ratesResponse,
@@ -225,14 +213,6 @@ export default function MerchantSettlement() {
   const isActivatingRate = activateRateMutation.isPending;
 
   const isRateStatusPending = isDeactivatingRate || isActivatingRate;
-
-  const transactions = transactionsResponse?.items ?? [];
-  const transactionMeta = transactionsResponse?.meta ?? {
-    total: 0,
-    page: transactionPage,
-    limit: transactionPageSize,
-    totalPages: 0,
-  };
 
   const rates = ratesResponse?.items ?? [];
 
@@ -538,42 +518,6 @@ export default function MerchantSettlement() {
   };
 
   const renderContent = () => {
-    if (activeTab === "transactions") {
-      return (
-        <DataTable
-          title="Transaction Lists"
-          columns={transactionColumns}
-          page={transactionPage}
-          pageSize={transactionPageSize}
-          totalItems={transactionMeta.total}
-          onPageChange={setTransactionPage}
-          onRowsPerPageChange={setTransactionPageSize}
-          isLoading={isTransactionsLoading}
-          isFetching={isTransactionsFetching}
-          itemLabel="transactions"
-          isEmpty={transactions.length === 0}
-          emptyTitle={
-            searchQuery.trim()
-              ? "No matching transactions found."
-              : "No transactions found."
-          }
-          emptyDescription={
-            searchQuery.trim()
-              ? "Try adjusting your search."
-              : "Uploaded settlement transactions will appear here."
-          }
-          emptyIcon={Upload}
-        >
-          {transactions.map((transaction) => (
-            <MerchantSettlementTransactionRow
-              key={transaction._id || transaction.id}
-              transaction={transaction}
-            />
-          ))}
-        </DataTable>
-      );
-    }
-
     if (activeTab === "rates") {
       return (
         <DataTable
@@ -666,7 +610,7 @@ export default function MerchantSettlement() {
     <div className="w-full bg-background text-on-background">
       <PageHeader
         title="Merchant Settlement"
-        description="Manage gateway transactions, merchant rates, and settlement reports."
+        description="Manage merchant rates, country configurations, and settlement reports."
         className="mb-6"
       />
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -684,21 +628,15 @@ export default function MerchantSettlement() {
           <SearchInput
             value={searchQuery}
             placeholder={
-              activeTab === "transactions"
-                ? "Search transactions..."
-                : activeTab === "rates"
-                  ? "Search rates..."
-                  : activeTab === "countries"
-                    ? "Search countries..."
-                    : "Search reports..."
+              activeTab === "rates"
+                ? "Search rates..."
+                : activeTab === "countries"
+                  ? "Search countries..."
+                  : "Search reports..."
             }
             className="w-full sm:w-80"
             onChange={(event) => {
               setSearchQuery(event.target.value);
-
-              if (activeTab === "transactions") {
-                setTransactionPage(1);
-              }
 
               if (activeTab === "rates") {
                 setRatePage(1);
