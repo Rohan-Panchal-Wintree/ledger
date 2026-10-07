@@ -9,6 +9,7 @@ import {
 	updateUnmatchedPaymentRow,
 	reconcilePendingPayments,
 	reconcileSingleUnmatchedPayment,
+	getPaymentSheetMatchedWiresheets,
 } from "../../controller/payment.controller.js";
 
 import {
@@ -67,6 +68,12 @@ router.post(
 	authenticatedWriteLimiter,
 	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
 	asyncHandler(reconcileSingleUnmatchedPayment),
+);
+
+router.get(
+	"/payment-sheet-uploads/:uploadId/matched-wiresheets",
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	asyncHandler(getPaymentSheetMatchedWiresheets),
 );
 
 // ROUTES - END
