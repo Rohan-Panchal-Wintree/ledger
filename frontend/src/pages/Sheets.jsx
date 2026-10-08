@@ -9,17 +9,20 @@ import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
 import Tabs, { readStoredTab } from "../component/UI/Tabs";
 import PageHeader from "../component/UI/PageHeader";
+import Modal from "../component/UI/Modal";
 
 import PaymentSheetRow from "../component/sheets/PaymentSheetRow";
 import WiresheetRow from "../component/sheets/WiresheetRow";
+import PaymentSheetMatchedWiresheetsContent from "../component/sheets/PaymentSheetMatchedWiresheetsContent";
 
 import {
   downloadSheetUpload,
+  usePaymentSheetMatchedWiresheets,
   usePaymentSheets,
   useWiresheets,
 } from "../queries/sheetsQueries";
 
-import { getErrorMessage } from "../utils/appUtils";
+import { formatDate, formatNumber, getErrorMessage } from "../utils/appUtils";
 import {
   DEFAULT_SHEETS_META,
   EMPTY_DATE_RANGE,
@@ -51,6 +54,8 @@ export default function Sheets() {
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(getDefaultSheetsPageSize);
+
+  const [selectedPaymentSheet, setSelectedPaymentSheet] = useState(null);
 
   const currentUser = useSelector(selectCurrentUser);
 
@@ -99,6 +104,13 @@ export default function Sheets() {
     enabled: !isWiresheetTab,
   });
 
+  const matchedWiresheetsQuery = usePaymentSheetMatchedWiresheets(
+    selectedPaymentSheet?.id,
+    {
+      enabled: !isWiresheetTab && Boolean(selectedPaymentSheet?.id),
+    },
+  );
+
   const activeQuery = isWiresheetTab ? wiresheetsQuery : paymentSheetsQuery;
 
   const wiresheets = (wiresheetsQuery.data?.data || []).filter(
@@ -110,6 +122,17 @@ export default function Sheets() {
     (row) => row.type === "payment_sheet",
   );
   const paymentSheetMeta = paymentSheetsQuery.data?.meta || DEFAULT_SHEETS_META;
+
+  const matchedWiresheetData = matchedWiresheetsQuery.data;
+
+  const matchedWiresheets = matchedWiresheetData?.wiresheets || [];
+
+  const matchedSummary = matchedWiresheetData?.summary || {
+    totalMatchedPayments: 0,
+    matchedWiresheets: 0,
+    totalPaid: 0,
+    totalSettlement: 0,
+  };
 
   const filteredWiresheets = useMemo(
     () => filterWiresheetsBySearch(wiresheets, searchTerm),
@@ -211,8 +234,20 @@ export default function Sheets() {
     dateMode,
   ]);
 
+  useEffect(() => {
+    if (matchedWiresheetsQuery.error) {
+      toast.error(
+        getErrorMessage(
+          matchedWiresheetsQuery.error,
+          "Failed to load matched wiresheets.",
+        ),
+      );
+    }
+  }, [matchedWiresheetsQuery.error]);
+
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
+    setSelectedPaymentSheet(null);
     setSearchTerm("");
     setBackendSearch("");
 
@@ -265,6 +300,19 @@ export default function Sheets() {
     }
   };
 
+  const handleOpenPaymentSheetMatches = (row) => {
+    if (!row?.id) {
+      toast.error("Payment sheet upload id is not available.");
+      return;
+    }
+
+    setSelectedPaymentSheet(row);
+  };
+
+  const handleClosePaymentSheetMatches = () => {
+    setSelectedPaymentSheet(null);
+  };
+
   const renderDatePicker = () => {
     const isRangeDatePicker = isWiresheetTab || dateMode === "range";
 
@@ -314,6 +362,7 @@ export default function Sheets() {
         key={`${row.fileName}-${row.paymentDate}-${row.uploadedAt}-${index}`}
         row={row}
         canDownload={canDownloadSheets}
+        onClick={() => handleOpenPaymentSheetMatches(row)}
         onDownload={() =>
           handleDownloadSheet({
             id: row.id,
@@ -381,6 +430,42 @@ export default function Sheets() {
       >
         {renderTableRows()}
       </DataTable>
+
+      {/* Modal for Pyment sheet matched wiresheet information */}
+
+      <Modal
+        open={Boolean(selectedPaymentSheet)}
+        size="2xl"
+        title="Matched Wiresheets"
+        description={
+          selectedPaymentSheet
+            ? `Wiresheets matched with ${selectedPaymentSheet.fileName}.`
+            : ""
+        }
+        onClose={handleClosePaymentSheetMatches}
+        bodyClassName="!max-h-[78vh]"
+      >
+        {matchedWiresheetsQuery.isLoading ? (
+          <div className="flex min-h-64 items-center justify-center">
+            <Spinner type="lg" />
+          </div>
+        ) : matchedWiresheetsQuery.isError ? (
+          <div className="rounded-lg bg-surface-container-low p-6 text-center">
+            <p className="text-sm font-semibold text-on-surface">
+              Failed to load matched wiresheets.
+            </p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Please close the modal and try again.
+            </p>
+          </div>
+        ) : (
+          <PaymentSheetMatchedWiresheetsContent
+            data={
+              matchedWiresheetsQuery.data?.data ?? matchedWiresheetsQuery.data
+            }
+          />
+        )}
+      </Modal>
     </div>
   );
 }

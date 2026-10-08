@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { sheetsApi } from "../api";
+import { paymentApi, sheetsApi } from "../api";
 
 export const sheetsQueryKeys = {
   all: ["sheets"],
@@ -13,6 +13,18 @@ export const sheetsQueryKeys = {
   paymentSheets: {
     all: () => [...sheetsQueryKeys.all, "payment-sheets"],
     list: (params = {}) => [...sheetsQueryKeys.paymentSheets.all(), params],
+  },
+
+  paymentSheets: {
+    all: () => [...sheetsQueryKeys.all, "payment-sheets"],
+
+    list: (params = {}) => [...sheetsQueryKeys.paymentSheets.all(), params],
+
+    matchedWiresheets: (uploadId) => [
+      ...sheetsQueryKeys.paymentSheets.all(),
+      "matched-wiresheets",
+      uploadId,
+    ],
   },
 };
 
@@ -114,6 +126,32 @@ async function getPaymentSheetsApi(filters = {}) {
   return extractResponsePayload(response);
 }
 
+async function getPaymentSheetMatchedWiresheetsApi(uploadId) {
+  if (!uploadId) {
+    throw new Error("Payment sheet upload id is required.");
+  }
+
+  const response = await paymentApi.get(
+    `/payment-sheet-uploads/${uploadId}/matched-wiresheets`,
+  );
+
+  return (
+    response?.data?.data || {
+      paymentSheet: null,
+
+      summary: {
+        totalMatchedPayments: 0,
+        matchedWiresheets: 0,
+        totalPaid: 0,
+        totalSettlement: 0,
+      },
+
+      wiresheets: [],
+      transactions: [],
+    }
+  );
+}
+
 export async function downloadSheetUpload(id, fileName) {
   if (!id) {
     throw new Error("Missing upload id.");
@@ -152,5 +190,17 @@ export function usePaymentSheets(filters = {}, options = {}) {
     placeholderData: (previousData) => previousData,
 
     ...options,
+  });
+}
+
+export function usePaymentSheetMatchedWiresheets(uploadId, options = {}) {
+  const { enabled = true, ...queryOptions } = options;
+
+  return useQuery({
+    queryKey: sheetsQueryKeys.paymentSheets.matchedWiresheets(uploadId),
+    queryFn: () => getPaymentSheetMatchedWiresheetsApi(uploadId),
+    enabled: Boolean(uploadId) && enabled,
+
+    ...queryOptions,
   });
 }

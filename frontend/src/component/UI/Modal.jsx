@@ -5,6 +5,7 @@ const modalSizes = {
   md: "max-w-2xl",
   lg: "max-w-4xl",
   xl: "max-w-5xl",
+  "2xl": "max-w-[90rem]",
 };
 
 export default function Modal({

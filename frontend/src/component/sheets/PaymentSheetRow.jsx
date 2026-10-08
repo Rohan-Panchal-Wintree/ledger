@@ -8,9 +8,13 @@ export default function PaymentSheetRow({
   row,
   canDownload = false,
   onDownload,
+  onClick,
 }) {
   return (
-    <tr className="table-row-hover">
+    <tr
+      onClick={onClick}
+      className={`table-row-hover ${onClick ? "cursor-pointer" : ""}`}
+    >
       <td className="whitespace-nowrap px-8 py-4">
         <div>
           <p className="text-sm font-bold text-on-surface">
@@ -68,7 +72,10 @@ export default function PaymentSheetRow({
             variant="secondary"
             size="sm"
             leftIcon={<Download className="h-4 w-4" />}
-            onClick={onDownload}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDownload?.();
+            }}
           />
         </td>
       ) : null}
