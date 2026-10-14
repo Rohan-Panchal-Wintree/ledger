@@ -1,5 +1,5 @@
 import { Building2, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
@@ -8,7 +8,7 @@ import EntityForm from "../component/merchants/EntityForm";
 import MerchantRow from "../component/merchants/MerchantRow";
 
 import Button from "../component/UI/Button";
-import DataTable from "../component/UI/DataTable";
+import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DeleteModal from "../component/UI/DeleteModal";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
@@ -99,19 +99,9 @@ function validateMerchant(values) {
 export default function Merchants() {
   const currentUser = useSelector(selectCurrentUser);
   const [searchValue, setSearchValue] = useState("");
-  const [backendSearch, setBackendSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(() => {
-    const savedPageSize = Number(
-      localStorage.getItem("global-table-rows-per-page"),
-    );
-
-    return savedPageSize > 0 ? savedPageSize : 25;
-  });
-
-  // global-table-rows-per-page
-
+  const [pageSize, setPageSize] = useState(readStoredRowsPerPage);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formMode, setFormMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
@@ -119,21 +109,19 @@ export default function Merchants() {
   const [formErrors, setFormErrors] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const normalizedSearch = searchValue.trim().toLowerCase();
-
-  const { data, isLoading, isFetching, error } = useMerchants({
+  const { data, isLoading, isPlaceholderData, error } = useMerchants({
     page,
     limit: pageSize,
-    search: backendSearch,
+    search: searchValue.trim(),
+    status: statusFilter,
   });
-
   const createMerchantMutation = useCreateMerchant();
   const updateMerchantMutation = useUpdateMerchant();
   const deleteMerchantMutation = useDeleteMerchant();
 
   const merchants = data?.items || [];
   const total = data?.meta?.total || 0;
-  const totalPages = data?.meta?.totalPages || 1;
+  const totalPages = Math.max(1, data?.meta?.totalPages ?? 1);
 
   const isSubmitting =
     createMerchantMutation.isPending || updateMerchantMutation.isPending;
@@ -144,50 +132,19 @@ export default function Merchants() {
     currentUser?.role,
   );
 
-  const localSearchResults = useMemo(() => {
-    if (!normalizedSearch) return merchants;
-
-    return merchants.filter((merchant) => {
-      const searchBlob = [
-        merchant.merchantName,
-        merchant.merchantTag,
-        merchant.status,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchBlob.includes(normalizedSearch);
-    });
-  }, [merchants, normalizedSearch]);
-
-  const shouldUseLocalSearch = Boolean(
-    normalizedSearch && localSearchResults.length,
-  );
-
-  useEffect(() => {
-    if (!normalizedSearch) {
-      setBackendSearch("");
-      return;
-    }
-
-    if (shouldUseLocalSearch) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setBackendSearch(searchValue.trim());
-      setPage(1);
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [normalizedSearch, searchValue, shouldUseLocalSearch]);
-
   useEffect(() => {
     if (error) {
       toast.error(getErrorMessage(error, "Failed to load merchant data."));
     }
   }, [error]);
+
+  useEffect(() => {
+    if (isLoading || isPlaceholderData) return;
+
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages, isLoading, isPlaceholderData]);
 
   function resetForm() {
     setFormMode("create");
@@ -288,35 +245,16 @@ export default function Merchants() {
     }
   }
 
-  const visibleMerchants = normalizedSearch
-    ? shouldUseLocalSearch
-      ? localSearchResults
-      : merchants
-    : merchants;
+  const visibleMerchantCount = merchants.length;
 
-  const filteredMerchants = visibleMerchants.filter((merchant) => {
-    if (statusFilter === "all") return true;
+  const totalMerchants = data?.meta?.totalMerchants ?? 0;
 
-    return merchant.status?.toLowerCase() === statusFilter;
-  });
-
-  const visibleMerchantCount = filteredMerchants.length;
-
-  const activeMerchantCount = merchants.filter(
-    (merchant) => merchant.status?.toLowerCase() === "active",
-  ).length;
-
-  const inactiveMerchantCount = merchants.filter(
-    (merchant) => merchant.status?.toLowerCase() === "inactive",
-  ).length;
-
-  const safePage = Math.min(page, totalPages || 1);
-  const paginatedMerchants = filteredMerchants;
+  const inactiveMerchantCount = data?.meta?.inactiveMerchantsCount ?? 0;
 
   const stats = [
     {
       label: "Total Merchants",
-      value: total,
+      value: totalMerchants,
       helper: "All merchant records",
       icon: Building2,
     },
@@ -407,9 +345,10 @@ export default function Merchants() {
         columns={merchantColumns}
         totalItems={total}
         itemLabel="merchants"
-        page={safePage}
-        isLoading={isFetching}
-        isEmpty={paginatedMerchants.length === 0}
+        page={page}
+        pageSize={pageSize}
+        isLoading={isPlaceholderData}
+        isEmpty={merchants.length === 0}
         emptyTitle="No merchants found."
         emptyDescription="Try adjusting your search or status filter."
         onPageChange={setPage}
@@ -418,7 +357,7 @@ export default function Merchants() {
           setPage(1);
         }}
       >
-        {paginatedMerchants.map((merchant) => (
+        {merchants.map((merchant) => (
           <MerchantRow
             key={merchant._id}
             merchant={merchant}

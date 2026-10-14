@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { CreditCard, Landmark } from "lucide-react";
 
-import DataTable from "../component/UI/DataTable";
+import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DatePicker from "../component/UI/DatePicker";
 import SearchInput from "../component/UI/SearchInput";
 import Spinner from "../component/UI/Spinner";
@@ -27,9 +27,6 @@ import {
   DEFAULT_SHEETS_META,
   EMPTY_DATE_RANGE,
   SHEET_TABS,
-  filterPaymentSheetsBySearch,
-  filterWiresheetsBySearch,
-  getDefaultSheetsPageSize,
   getStatusVariant,
   paymentSheetColumns,
   toApiDate,
@@ -42,7 +39,7 @@ export default function Sheets() {
     readStoredTab("sheets", "wiresheet", SHEET_TABS),
   );
   const [searchTerm, setSearchTerm] = useState("");
-  const [backendSearch, setBackendSearch] = useState("");
+  // const [backendSearch, setBackendSearch] = useState("");
 
   const [dateMode, setDateMode] = useState("single");
 
@@ -53,7 +50,7 @@ export default function Sheets() {
   const [appliedDateRange, setAppliedDateRange] = useState(EMPTY_DATE_RANGE);
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(getDefaultSheetsPageSize);
+  const [limit, setLimit] = useState(readStoredRowsPerPage);
 
   const [selectedPaymentSheet, setSelectedPaymentSheet] = useState(null);
 
@@ -90,10 +87,10 @@ export default function Sheets() {
     () => ({
       page,
       limit,
-      search: backendSearch,
+      search: searchTerm.trim(),
       ...dateFilters,
     }),
-    [backendSearch, dateFilters, limit, page],
+    [page, limit, searchTerm, dateFilters],
   );
 
   const wiresheetsQuery = useWiresheets(queryFilters, {
@@ -134,29 +131,7 @@ export default function Sheets() {
     totalSettlement: 0,
   };
 
-  const filteredWiresheets = useMemo(
-    () => filterWiresheetsBySearch(wiresheets, searchTerm),
-    [searchTerm, wiresheets],
-  );
-
-  const filteredPaymentSheets = useMemo(
-    () => filterPaymentSheetsBySearch(paymentSheets, searchTerm),
-    [paymentSheets, searchTerm],
-  );
-
-  const normalizedSearchTerm = searchTerm.trim();
-
-  const activeLocalMatches = isWiresheetTab
-    ? filteredWiresheets
-    : filteredPaymentSheets;
-
-  const shouldUseLocalSearch = Boolean(
-    normalizedSearchTerm && activeLocalMatches.length > 0,
-  );
-
-  const activeRows = isWiresheetTab
-    ? filteredWiresheets
-    : filteredPaymentSheets;
+  const activeRows = isWiresheetTab ? wiresheets : paymentSheets;
 
   const activeMeta = isWiresheetTab ? wiresheetMeta : paymentSheetMeta;
 
@@ -190,21 +165,6 @@ export default function Sheets() {
     : "Search by file name, payment date, uploaded by...";
 
   useEffect(() => {
-    if (!normalizedSearchTerm) {
-      setBackendSearch("");
-      return;
-    }
-
-    if (shouldUseLocalSearch) {
-      setBackendSearch("");
-      return;
-    }
-
-    setBackendSearch(normalizedSearchTerm);
-    setPage(1);
-  }, [normalizedSearchTerm, shouldUseLocalSearch]);
-
-  useEffect(() => {
     if (wiresheetsQuery.error) {
       toast.error(
         getErrorMessage(wiresheetsQuery.error, "Failed to load wiresheets."),
@@ -227,7 +187,6 @@ export default function Sheets() {
     setPage(1);
   }, [
     activeTab,
-    searchTerm,
     appliedDate,
     appliedDateRange.startDate,
     appliedDateRange.endDate,
@@ -249,7 +208,6 @@ export default function Sheets() {
     setActiveTab(nextTab);
     setSelectedPaymentSheet(null);
     setSearchTerm("");
-    setBackendSearch("");
 
     setDateDraft("");
     setDateRangeDraft(EMPTY_DATE_RANGE);
@@ -406,7 +364,6 @@ export default function Sheets() {
             className="w-full sm:w-80"
             onChange={(event) => {
               setSearchTerm(event.target.value);
-              setBackendSearch("");
               setPage(1);
             }}
           />
@@ -416,17 +373,17 @@ export default function Sheets() {
       <DataTable
         title={pageTitle}
         columns={activeColumns}
+        page={page}
+        pageSize={limit}
         totalItems={activeMeta.total}
         itemLabel={isWiresheetTab ? "wiresheets" : "payment sheets"}
+        isLoading={activeQuery.isLoading || activeQuery.isPlaceholderData}
         isEmpty={activeRows.length === 0}
         emptyTitle={emptyState.title}
         emptyDescription={emptyState.description}
         emptyIcon={emptyState.icon}
-        page={page}
-        meta={activeMeta}
         onPageChange={setPage}
         onRowsPerPageChange={handlePageSizeChange}
-        isFetching={activeQuery.isFetching}
       >
         {renderTableRows()}
       </DataTable>

@@ -5,10 +5,10 @@ import { merchantApi } from "../api";
 export const merchantQueryKeys = {
   all: ["merchants"],
 
-  list: ({ page = 1, limit = 25, search = "" } = {}) => [
+  list: ({ page = 1, limit = 25, search = "", status = "all" } = {}) => [
     ...merchantQueryKeys.all,
     "list",
-    { page, limit, search },
+    { page, limit, search, status },
   ],
 };
 
@@ -27,12 +27,18 @@ function extractResponseMeta(response, fallback) {
   return response?.data?.meta ?? fallback;
 }
 
-async function fetchMerchantsApi({ page = 1, limit = 25, search = "" } = {}) {
+async function fetchMerchantsApi({
+  page = 1,
+  limit = 25,
+  search = "",
+  status = "all",
+} = {}) {
   const response = await merchantApi.get("/", {
     params: {
       page,
       limit,
       search,
+      status,
     },
   });
 

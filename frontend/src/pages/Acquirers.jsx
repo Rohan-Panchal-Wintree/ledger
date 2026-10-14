@@ -1,5 +1,5 @@
 import { Landmark, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
@@ -7,7 +7,7 @@ import AcquirerRow from "../component/acquirers/AcquirerRow";
 import EntityForm from "../component/acquirers/EntityForm";
 
 import Button from "../component/UI/Button";
-import DataTable from "../component/UI/DataTable";
+import DataTable, { readStoredRowsPerPage } from "../component/UI/DataTable";
 import DeleteModal from "../component/UI/DeleteModal";
 import Modal from "../component/UI/Modal";
 import SearchInput from "../component/UI/SearchInput";
@@ -62,15 +62,8 @@ export default function Acquirers() {
   const currentUser = useSelector(selectCurrentUser);
 
   const [searchValue, setSearchValue] = useState("");
-  const [backendSearch, setBackendSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(() => {
-    const savedPageSize = Number(
-      localStorage.getItem("global-table-rows-per-page"),
-    );
-
-    return savedPageSize > 0 ? savedPageSize : 25;
-  });
+  const [pageSize, setPageSize] = useState(readStoredRowsPerPage);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formMode, setFormMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
@@ -80,10 +73,10 @@ export default function Acquirers() {
 
   const normalizedSearch = searchValue.trim().toLowerCase();
 
-  const { data, isLoading, isFetching, error } = useAcquirers({
+  const { data, isLoading, isPlaceholderData, error } = useAcquirers({
     page,
     limit: pageSize,
-    search: backendSearch,
+    search: searchValue.trim(),
   });
 
   const createAcquirerMutation = useCreateAcquirer();
@@ -92,7 +85,7 @@ export default function Acquirers() {
 
   const acquirers = data?.items || [];
   const total = data?.meta?.total || 0;
-  const totalPages = data?.meta?.totalPages || 1;
+  const totalPages = Math.max(1, data?.meta?.totalPages ?? 1);
 
   const isSubmitting =
     createAcquirerMutation.isPending || updateAcquirerMutation.isPending;
@@ -101,41 +94,19 @@ export default function Acquirers() {
 
   const canManageAcquirers = ["admin", "finance"].includes(currentUser?.role);
 
-  const localSearchResults = useMemo(() => {
-    if (!normalizedSearch) return acquirers;
-
-    return acquirers.filter((acquirer) =>
-      acquirer.name?.toLowerCase().includes(normalizedSearch),
-    );
-  }, [acquirers, normalizedSearch]);
-
-  const shouldUseLocalSearch = Boolean(
-    normalizedSearch && localSearchResults.length,
-  );
-
-  useEffect(() => {
-    if (!normalizedSearch) {
-      setBackendSearch("");
-      return;
-    }
-
-    if (shouldUseLocalSearch) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setBackendSearch(searchValue.trim());
-      setPage(1);
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [normalizedSearch, searchValue, shouldUseLocalSearch]);
-
   useEffect(() => {
     if (error) {
       toast.error(getErrorMessage(error, "Failed to load acquirer data."));
     }
   }, [error]);
+
+  useEffect(() => {
+    if (isLoading || isPlaceholderData || error) return;
+
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages, isLoading, isPlaceholderData, error]);
 
   function resetForm() {
     setFormMode("create");
@@ -232,31 +203,22 @@ export default function Acquirers() {
     }
   }
 
-  const visibleAcquirers = normalizedSearch
-    ? shouldUseLocalSearch
-      ? localSearchResults
-      : acquirers
-    : acquirers;
-
-  const safePage = Math.min(page, totalPages || 1);
-  const paginatedAcquirers = visibleAcquirers;
-
   const stats = [
     {
       label: "Total Acquirers",
-      value: total,
+      value: data?.meta?.totalAcquirers ?? 0,
       helper: "Available banking partners",
       icon: Landmark,
     },
     {
       label: "Visible Results",
-      value: visibleAcquirers.length,
+      value: acquirers.length,
       helper: "After current search",
       icon: Search,
     },
     {
       label: "Latest Added",
-      value: acquirers[0]?.name || "-",
+      value: data?.meta?.latestAddedAcquirerName || "-",
       helper: "Most recent acquirer",
       icon: Landmark,
     },
@@ -272,12 +234,6 @@ export default function Acquirers() {
 
   return (
     <div className="w-full bg-background text-on-background">
-      {/* {isFetching ? (
-        <div className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-          Updating acquirer data...
-        </div>
-      ) : null} */}
-
       <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
         {stats.map(({ label, value, helper, icon }) => (
           <StatCard
@@ -328,9 +284,10 @@ export default function Acquirers() {
         columns={acquirerColumns}
         totalItems={total}
         itemLabel="acquirers"
-        page={safePage}
-        isLoading={isFetching}
-        isEmpty={paginatedAcquirers.length === 0}
+        page={page}
+        pageSize={pageSize}
+        isLoading={isPlaceholderData}
+        isEmpty={acquirers.length === 0}
         emptyTitle="No acquirers found."
         emptyDescription="Try adjusting your search."
         onPageChange={setPage}
@@ -339,7 +296,7 @@ export default function Acquirers() {
           setPage(1);
         }}
       >
-        {paginatedAcquirers.map((acquirer) => (
+        {acquirers.map((acquirer) => (
           <AcquirerRow
             key={acquirer._id}
             acquirer={acquirer}
