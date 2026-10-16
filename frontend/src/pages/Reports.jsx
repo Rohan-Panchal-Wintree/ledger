@@ -301,7 +301,7 @@ export default function Reports() {
 			return;
 		}
 
-		const nextFilters = {
+		const nextFilters = {	
 			...draftFilters,
 			paymentDate:
 				draftFilters.fromDate && draftFilters.toDate

@@ -31,8 +31,6 @@ async function getPaymentDayReportApi(params = {}) {
     params,
   });
 
-  console.log("response for all the reports", response.data.data.banks);
-
   return extractResponseData(response, defaultPaymentDayReport);
 }
 

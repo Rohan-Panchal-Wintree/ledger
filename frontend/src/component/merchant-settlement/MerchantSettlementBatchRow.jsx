@@ -17,10 +17,6 @@ const getBatchDisplayName = (batch) => {
     return `Settlement Batch - ${formatDate(batch?.fromDate || batch?.toDate)}`;
   }
 
-  if (batch?.createdAt) {
-    return `Settlement Batch - ${formatDate(batch.createdAt)}`;
-  }
-
   return formatText(batch?.batchName);
 };
 

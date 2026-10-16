@@ -170,15 +170,6 @@ export default function MerchantSettlement() {
   const activateRateMutation = useActivateMerchantSettlementFee();
   const createCountryMutation = useCreateMerchantSettlementCountry();
   const updateCountryMutation = useUpdateMerchantSettlementCountry();
-  const { data: pendingApprovalRequests = [] } =
-    useMerchantSettlementFeeChangeRequests(
-      {
-        status: "PENDING_APPROVAL",
-      },
-      {
-        enabled: activeTab === "rates",
-      },
-    );
 
   const isCountryStatusPending = updateCountryMutation.isPending;
 
@@ -486,9 +477,6 @@ export default function MerchantSettlement() {
             }}
           >
             Approvals
-            {pendingApprovalRequests.length > 0 ? (
-              <span>({pendingApprovalRequests.length})</span>
-            ) : null}
           </Button>
 
           <Button

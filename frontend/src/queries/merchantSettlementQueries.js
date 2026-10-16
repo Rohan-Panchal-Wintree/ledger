@@ -568,13 +568,12 @@ export const getMerchantSettlementReports = async (params = {}) => {
   };
 };
 
-export const useMerchantSettlementReports = (params = {}) =>
+export const useMerchantSettlementReports = (params = {}, options = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.reportList(params),
-
     queryFn: () => getMerchantSettlementReports(params),
-
     placeholderData: (previousData) => previousData,
+    ...options,
   });
 
 /*
@@ -709,11 +708,10 @@ export const getMerchantSettlementBatches = async (params = {}) => {
   };
 };
 
-export const useMerchantSettlementBatches = (params = {}) =>
+export const useMerchantSettlementBatches = (params = {}, options = {}) =>
   useQuery({
     queryKey: merchantSettlementKeys.settlementBatchList(params),
-
     queryFn: () => getMerchantSettlementBatches(params),
-
     placeholderData: (previousData) => previousData,
+    ...options,
   });
