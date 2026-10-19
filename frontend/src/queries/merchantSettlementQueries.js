@@ -8,63 +8,63 @@ import { merchantSettlementApi } from "../api";
 */
 
 export const merchantSettlementKeys = {
-  all: ["merchant-settlement"],
+	all: ["merchant-settlement"],
 
-  fees: () => [...merchantSettlementKeys.all, "fees"],
+	fees: () => [...merchantSettlementKeys.all, "fees"],
 
-  feeList: (params = {}) => [...merchantSettlementKeys.fees(), "list", params],
+	feeList: (params = {}) => [...merchantSettlementKeys.fees(), "list", params],
 
-  feeDetail: (id) => [...merchantSettlementKeys.fees(), "detail", id],
+	feeDetail: (id) => [...merchantSettlementKeys.fees(), "detail", id],
 
-  feeChangeRequests: () => [
-    ...merchantSettlementKeys.all,
-    "fee-change-requests",
-  ],
+	feeChangeRequests: () => [
+		...merchantSettlementKeys.all,
+		"fee-change-requests",
+	],
 
-  feeChangeRequestList: (params = {}) => [
-    ...merchantSettlementKeys.feeChangeRequests(),
-    "list",
-    params,
-  ],
+	feeChangeRequestList: (params = {}) => [
+		...merchantSettlementKeys.feeChangeRequests(),
+		"list",
+		params,
+	],
 
-  transactions: () => [...merchantSettlementKeys.all, "transactions"],
+	transactions: () => [...merchantSettlementKeys.all, "transactions"],
 
-  transactionList: (params = {}) => [
-    ...merchantSettlementKeys.transactions(),
-    "list",
-    params,
-  ],
+	transactionList: (params = {}) => [
+		...merchantSettlementKeys.transactions(),
+		"list",
+		params,
+	],
 
-  countries: () => [...merchantSettlementKeys.all, "countries"],
+	countries: () => [...merchantSettlementKeys.all, "countries"],
 
-  countryList: (params = {}) => [
-    ...merchantSettlementKeys.countries(),
-    "list",
-    params,
-  ],
+	countryList: (params = {}) => [
+		...merchantSettlementKeys.countries(),
+		"list",
+		params,
+	],
 
-  countryDetail: (id) => [...merchantSettlementKeys.countries(), "detail", id],
+	countryDetail: (id) => [...merchantSettlementKeys.countries(), "detail", id],
 
-  reports: () => [...merchantSettlementKeys.all, "reports"],
+	reports: () => [...merchantSettlementKeys.all, "reports"],
 
-  reportList: (params = {}) => [
-    ...merchantSettlementKeys.reports(),
-    "list",
-    params,
-  ],
+	reportList: (params = {}) => [
+		...merchantSettlementKeys.reports(),
+		"list",
+		params,
+	],
 
-  reportDetail: (id) => [...merchantSettlementKeys.reports(), "detail", id],
+	reportDetail: (id) => [...merchantSettlementKeys.reports(), "detail", id],
 
-  settlementBatches: () => [
-    ...merchantSettlementKeys.all,
-    "settlement-batches",
-  ],
+	settlementBatches: () => [
+		...merchantSettlementKeys.all,
+		"settlement-batches",
+	],
 
-  settlementBatchList: (params = {}) => [
-    ...merchantSettlementKeys.settlementBatches(),
-    "list",
-    params,
-  ],
+	settlementBatchList: (params = {}) => [
+		...merchantSettlementKeys.settlementBatches(),
+		"list",
+		params,
+	],
 };
 
 /*
@@ -74,15 +74,15 @@ export const merchantSettlementKeys = {
 */
 
 const cleanParams = (params = {}) =>
-  Object.fromEntries(
-    Object.entries(params).filter(
-      ([, value]) =>
-        value !== undefined &&
-        value !== null &&
-        value !== "" &&
-        value !== "all",
-    ),
-  );
+	Object.fromEntries(
+		Object.entries(params).filter(
+			([, value]) =>
+				value !== undefined &&
+				value !== null &&
+				value !== "" &&
+				value !== "all",
+		),
+	);
 
 /*
 |--------------------------------------------------------------------------
@@ -91,29 +91,29 @@ const cleanParams = (params = {}) =>
 */
 
 export const getMerchantSettlementFees = async (params = {}) => {
-  const response = await merchantSettlementApi.get("/fees", {
-    params: cleanParams(params),
-  });
+	const response = await merchantSettlementApi.get("/fees", {
+		params: cleanParams(params),
+	});
 
-  return {
-    items: response.data?.data || [],
-    meta: response.data?.meta || {
-      total: 0,
-      page: Number(params.page) || 1,
-      limit: Number(params.limit) || 20,
-      totalPages: 0,
-    },
-  };
+	return {
+		items: response.data?.data || [],
+		meta: response.data?.meta || {
+			total: 0,
+			page: Number(params.page) || 1,
+			limit: Number(params.limit) || 20,
+			totalPages: 0,
+		},
+	};
 };
 
 export const useMerchantSettlementFees = (params = {}, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.feeList(params),
-    queryFn: () => getMerchantSettlementFees(params),
-    placeholderData: (previousData) => previousData,
+	useQuery({
+		queryKey: merchantSettlementKeys.feeList(params),
+		queryFn: () => getMerchantSettlementFees(params),
+		placeholderData: (previousData) => previousData,
 
-    ...options,
-  });
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -122,18 +122,18 @@ export const useMerchantSettlementFees = (params = {}, options = {}) =>
 */
 
 export const getMerchantSettlementFee = async (id) => {
-  const response = await merchantSettlementApi.get(`/fees/${id}`);
+	const response = await merchantSettlementApi.get(`/fees/${id}`);
 
-  return response.data?.data;
+	return response.data?.data;
 };
 
 export const useMerchantSettlementFee = (id, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.feeDetail(id),
-    queryFn: () => getMerchantSettlementFee(id),
-    enabled: Boolean(id),
-    ...options,
-  });
+	useQuery({
+		queryKey: merchantSettlementKeys.feeDetail(id),
+		queryFn: () => getMerchantSettlementFee(id),
+		enabled: Boolean(id),
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -147,28 +147,28 @@ export const useMerchantSettlementFee = (id, options = {}) =>
 */
 
 export const createMerchantSettlementFee = async (payload) => {
-  const response = await merchantSettlementApi.post("/fees", payload);
+	const response = await merchantSettlementApi.post("/fees", payload);
 
-  return response.data;
+	return response.data;
 };
 
 export const useCreateMerchantSettlementFee = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: createMerchantSettlementFee,
+	return useMutation({
+		mutationFn: createMerchantSettlementFee,
 
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.fees(),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.feeChangeRequests(),
-        }),
-      ]);
-    },
-  });
+		onSuccess: async () => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.fees(),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.feeChangeRequests(),
+				}),
+			]);
+		},
+	});
 };
 
 /*
@@ -183,31 +183,31 @@ export const useCreateMerchantSettlementFee = () => {
 */
 
 export const updateMerchantSettlementFee = async ({ id, payload }) => {
-  const response = await merchantSettlementApi.put(`/fees/${id}`, payload);
+	const response = await merchantSettlementApi.put(`/fees/${id}`, payload);
 
-  return response.data;
+	return response.data;
 };
 
 export const useUpdateMerchantSettlementFee = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: updateMerchantSettlementFee,
+	return useMutation({
+		mutationFn: updateMerchantSettlementFee,
 
-    onSuccess: async (_data, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.fees(),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.feeDetail(variables.id),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.feeChangeRequests(),
-        }),
-      ]);
-    },
-  });
+		onSuccess: async (_data, variables) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.fees(),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.feeDetail(variables.id),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.feeChangeRequests(),
+				}),
+			]);
+		},
+	});
 };
 
 /*
@@ -221,27 +221,27 @@ export const useUpdateMerchantSettlementFee = () => {
 */
 
 export const deleteMerchantSettlementFee = async (id) => {
-  const response = await merchantSettlementApi.delete(`/fees/${id}`);
+	const response = await merchantSettlementApi.delete(`/fees/${id}`);
 
-  return response.data;
+	return response.data;
 };
 
 export const useDeleteMerchantSettlementFee = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: deleteMerchantSettlementFee,
+	return useMutation({
+		mutationFn: deleteMerchantSettlementFee,
 
-    onSuccess: async (_data, id) => {
-      queryClient.removeQueries({
-        queryKey: merchantSettlementKeys.feeDetail(id),
-      });
+		onSuccess: async (_data, id) => {
+			queryClient.removeQueries({
+				queryKey: merchantSettlementKeys.feeDetail(id),
+			});
 
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.fees(),
-      });
-    },
-  });
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.fees(),
+			});
+		},
+	});
 };
 
 /*
@@ -255,27 +255,27 @@ export const useDeleteMerchantSettlementFee = () => {
 */
 
 export const activateMerchantSettlementFee = async (id) => {
-  const response = await merchantSettlementApi.patch(`/fees/${id}/activate`);
+	const response = await merchantSettlementApi.patch(`/fees/${id}/activate`);
 
-  return response.data;
+	return response.data;
 };
 
 export const useActivateMerchantSettlementFee = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: activateMerchantSettlementFee,
+	return useMutation({
+		mutationFn: activateMerchantSettlementFee,
 
-    onSuccess: async (_data, id) => {
-      queryClient.removeQueries({
-        queryKey: merchantSettlementKeys.feeDetail(id),
-      });
+		onSuccess: async (_data, id) => {
+			queryClient.removeQueries({
+				queryKey: merchantSettlementKeys.feeDetail(id),
+			});
 
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.fees(),
-      });
-    },
-  });
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.fees(),
+			});
+		},
+	});
 };
 
 /*
@@ -289,22 +289,22 @@ export const useActivateMerchantSettlementFee = () => {
 */
 
 export const getMerchantSettlementFeeChangeRequests = async (params = {}) => {
-  const response = await merchantSettlementApi.get("/fees/change-requests", {
-    params: cleanParams(params),
-  });
+	const response = await merchantSettlementApi.get("/fees/change-requests", {
+		params: cleanParams(params),
+	});
 
-  return response.data?.data || [];
+	return response.data?.data || [];
 };
 
 export const useMerchantSettlementFeeChangeRequests = (
-  params = {},
-  options = {},
+	params = {},
+	options = {},
 ) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.feeChangeRequestList(params),
-    queryFn: () => getMerchantSettlementFeeChangeRequests(params),
-    ...options,
-  });
+	useQuery({
+		queryKey: merchantSettlementKeys.feeChangeRequestList(params),
+		queryFn: () => getMerchantSettlementFeeChangeRequests(params),
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -317,37 +317,37 @@ export const useMerchantSettlementFeeChangeRequests = (
 */
 
 export const approveMerchantSettlementFeeChangeRequest = async ({
-  id,
-  checkerComment = "",
+	id,
+	checkerComment = "",
 }) => {
-  const response = await merchantSettlementApi.post(
-    `/fees/change-requests/${id}/approve`,
-    {
-      checkerComment,
-    },
-  );
+	const response = await merchantSettlementApi.post(
+		`/fees/change-requests/${id}/approve`,
+		{
+			checkerComment,
+		},
+	);
 
-  return response.data;
+	return response.data;
 };
 
 export const useApproveMerchantSettlementFeeChangeRequest = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: approveMerchantSettlementFeeChangeRequest,
+	return useMutation({
+		mutationFn: approveMerchantSettlementFeeChangeRequest,
 
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.feeChangeRequests(),
-        }),
+		onSuccess: async () => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.feeChangeRequests(),
+				}),
 
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.fees(),
-        }),
-      ]);
-    },
-  });
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.fees(),
+				}),
+			]);
+		},
+	});
 };
 
 /*
@@ -361,31 +361,31 @@ export const useApproveMerchantSettlementFeeChangeRequest = () => {
 */
 
 export const rejectMerchantSettlementFeeChangeRequest = async ({
-  id,
-  checkerComment,
+	id,
+	checkerComment,
 }) => {
-  const response = await merchantSettlementApi.post(
-    `/fees/change-requests/${id}/reject`,
-    {
-      checkerComment,
-    },
-  );
+	const response = await merchantSettlementApi.post(
+		`/fees/change-requests/${id}/reject`,
+		{
+			checkerComment,
+		},
+	);
 
-  return response.data;
+	return response.data;
 };
 
 export const useRejectMerchantSettlementFeeChangeRequest = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: rejectMerchantSettlementFeeChangeRequest,
+	return useMutation({
+		mutationFn: rejectMerchantSettlementFeeChangeRequest,
 
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.feeChangeRequests(),
-      });
-    },
-  });
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.feeChangeRequests(),
+			});
+		},
+	});
 };
 
 /*
@@ -395,29 +395,29 @@ export const useRejectMerchantSettlementFeeChangeRequest = () => {
 */
 
 export const getMerchantSettlementTransactions = async (params = {}) => {
-  const response = await merchantSettlementApi.get("/transactions", {
-    params: cleanParams(params),
-  });
+	const response = await merchantSettlementApi.get("/transactions", {
+		params: cleanParams(params),
+	});
 
-  return {
-    items: response.data?.data || [],
-    meta: response.data?.meta || {
-      total: 0,
-      page: Number(params.page) || 1,
-      limit: Number(params.limit) || 20,
-      totalPages: 0,
-    },
-  };
+	return {
+		items: response.data?.data || [],
+		meta: response.data?.meta || {
+			total: 0,
+			page: Number(params.page) || 1,
+			limit: Number(params.limit) || 20,
+			totalPages: 0,
+		},
+	};
 };
 
 export const useMerchantSettlementTransactions = (params = {}, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.transactionList(params),
-    queryFn: () => getMerchantSettlementTransactions(params),
-    placeholderData: (previousData) => previousData,
+	useQuery({
+		queryKey: merchantSettlementKeys.transactionList(params),
+		queryFn: () => getMerchantSettlementTransactions(params),
+		placeholderData: (previousData) => previousData,
 
-    ...options,
-  });
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -426,36 +426,36 @@ export const useMerchantSettlementTransactions = (params = {}, options = {}) =>
 */
 
 export const getMerchantSettlementCountries = async (params = {}) => {
-  const cleanedParams = Object.fromEntries(
-    Object.entries(params).filter(
-      ([, value]) => value !== undefined && value !== null && value !== "",
-    ),
-  );
+	const cleanedParams = Object.fromEntries(
+		Object.entries(params).filter(
+			([, value]) => value !== undefined && value !== null && value !== "",
+		),
+	);
 
-  const response = await merchantSettlementApi.get("/countries", {
-    params: cleanedParams,
-  });
+	const response = await merchantSettlementApi.get("/countries", {
+		params: cleanedParams,
+	});
 
-  return {
-    items: response.data?.data || [],
+	return {
+		items: response.data?.data || [],
 
-    meta: response.data?.meta || {
-      total: 0,
-      page: Number(params.page) || 1,
-      limit: Number(params.limit) || 100,
-      totalPages: 0,
-    },
-  };
+		meta: response.data?.meta || {
+			total: 0,
+			page: Number(params.page) || 1,
+			limit: Number(params.limit) || 100,
+			totalPages: 0,
+		},
+	};
 };
 
 export const useMerchantSettlementCountries = (params = {}, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.countryList(params),
-    queryFn: () => getMerchantSettlementCountries(params),
-    placeholderData: (previousData) => previousData,
+	useQuery({
+		queryKey: merchantSettlementKeys.countryList(params),
+		queryFn: () => getMerchantSettlementCountries(params),
+		placeholderData: (previousData) => previousData,
 
-    ...options,
-  });
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -464,23 +464,23 @@ export const useMerchantSettlementCountries = (params = {}, options = {}) =>
 */
 
 export const createMerchantSettlementCountry = async (payload) => {
-  const response = await merchantSettlementApi.post("/countries", payload);
+	const response = await merchantSettlementApi.post("/countries", payload);
 
-  return response.data;
+	return response.data;
 };
 
 export const useCreateMerchantSettlementCountry = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: createMerchantSettlementCountry,
+	return useMutation({
+		mutationFn: createMerchantSettlementCountry,
 
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.countries(),
-      });
-    },
-  });
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.countries(),
+			});
+		},
+	});
 };
 
 /*
@@ -490,29 +490,29 @@ export const useCreateMerchantSettlementCountry = () => {
 */
 
 export const updateMerchantSettlementCountry = async ({ id, payload }) => {
-  const response = await merchantSettlementApi.put(`/countries/${id}`, payload);
+	const response = await merchantSettlementApi.put(`/countries/${id}`, payload);
 
-  return response.data;
+	return response.data;
 };
 
 export const useUpdateMerchantSettlementCountry = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: updateMerchantSettlementCountry,
+	return useMutation({
+		mutationFn: updateMerchantSettlementCountry,
 
-    onSuccess: async (_data, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.countries(),
-        }),
+		onSuccess: async (_data, variables) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.countries(),
+				}),
 
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.countryDetail(variables.id),
-        }),
-      ]);
-    },
-  });
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.countryDetail(variables.id),
+				}),
+			]);
+		},
+	});
 };
 
 /*
@@ -522,27 +522,27 @@ export const useUpdateMerchantSettlementCountry = () => {
 */
 
 export const deleteMerchantSettlementCountry = async (id) => {
-  const response = await merchantSettlementApi.delete(`/countries/${id}`);
+	const response = await merchantSettlementApi.delete(`/countries/${id}`);
 
-  return response.data;
+	return response.data;
 };
 
 export const useDeleteMerchantSettlementCountry = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: deleteMerchantSettlementCountry,
+	return useMutation({
+		mutationFn: deleteMerchantSettlementCountry,
 
-    onSuccess: async (_data, id) => {
-      queryClient.removeQueries({
-        queryKey: merchantSettlementKeys.countryDetail(id),
-      });
+		onSuccess: async (_data, id) => {
+			queryClient.removeQueries({
+				queryKey: merchantSettlementKeys.countryDetail(id),
+			});
 
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.countries(),
-      });
-    },
-  });
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.countries(),
+			});
+		},
+	});
 };
 
 /*
@@ -552,29 +552,29 @@ export const useDeleteMerchantSettlementCountry = () => {
 */
 
 export const getMerchantSettlementReports = async (params = {}) => {
-  const response = await merchantSettlementApi.get("/reports", {
-    params: cleanParams(params),
-  });
+	const response = await merchantSettlementApi.get("/reports", {
+		params: cleanParams(params),
+	});
 
-  return {
-    items: response.data?.data || [],
+	return {
+		items: response.data?.data || [],
 
-    meta: response.data?.meta || {
-      total: 0,
-      page: Number(params.page) || 1,
-      limit: Number(params.limit) || 50,
-      totalPages: 0,
-    },
-  };
+		meta: response.data?.meta || {
+			total: 0,
+			page: Number(params.page) || 1,
+			limit: Number(params.limit) || 50,
+			totalPages: 0,
+		},
+	};
 };
 
 export const useMerchantSettlementReports = (params = {}, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.reportList(params),
-    queryFn: () => getMerchantSettlementReports(params),
-    placeholderData: (previousData) => previousData,
-    ...options,
-  });
+	useQuery({
+		queryKey: merchantSettlementKeys.reportList(params),
+		queryFn: () => getMerchantSettlementReports(params),
+		placeholderData: (previousData) => previousData,
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -583,21 +583,21 @@ export const useMerchantSettlementReports = (params = {}, options = {}) =>
 */
 
 export const getMerchantSettlementReport = async (id) => {
-  const response = await merchantSettlementApi.get(`/reports/${id}`);
+	const response = await merchantSettlementApi.get(`/reports/${id}`);
 
-  return response.data?.data;
+	return response.data?.data;
 };
 
 export const useMerchantSettlementReport = (id, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.reportDetail(id),
+	useQuery({
+		queryKey: merchantSettlementKeys.reportDetail(id),
 
-    queryFn: () => getMerchantSettlementReport(id),
+		queryFn: () => getMerchantSettlementReport(id),
 
-    enabled: Boolean(id),
+		enabled: Boolean(id),
 
-    ...options,
-  });
+		...options,
+	});
 
 /*
 |--------------------------------------------------------------------------
@@ -606,31 +606,31 @@ export const useMerchantSettlementReport = (id, options = {}) =>
 */
 
 export const sendMerchantSettlementReportEmail = async (id) => {
-  const response = await merchantSettlementApi.post(
-    `/reports/${id}/send-email`,
-  );
+	const response = await merchantSettlementApi.post(
+		`/reports/${id}/send-email`,
+	);
 
-  return response.data;
+	return response.data;
 };
 
 export const useSendMerchantSettlementReportEmail = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: sendMerchantSettlementReportEmail,
+	return useMutation({
+		mutationFn: sendMerchantSettlementReportEmail,
 
-    onSuccess: async (_data, id) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.reports(),
-        }),
+		onSuccess: async (_data, id) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.reports(),
+				}),
 
-        queryClient.invalidateQueries({
-          queryKey: merchantSettlementKeys.reportDetail(id),
-        }),
-      ]);
-    },
-  });
+				queryClient.invalidateQueries({
+					queryKey: merchantSettlementKeys.reportDetail(id),
+				}),
+			]);
+		},
+	});
 };
 
 /*
@@ -640,25 +640,25 @@ export const useSendMerchantSettlementReportEmail = () => {
 */
 
 export const sendAllSettlementEmailsForBatch = async (batchId) => {
-  const response = await merchantSettlementApi.post(
-    `/settlement-batches/${batchId}/send-all-emails`,
-  );
+	const response = await merchantSettlementApi.post(
+		`/settlement-batches/${batchId}/send-all-emails`,
+	);
 
-  return response.data;
+	return response.data;
 };
 
 export const useSendAllSettlementEmailsForBatch = () => {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: sendAllSettlementEmailsForBatch,
+	return useMutation({
+		mutationFn: sendAllSettlementEmailsForBatch,
 
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: merchantSettlementKeys.reports(),
-      });
-    },
-  });
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: merchantSettlementKeys.reports(),
+			});
+		},
+	});
 };
 
 /*
@@ -667,10 +667,29 @@ export const useSendAllSettlementEmailsForBatch = () => {
 |--------------------------------------------------------------------------
 */
 
-export const downloadMerchantSettlementReportPdf = async (id) => {
-  return merchantSettlementApi.get(`/reports/${id}/download-pdf`, {
-    responseType: "blob",
-  });
+// export const downloadMerchantSettlementReportPdf = async (id) => {
+//   return merchantSettlementApi.get(`/reports/${id}/download-pdf`, {
+//     responseType: "blob",
+//   });
+// };
+
+export const downloadMerchantSettlementReportPdf = async (
+	id,
+	conversionPayload = null,
+) => {
+	if (conversionPayload) {
+		return merchantSettlementApi.post(
+			`/reports/${id}/download-pdf`,
+			conversionPayload,
+			{
+				responseType: "blob",
+			},
+		);
+	}
+
+	return merchantSettlementApi.get(`/reports/${id}/download-pdf`, {
+		responseType: "blob",
+	});
 };
 
 /*
@@ -680,9 +699,9 @@ export const downloadMerchantSettlementReportPdf = async (id) => {
 */
 
 export const downloadMerchantSettlementReportExcel = async (id) => {
-  return merchantSettlementApi.get(`/reports/${id}/download-excel`, {
-    responseType: "blob",
-  });
+	return merchantSettlementApi.get(`/reports/${id}/download-excel`, {
+		responseType: "blob",
+	});
 };
 
 /*
@@ -692,26 +711,26 @@ export const downloadMerchantSettlementReportExcel = async (id) => {
 */
 
 export const getMerchantSettlementBatches = async (params = {}) => {
-  const response = await merchantSettlementApi.get("/settlement-batches", {
-    params: cleanParams(params),
-  });
+	const response = await merchantSettlementApi.get("/settlement-batches", {
+		params: cleanParams(params),
+	});
 
-  return {
-    items: response.data?.data || [],
+	return {
+		items: response.data?.data || [],
 
-    meta: response.data?.meta || {
-      total: 0,
-      page: Number(params.page) || 1,
-      limit: Number(params.limit) || 50,
-      totalPages: 0,
-    },
-  };
+		meta: response.data?.meta || {
+			total: 0,
+			page: Number(params.page) || 1,
+			limit: Number(params.limit) || 50,
+			totalPages: 0,
+		},
+	};
 };
 
 export const useMerchantSettlementBatches = (params = {}, options = {}) =>
-  useQuery({
-    queryKey: merchantSettlementKeys.settlementBatchList(params),
-    queryFn: () => getMerchantSettlementBatches(params),
-    placeholderData: (previousData) => previousData,
-    ...options,
-  });
+	useQuery({
+		queryKey: merchantSettlementKeys.settlementBatchList(params),
+		queryFn: () => getMerchantSettlementBatches(params),
+		placeholderData: (previousData) => previousData,
+		...options,
+	});

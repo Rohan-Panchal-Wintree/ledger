@@ -4,32 +4,32 @@ import { asyncHandler } from "../../utils/ManagedVariables.js";
 import { authenticatedWriteLimiter } from "../../utils/rateLimiters.js";
 
 import {
-  uploadMerchantFees,
-  createMerchantFee,
-  listMerchantFees,
-  getMerchantFee,
-  updateMerchantFee,
-  activateMerchantFee,
-  deleteMerchantFee,
-  uploadSettlementBatchTransactions,
-  listMerchantTransactions,
-  generateMerchantSettlementReport,
-  listMerchantSettlementReports,
-  getMerchantSettlementReport,
-  downloadMerchantSettlementPdf,
-  downloadMerchantSettlementExcel,
-  sendMerchantSettlementEmail,
-  sendAllSettlementEmailsForBatch,
-  uploadCountryMaster,
-  createCountryMaster,
-  listCountryMaster,
-  getCountryMaster,
-  updateCountryMaster,
-  deleteCountryMaster,
-  listMerchantFeeChangeRequests,
-  approveMerchantFeeChangeRequest,
-  rejectMerchantFeeChangeRequest,
-  listMerchantSettlementBatches,
+	uploadMerchantFees,
+	createMerchantFee,
+	listMerchantFees,
+	getMerchantFee,
+	updateMerchantFee,
+	activateMerchantFee,
+	deleteMerchantFee,
+	uploadSettlementBatchTransactions,
+	listMerchantTransactions,
+	generateMerchantSettlementReport,
+	listMerchantSettlementReports,
+	getMerchantSettlementReport,
+	downloadMerchantSettlementPdf,
+	downloadMerchantSettlementExcel,
+	sendMerchantSettlementEmail,
+	sendAllSettlementEmailsForBatch,
+	uploadCountryMaster,
+	createCountryMaster,
+	listCountryMaster,
+	getCountryMaster,
+	updateCountryMaster,
+	deleteCountryMaster,
+	listMerchantFeeChangeRequests,
+	approveMerchantFeeChangeRequest,
+	rejectMerchantFeeChangeRequest,
+	listMerchantSettlementBatches,
 } from "../../controller/merchant-settlement.controller.js";
 
 const router = Router();
@@ -44,80 +44,80 @@ router.use(middlewares.roleMiddleware(["admin", "support", "settlement"]));
 */
 
 router.post(
-  "/fees/upload",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
-  asyncHandler(uploadMerchantFees),
+	"/fees/upload",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
+	asyncHandler(uploadMerchantFees),
 );
 
 router.post(
-  "/fees",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(createMerchantFee),
+	"/fees",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(createMerchantFee),
 );
 
 router.get("/fees", asyncHandler(listMerchantFees));
 
 //Fees updation approval
 router.get(
-  "/fees/change-requests",
-  asyncHandler(listMerchantFeeChangeRequests),
+	"/fees/change-requests",
+	asyncHandler(listMerchantFeeChangeRequests),
 );
 
 router.post(
-  "/fees/change-requests/:id/approve",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(approveMerchantFeeChangeRequest),
+	"/fees/change-requests/:id/approve",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(approveMerchantFeeChangeRequest),
 );
 
 router.post(
-  "/fees/change-requests/:id/reject",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(rejectMerchantFeeChangeRequest),
+	"/fees/change-requests/:id/reject",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(rejectMerchantFeeChangeRequest),
 );
 
 router.get("/fees/:id", asyncHandler(getMerchantFee));
 
 router.put(
-  "/fees/:id",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(updateMerchantFee),
+	"/fees/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(updateMerchantFee),
 );
 
 router.delete(
-  "/fees/:id",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(deleteMerchantFee),
+	"/fees/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(deleteMerchantFee),
 );
 
 router.patch(
-  "/fees/:id/activate",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(activateMerchantFee),
+	"/fees/:id/activate",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(activateMerchantFee),
 );
 
 // COUNTRY
 
 router.post(
-  "/countries/upload",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
-  asyncHandler(uploadCountryMaster),
+	"/countries/upload",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	middlewares.uploadMiddleware.fields([{ name: "file", maxCount: 1 }]),
+	asyncHandler(uploadCountryMaster),
 );
 
 router.post(
-  "/countries",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(createCountryMaster),
+	"/countries",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(createCountryMaster),
 );
 
 router.get("/countries", asyncHandler(listCountryMaster));
@@ -125,17 +125,17 @@ router.get("/countries", asyncHandler(listCountryMaster));
 router.get("/countries/:id", asyncHandler(getCountryMaster));
 
 router.put(
-  "/countries/:id",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin, support", "settlement"]),
-  asyncHandler(updateCountryMaster),
+	"/countries/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin, support", "settlement"]),
+	asyncHandler(updateCountryMaster),
 );
 
 router.delete(
-  "/countries/:id",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(deleteCountryMaster),
+	"/countries/:id",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(deleteCountryMaster),
 );
 
 /*
@@ -145,14 +145,14 @@ router.delete(
 */
 
 router.post(
-  "/settlement-batches/upload",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  middlewares.uploadMiddleware.fields([
-    { name: "datestampFile", maxCount: 1 },
-    { name: "timestampFile", maxCount: 1 },
-  ]),
-  asyncHandler(uploadSettlementBatchTransactions),
+	"/settlement-batches/upload",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	middlewares.uploadMiddleware.fields([
+		{ name: "datestampFile", maxCount: 1 },
+		{ name: "timestampFile", maxCount: 1 },
+	]),
+	asyncHandler(uploadSettlementBatchTransactions),
 );
 
 /*
@@ -170,39 +170,46 @@ router.get("/transactions", asyncHandler(listMerchantTransactions));
 */
 
 router.post(
-  "/reports/generate",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(generateMerchantSettlementReport),
+	"/reports/generate",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(generateMerchantSettlementReport),
 );
 
 router.get("/reports", asyncHandler(listMerchantSettlementReports));
 router.get("/reports/:id", asyncHandler(getMerchantSettlementReport));
 
 router.get(
-  "/reports/:id/download-pdf",
-  asyncHandler(downloadMerchantSettlementPdf),
-);
-
-router.get(
-  "/reports/:id/download-excel",
-  asyncHandler(downloadMerchantSettlementExcel),
+	"/reports/:id/download-pdf",
+	asyncHandler(downloadMerchantSettlementPdf),
 );
 
 router.post(
-  "/reports/:id/send-email",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(sendMerchantSettlementEmail),
+	"/reports/:id/download-pdf",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "finance", "settlement"]),
+	downloadMerchantSettlementPdf,
+);
+
+router.get(
+	"/reports/:id/download-excel",
+	asyncHandler(downloadMerchantSettlementExcel),
+);
+
+router.post(
+	"/reports/:id/send-email",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(sendMerchantSettlementEmail),
 );
 
 router.get("/settlement-batches", asyncHandler(listMerchantSettlementBatches));
 
 router.post(
-  "/settlement-batches/:batchId/send-all-emails",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin", "support", "settlement"]),
-  asyncHandler(sendAllSettlementEmailsForBatch),
+	"/settlement-batches/:batchId/send-all-emails",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin", "support", "settlement"]),
+	asyncHandler(sendAllSettlementEmailsForBatch),
 );
 
 /*
@@ -212,22 +219,22 @@ router.post(
 */
 
 router.get(
-  "/merchant-fees/change-requests",
-  middlewares.roleMiddleware(["admin"]),
-  asyncHandler(listMerchantFeeChangeRequests),
+	"/merchant-fees/change-requests",
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(listMerchantFeeChangeRequests),
 );
 
 router.post(
-  "/merchant-fees/change-requests/:id/approve",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
-  asyncHandler(approveMerchantFeeChangeRequest),
+	"/merchant-fees/change-requests/:id/approve",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(approveMerchantFeeChangeRequest),
 );
 
 router.post(
-  "/merchant-fees/change-requests/:id/reject",
-  authenticatedWriteLimiter,
-  middlewares.roleMiddleware(["admin"]),
-  asyncHandler(rejectMerchantFeeChangeRequest),
+	"/merchant-fees/change-requests/:id/reject",
+	authenticatedWriteLimiter,
+	middlewares.roleMiddleware(["admin"]),
+	asyncHandler(rejectMerchantFeeChangeRequest),
 );
 export default router;
