@@ -15,10 +15,9 @@ import {
 } from "../queries/uploadQueries";
 
 import {
-  formatDateShortMonth,
   getErrorMessage,
-  formatDate,
 } from "../utils/appUtils";
+import { buildSettlementUploadPeriod } from "../utils/settlementUpload";
 import { parseUploadFileInWorker } from "../utils/uploadWorkerClient";
 
 import {
@@ -184,13 +183,12 @@ export const useUploadPageController = () => {
   }, [settlementTransactionFileList]);
 
   const hasValidSettlementPeriod = useMemo(() => {
-    if (settlementDateMode === "range") {
-      return Boolean(
-        settlementDateValue?.startDate && settlementDateValue?.endDate,
-      );
+    try {
+      buildSettlementUploadPeriod(settlementDateMode, settlementDateValue);
+      return true;
+    } catch {
+      return false;
     }
-
-    return Boolean(settlementDateValue);
   }, [settlementDateMode, settlementDateValue]);
 
   const currentTab = tabState[activeTab] || initialTabState;
@@ -809,22 +807,12 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
       return;
     }
 
-    const isRange = settlementDateMode === "range";
-
-    const reportDate = isRange
-      ? `${formatDate(settlementDateValue.startDate)} - ${formatDate(
-          settlementDateValue.endDate,
-        )}`
-      : formatDate(settlementDateValue);
-
-    const batchName = `${reportDate} Settlement`;
-
     try {
+      const period = buildSettlementUploadPeriod(settlementDateMode, settlementDateValue);
       const response = await uploadSettlementTransactionsMutation.mutateAsync({
         datestampFile,
         timestampFile,
-        reportDate,
-        batchName,
+        ...period,
       });
 
       setSettlementTransactionFiles({
@@ -859,6 +847,7 @@ Skipped rows: ${response?.skippedRows || 0}`,
           error,
           "Unable to upload settlement transaction files.",
         ),
+        { duration: 10000 },
       );
     }
   }, [

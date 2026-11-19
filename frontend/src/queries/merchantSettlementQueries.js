@@ -55,6 +55,8 @@ export const merchantSettlementKeys = {
 
 	reportDetail: (id) => [...merchantSettlementKeys.reports(), "detail", id],
 
+	reportAcquirers: (id) => [...merchantSettlementKeys.reportDetail(id), "acquirers"],
+
 	settlementBatches: () => [
 		...merchantSettlementKeys.all,
 		"settlement-batches",
@@ -689,6 +691,31 @@ export const downloadMerchantSettlementReportPdf = async (
 
 	return merchantSettlementApi.get(`/reports/${id}/download-pdf`, {
 		responseType: "blob",
+	});
+};
+
+export const getMerchantSettlementAcquirers = async (id, signal) => {
+	const response = await merchantSettlementApi.get(`/reports/${id}/acquirers`, {
+		signal, decodeErrorResponse: true,
+	});
+	return response.data.data;
+};
+
+export const useMerchantSettlementAcquirers = (id) =>
+	useQuery({
+		queryKey: merchantSettlementKeys.reportAcquirers(id),
+		queryFn: ({ signal }) => getMerchantSettlementAcquirers(id, signal),
+		enabled: Boolean(id),
+		staleTime: 0,
+		refetchOnMount: "always",
+		refetchOnWindowFocus: false,
+		retry: false,
+	});
+
+export const downloadMerchantSettlementDocument = (id, payload, audience) => {
+	const endpoint = audience === "internal" ? "download-acquirer-pdf" : "download-merchant-pdf";
+	return merchantSettlementApi.post(`/reports/${id}/${endpoint}`, payload, {
+		responseType: "blob", decodeErrorResponse: true,
 	});
 };
 

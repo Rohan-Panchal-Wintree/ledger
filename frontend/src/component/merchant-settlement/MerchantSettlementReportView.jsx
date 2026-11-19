@@ -4,12 +4,10 @@ import {
 	ArrowLeft,
 	CheckCircle2,
 	FileText,
-	Mail,
 	ReceiptText,
 	Send,
 	TriangleAlert,
 } from "lucide-react";
-import Modal from "../UI/Modal";
 
 import PageHeader from "../UI/PageHeader";
 import StatCard from "../UI/StatCard";
@@ -17,10 +15,10 @@ import StatCard from "../UI/StatCard";
 import { useSelector } from "react-redux";
 
 import {
-	formatDate,
 	formatInteger,
 	getErrorMessage,
 } from "../../utils/appUtils";
+import { formatSettlementDate as formatDate } from "../../utils/settlementDate";
 
 import Button from "../UI/Button";
 import DataTable, { readStoredRowsPerPage } from "../UI/DataTable";
@@ -29,12 +27,12 @@ import Spinner from "../UI/Spinner";
 
 import MerchantSettlementBatchRow from "./MerchantSettlementBatchRow";
 import MerchantSettlementReportCard from "./MerchantSettlementReportCard";
+import MerchantSettlementConversionModal from "./MerchantSettlementConversionModal";
 
 import { selectCurrentUser } from "../../store/slices/Auth.slice";
 
 import {
 	downloadMerchantSettlementReportExcel,
-	downloadMerchantSettlementReportPdf,
 	useMerchantSettlementBatches,
 	useMerchantSettlementReports,
 	useSendAllSettlementEmailsForBatch,
@@ -105,73 +103,11 @@ export default function MerchantSettlementReportView({
 
 	const [reportPage, setReportPage] = useState(1);
 
-	const [reportPageSize, setReportPageSize] = useState(readStoredRowsPerPage);
+	const [reportPageSize] = useState(readStoredRowsPerPage);
 
 	const [sendingReportId, setSendingReportId] = useState(null);
 
 	const [conversionReport, setConversionReport] = useState(null);
-	const [settlementCurrency, setSettlementCurrency] = useState("EUR");
-	const [conversionRates, setConversionRates] = useState({});
-	const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-
-	const displayConversionAmount = (value) =>
-		Number(value || 0).toLocaleString("en-US", {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		});
-
-	const getReportCurrencyRows = (report) =>
-		Object.values(report?.currencySummary || {})
-			.map((row) => ({
-				currency: row.currency,
-				netSettlement: Number(row.netSettlement || 0),
-			}))
-			.sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
-
-	const conversionRows = getReportCurrencyRows(conversionReport).map((row) => {
-		const rawRate =
-			row.currency === settlementCurrency ? 1 : conversionRates[row.currency];
-
-		const rate = Number(rawRate);
-		const valid = Number.isFinite(rate) && rate > 0;
-
-		const convertedAmount = valid ? row.netSettlement * rate : 0;
-		const convertedCents = valid ? Math.round(convertedAmount * 100) : 0;
-
-		return {
-			...row,
-			rate,
-			valid,
-			convertedCents,
-		};
-	});
-
-	const canGeneratePdf =
-		Boolean(conversionReport) &&
-		conversionRows.length > 0 &&
-		conversionRows.every((row) => row.valid);
-
-	const previewTotalCents = conversionRows.reduce(
-		(total, row) => total + (row.valid ? row.convertedCents : 0),
-		0,
-	);
-
-	const handleSettlementCurrencyChange = (nextCurrency) => {
-		setSettlementCurrency(nextCurrency);
-
-		setConversionRates((previous) => ({
-			...previous,
-			[nextCurrency]: 1,
-		}));
-	};
-
-	const handleCloseConversion = () => {
-		if (isDownloadingPdf) return;
-
-		setConversionReport(null);
-		setConversionRates({});
-		setSettlementCurrency("EUR");
-	};
 	const {
 		data: batchesResponse,
 		isLoading: isBatchesLoading,
@@ -244,70 +180,8 @@ export default function MerchantSettlementReportView({
 		onResetSearch?.();
 	};
 
-	// const handleDownloadPdf = async (report) => {
-	// 	const id = report?._id || report?.id;
-
-	// 	if (!id) return;
-
-	// 	try {
-	// 		const response = await downloadMerchantSettlementReportPdf(id);
-
-	// 		downloadBlobResponse(
-	// 			response,
-	// 			`${report?.memberId || "merchant"}-settlement.pdf`,
-	// 		);
-	// 	} catch (error) {
-	// 		toast.error(getErrorMessage(error, "Unable to download settlement PDF."));
-	// 	}
-	// };
-
 	const handleDownloadPdf = (report) => {
-		const id = report?._id || report?.id;
-
-		if (!id) return;
-
-		const currencies = Object.keys(report?.currencySummary || {});
-
-		const initialRates = currencies.reduce((acc, currency) => {
-			acc[currency] = currency === "EUR" ? 1 : "";
-			return acc;
-		}, {});
-
-		setSettlementCurrency("EUR");
-		setConversionRates(initialRates);
-		setConversionReport(report);
-	};
-
-	const handleGenerateConvertedPdf = async () => {
-		const report = conversionReport;
-		const id = report?._id || report?.id;
-
-		if (!id || !canGeneratePdf) return;
-
-		try {
-			setIsDownloadingPdf(true);
-
-			const rates = conversionRows.reduce((acc, row) => {
-				acc[row.currency] = row.currency === settlementCurrency ? 1 : row.rate;
-				return acc;
-			}, {});
-
-			const response = await downloadMerchantSettlementReportPdf(id, {
-				settlementCurrency,
-				rates,
-			});
-
-			downloadBlobResponse(
-				response,
-				`${report?.memberId || "merchant"}-settlement.pdf`,
-			);
-
-			handleCloseConversion();
-		} catch (error) {
-			toast.error(getErrorMessage(error, "Unable to download settlement PDF."));
-		} finally {
-			setIsDownloadingPdf(false);
-		}
+		if (report?._id || report?.id) setConversionReport(report);
 	};
 
 	const handleDownloadExcel = async (report) => {
@@ -587,142 +461,14 @@ export default function MerchantSettlementReportView({
 				</div>
 			)}
 
-			<Modal
-				open={Boolean(conversionReport)}
-				title="Settlement Conversion"
-				description={conversionReport?.merchantName}
-				size="md"
-				onClose={handleCloseConversion}
-				footer={
-					<>
-						<Button
-							type="button"
-							variant="secondary"
-							disabled={isDownloadingPdf}
-							onClick={handleCloseConversion}
-						>
-							Cancel
-						</Button>
-
-						<Button
-							type="button"
-							loading={isDownloadingPdf}
-							disabled={!canGeneratePdf}
-							onClick={handleGenerateConvertedPdf}
-						>
-							Generate PDF
-						</Button>
-					</>
-				}
-			>
-				<div className="space-y-5">
-					<label className="block space-y-2">
-						<span className="text-sm font-semibold text-on-surface">
-							Settlement currency
-						</span>
-
-						<select
-							value={settlementCurrency}
-							disabled={isDownloadingPdf}
-							onChange={(event) =>
-								handleSettlementCurrencyChange(event.target.value)
-							}
-							className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-lowest px-3 py-2 text-sm font-semibold text-on-surface outline-none transition focus:border-primary"
-						>
-							<option value="EUR">EUR</option>
-							<option value="USDT">USDT</option>
-						</select>
-					</label>
-
-					<p className="text-sm text-on-surface-variant">
-						Enter how much {settlementCurrency} equals one unit of each original
-						currency.
-					</p>
-
-					<div className="space-y-3">
-						{conversionRows.map((row) => (
-							<div
-								key={row.currency}
-								className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4"
-							>
-								<div className="flex justify-between gap-3 text-sm">
-									<span className="font-bold text-on-surface">
-										{row.currency}
-									</span>
-
-									<span className="text-on-surface-variant">
-										Net payable:{" "}
-										<span className="font-semibold text-on-surface">
-											{displayConversionAmount(row.netSettlement)}{" "}
-											{row.currency}
-										</span>
-									</span>
-								</div>
-
-								<label className="flex items-center gap-2 text-sm">
-									<span className="shrink-0 text-on-surface-variant">
-										1 {row.currency} =
-									</span>
-
-									<input
-										type="number"
-										step="any"
-										min="0"
-										aria-label={`${row.currency} to ${settlementCurrency} conversion rate`}
-										value={
-											row.currency === settlementCurrency
-												? "1"
-												: (conversionRates[row.currency] ?? "")
-										}
-										disabled={
-											isDownloadingPdf || row.currency === settlementCurrency
-										}
-										onChange={(event) =>
-											setConversionRates((previous) => ({
-												...previous,
-												[row.currency]: event.target.value,
-											}))
-										}
-										className="min-w-0 flex-1 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-right font-semibold text-on-surface outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-									/>
-
-									<span className="shrink-0 font-semibold text-on-surface">
-										{settlementCurrency}
-									</span>
-								</label>
-
-								<p className="text-sm text-on-surface-variant">
-									Converted payable:{" "}
-									{row.valid ? (
-										<span className="font-bold text-on-surface">
-											{displayConversionAmount(row.convertedCents / 100)}{" "}
-											{settlementCurrency}
-										</span>
-									) : (
-										<span className="font-semibold text-error">
-											Enter a valid positive rate
-										</span>
-									)}
-								</p>
-							</div>
-						))}
-					</div>
-
-					<div className="rounded-xl bg-surface-container p-4">
-						<div className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-							Final payable
-						</div>
-
-						<div className="mt-1 text-xl font-bold text-on-surface">
-							{canGeneratePdf
-								? `${displayConversionAmount(
-										previewTotalCents / 100,
-									)} ${settlementCurrency}`
-								: "Complete all conversion rates"}
-						</div>
-					</div>
-				</div>
-			</Modal>
+			{conversionReport && (
+				<MerchantSettlementConversionModal
+					key={conversionReport._id || conversionReport.id}
+					report={conversionReport}
+					downloadFile={downloadBlobResponse}
+					onClose={() => setConversionReport(null)}
+				/>
+			)}
 		</section>
 	);
 }

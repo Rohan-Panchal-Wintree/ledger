@@ -17,7 +17,7 @@ import {
 } from "./config";
 
 import { decryptData, encryptData } from "./utils/cryptoUtils";
-import { decryptApiResponse } from "./utils/apiEncryption";
+import { decryptApiResponse, readApiErrorPayload } from "./utils/apiEncryption";
 
 const AUTH_STORAGE_KEY = "pg_user";
 const LOGIN_PATH = "/login";
@@ -193,6 +193,18 @@ function createApiInstance(baseURL) {
 
     async (error) => {
       const originalRequest = error.config;
+
+      if (originalRequest?.decodeErrorResponse && error.response) {
+        try {
+          const auth = await getStoredAuth();
+          error.response.data = await readApiErrorPayload(
+            error.response.data,
+            auth?.responseKey,
+          );
+        } catch {
+          // Preserve the original response and existing authentication handling.
+        }
+      }
 
       if (isInvalidCsrfError(error)) {
         expireAuth();

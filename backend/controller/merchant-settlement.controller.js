@@ -5,8 +5,38 @@ import readline from "readline";
 import { parse } from "csv-parse";
 import path from "path";
 import PDFDocument from "pdfkit";
+import {
+	calculateMdr, moneyUnits, preciseMoney, settlementExpenseAmount, sumMoney,
+} from "../services/settlement-money.service.js";
+import {
+	acquirerMatchRegex,
+	createAcquirerSettlementService,
+	isValidSettlementAcquirer,
+	safeSettlementFilePart,
+	settlementDownloadError,
+	validateAcquirerConversions,
+} from "../services/acquirer-settlement.service.js";
+import {
+	buildCombinedAcquirerPdfBuffer,
+} from "../services/settlement-pdf.service.js";
+import {
+	getReportTransactionPeriod,
+	resolveDatestampBatchPeriods,
+	resolveDatestampReportPeriods,
+} from "../services/settlement-report-period.service.js";
 import { mailTransporter } from "../utils/SendEmail.js";
 import { safeDeleteTempFile } from "../utils/tempFile.js";
+import {
+	isSettlementTransactionFilename,
+	iterateXlsxSettlementRows,
+	parseSettlementUploadPeriod,
+	parseSettlementTransactionDate,
+	settlementDateToExcelCell,
+	formatSettlementReportDate as formatDate,
+	SETTLEMENT_ACQUIRER_HEADERS,
+	SETTLEMENT_ROW_LOCATION,
+	validateSettlementAcquirerHeader,
+} from "../utils/settlementUpload.js";
 import { publishSettlementEmailJob } from "../utils/rabbitmq.js";
 
 import { User } from "../models/user.model.js";
@@ -54,56 +84,6 @@ const parseNumber = (value) => {
 	const parsed = Number(clean);
 
 	return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const parseDate = (value) => {
-	if (!value) return null;
-
-	const date = new Date(value);
-
-	if (Number.isNaN(date.getTime())) return null;
-
-	return date;
-};
-
-const parseSettlementReportDate = (value) => {
-	if (!value) return null;
-
-	const text = String(value).trim();
-
-	// Accept DD/MM/YYYY
-	const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-
-	if (match) {
-		const [, dd, mm, yyyy] = match;
-
-		const day = Number(dd);
-		const month = Number(mm);
-		const year = Number(yyyy);
-
-		const date = new Date(Date.UTC(year, month - 1, day));
-
-		// Reject invalid dates
-		if (
-			date.getUTCFullYear() !== year ||
-			date.getUTCMonth() !== month - 1 ||
-			date.getUTCDate() !== day
-		) {
-			return null;
-		}
-
-		return date;
-	}
-
-	// Accept YYYY-MM-DD too
-	const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-
-	if (isoMatch) {
-		const [, yyyy, mm, dd] = isoMatch;
-		return parseSettlementReportDate(`${dd}/${mm}/${yyyy}`);
-	}
-
-	return null;
 };
 
 const startOfDate = (value) => {
@@ -219,41 +199,52 @@ const findCsvHeaderLine = async (filePath) => {
 	return null;
 };
 
-async function* iterateCsvTransactionRows(filePath) {
+async function* iterateCsvTransactionRows(filePath, { onHeader } = {}) {
 	const headerLine = await findCsvHeaderLine(filePath);
 
 	if (!headerLine) {
 		throw new Error("Could not find transaction header row in CSV file");
 	}
 
-	const stream = fs.createReadStream(filePath).pipe(
-		parse({
-			columns: true,
+	const input = fs.createReadStream(filePath);
+	const stream = parse({
+		columns: (headers) => {
+			onHeader?.({ headers, rowNumber: headerLine });
+			return headers;
+		},
+		info: true,
 
-			from_line: headerLine,
+		from_line: headerLine,
 
-			skip_empty_lines: true,
+		skip_empty_lines: true,
 
-			relax_column_count: true,
+		relax_column_count: true,
 
-			bom: true,
+		bom: true,
 
-			trim: true,
-		}),
-	);
+		trim: true,
+	});
+	input.on("error", (error) => stream.destroy(error));
+	input.pipe(stream);
 
-	for await (const row of stream) {
-		const normalizedRow = {};
+	try {
+		for await (const { record: row, info } of stream) {
+			const normalizedRow = {};
 
-		for (const [key, value] of Object.entries(row)) {
-			assignNormalizedValue(normalizedRow, key, value);
+			for (const [key, value] of Object.entries(row)) {
+				assignNormalizedValue(normalizedRow, key, value);
+			}
+
+			Object.defineProperty(normalizedRow, SETTLEMENT_ROW_LOCATION, { value: { rowNumber: info.lines } });
+			yield normalizedRow;
 		}
-
-		yield normalizedRow;
+	} finally {
+		input.destroy();
+		stream.destroy();
 	}
 }
 
-async function* iterateTransactionRows(file) {
+export async function* iterateTransactionRows(file, options = {}) {
 	if (!file?.path) {
 		throw new Error(
 			`Temporary upload path is missing for ${file?.originalname || "file"}`,
@@ -262,13 +253,19 @@ async function* iterateTransactionRows(file) {
 
 	const filename = String(file.originalname || "").toLowerCase();
 
-	if (!filename.endsWith(".csv")) {
-		throw new Error(
-			`Only CSV transaction files are supported. Received: ${file.originalname}`,
-		);
+	if (filename.endsWith(".csv")) {
+		yield* iterateCsvTransactionRows(file.path, options);
+		return;
 	}
 
-	yield* iterateCsvTransactionRows(file.path);
+	if (filename.endsWith(".xlsx")) {
+		yield* iterateXlsxSettlementRows(file.path, options);
+		return;
+	}
+
+	throw new Error(
+		`Only CSV and XLSX transaction files are supported. Received: ${file.originalname}`,
+	);
 }
 
 const parseWorkbookRows = (filePath) => {
@@ -317,14 +314,15 @@ const setMoneyFromCents = (target, centsMap, fields) => {
 };
 
 const addMoneyToBucket = (bucket, field, value) => {
-	bucket._cents = bucket._cents || {};
-	bucket._cents[field] = addCents(bucket._cents[field], value);
-	bucket[field] = fromCents(bucket._cents[field]);
+	bucket._units = bucket._units || {};
+	// Accumulate micro-units so MDR is never rounded per transaction.
+	bucket._units[field] = moneyUnits(sumMoney([(bucket._units[field] || 0) / 1_000_000, value]));
+	bucket[field] = bucket._units[field] / 1_000_000;
 };
 
 const removeInternalCents = (map) => {
 	for (const item of Object.values(map || {})) {
-		delete item._cents;
+		delete item._units;
 	}
 };
 
@@ -1540,13 +1538,14 @@ const normalizeNA = (value) => {
 };
 
 const normalizeTransactionRow = (row) => ({
-	transactionDate: parseDate(
+	transactionDate: parseSettlementTransactionDate(
 		getValue(row, [
 			"Datestamp",
 			"Date Stamp",
 			"Timestamp",
 			"Time Stamp",
 			"Transaction Date(MM/DD/YYYY)",
+			"Transaction Date (MM/DD/YYYY)",
 			"Transaction Date",
 		]),
 	),
@@ -1589,6 +1588,9 @@ const normalizeTransactionRow = (row) => ({
 
 	status: normalizeText(getValue(row, ["Status"])),
 	reason: normalizeText(getValue(row, ["Reason", "Remark"])),
+	acquirer: normalizeUpper(
+		getValue(row, SETTLEMENT_ACQUIRER_HEADERS),
+	),
 });
 
 const normalizeTransactionForMatching = (row) => ({
@@ -1682,7 +1684,7 @@ const calculateFees = ({ row, fee, sourceFileType }) => {
 	 * not timestamp adjustment rows.
 	 */
 	const mdrFee = isSuccess
-		? fromCents(percentFeeCents(capturedCents, fee.mdrPercent))
+		? calculateMdr(capturedAmount, fee.mdrPercent || 0)
 		: 0;
 
 	const rollingReserveAmount = isSuccess
@@ -1704,7 +1706,7 @@ const calculateFees = ({ row, fee, sourceFileType }) => {
 
 	const settlementExpense = 0;
 
-	const totalFees = roundMoney(
+	const totalFees = preciseMoney(
 		mdrFee +
 			approvalFee +
 			declineFee +
@@ -1723,7 +1725,7 @@ const calculateFees = ({ row, fee, sourceFileType }) => {
 	 * therefore reversal / chargeback naturally produces
 	 * negative settlement impact.
 	 */
-	const netSettlement = roundMoney(capturedAmount - totalFees);
+	const netSettlement = sumMoney([capturedAmount, -totalFees]);
 
 	return {
 		capturedAmount,
@@ -1768,7 +1770,7 @@ const insertTransactionsInChunks = async (docs, chunkSize = 1000) => {
 |--------------------------------------------------------------------------
 */
 
-const processTransactionFile = async ({
+export const processTransactionFile = async ({
 	file,
 	sourceFileType,
 	settlementBatchId,
@@ -2057,6 +2059,36 @@ export const listMerchantTransactions = async (req, res) => {
 	});
 };
 
+export const validateSettlementTransactionFile = async (file, sourceFileType) => {
+	try {
+		let headerFound = false;
+		let invalidCount = 0;
+		const samples = [];
+		for await (const rawRow of iterateTransactionRows(file, {
+			onHeader: (header) => {
+				validateSettlementAcquirerHeader(header);
+				headerFound = true;
+			},
+		})) {
+			const row = normalizeTransactionForMatching(normalizeTransactionRow(rawRow));
+			// Validate the rows that the importer will persist, including unmatched fees.
+			if (!isAllowedStatusForSource(row.status, sourceFileType) || isMissingRequiredTransactionField(row)) continue;
+			if (isValidSettlementAcquirer(row.acquirer)) continue;
+			invalidCount++;
+			if (samples.length < 5) {
+				const { sheetName, rowNumber } = rawRow[SETTLEMENT_ROW_LOCATION];
+				samples.push(`${sheetName ? `sheet "${sheetName}", row` : "CSV line"} ${rowNumber} (${row.status})`);
+			}
+		}
+		if (!headerFound) settlementDownloadError("No transaction header was found. Add the required transaction columns, including \"Acquirer-wise\".");
+		if (invalidCount) {
+			settlementDownloadError(`${invalidCount} transaction row(s) have a missing or invalid acquirer: ${samples.join("; ")}${invalidCount > samples.length ? `; and ${invalidCount - samples.length} more` : ""}. Fill in the correct acquirer in "Acquirer-wise"; blanks, -, NA, N/A, NULL, and UNKNOWN are not accepted.`);
+		}
+	} catch (error) {
+		settlementDownloadError(`"${file.originalname}": ${error.message} No settlement data was saved.`);
+	}
+};
+
 export const uploadSettlementBatchTransactions = async (req, res) => {
 	/*
 	 * Large CSV processing may legitimately take several minutes.
@@ -2082,33 +2114,36 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 	}
 
 	/*
-	 * Settlement transaction uploads are CSV only.
+	 * CSV is streamed; XLSX worksheets are read through the transaction reader.
 	 */
 	const receivedFiles = [datestampFile, timestampFile].filter(Boolean);
+	const cleanupFiles = () => Promise.all(receivedFiles.map((file) => safeDeleteTempFile(file.path)));
+	const rejectUpload = async (message) => {
+		await cleanupFiles();
+		return res.status(400).json({ success: false, message });
+	};
 
 	const invalidFile = receivedFiles.find(
-		(file) =>
-			!String(file.originalname || "")
-				.toLowerCase()
-				.endsWith(".csv"),
+		(file) => !isSettlementTransactionFilename(file.originalname),
 	);
 
 	if (invalidFile) {
-		return res.status(400).json({
-			success: false,
-			message: `Only CSV settlement transaction files are supported. Invalid file: ${invalidFile.originalname}`,
-		});
+		return rejectUpload(`Only CSV and XLSX settlement transaction files are supported. Invalid file: ${invalidFile.originalname}`);
 	}
 
-	const reportDate = req.body.reportDate
-		? parseSettlementReportDate(req.body.reportDate)
-		: null;
-
-	if (req.body.reportDate && !reportDate) {
-		return res.status(400).json({
-			success: false,
-			message: "Invalid reportDate. Use DD/MM/YYYY or YYYY-MM-DD.",
-		});
+	let period;
+	try {
+		period = parseSettlementUploadPeriod(req.body);
+	} catch (error) {
+		return rejectUpload(error.message);
+	}
+	const { reportDate, fromDate, toDate } = period;
+	// Validate every file before creating a batch, upload record, or transaction.
+	try {
+		if (datestampFile) await validateSettlementTransactionFile(datestampFile, "datestamp");
+		if (timestampFile) await validateSettlementTransactionFile(timestampFile, "timestamp");
+	} catch (error) {
+		return rejectUpload(error.message);
 	}
 
 	const settlementBatch = await MerchantSettlementBatch.create({
@@ -2117,9 +2152,9 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 
 		reportDate,
 
-		fromDate: req.body.fromDate ? parseDate(req.body.fromDate) : null,
+		fromDate,
 
-		toDate: req.body.toDate ? parseDate(req.body.toDate) : null,
+		toDate,
 
 		datestampFileName: datestampFile?.originalname || "",
 
@@ -2128,6 +2163,9 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 		status: "processing",
 
 		uploadedBy: req.user._id,
+	}).catch(async (error) => {
+		await cleanupFiles();
+		throw error;
 	});
 
 	try {
@@ -2260,10 +2298,11 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 			}),
 		]);
 
-		return res.status(500).json({
+		const statusCode = error.statusCode === 400 ? 400 : 500;
+		return res.status(statusCode).json({
 			success: false,
 
-			message: "Settlement batch upload failed. All partial data was removed.",
+			message: statusCode === 400 ? error.message : "Settlement batch upload failed. All partial data was removed.",
 
 			error: error.message,
 		});
@@ -2383,12 +2422,28 @@ const getMerchantEmailRecipients = async ({
 |--------------------------------------------------------------------------
 */
 
-const buildMerchantReportData = async ({
+const MDR_CALCULATION_VERSION = 2;
+
+// Correct legacy transaction MDR in memory; retain every other stored charge.
+export const withPreciseTransactionMdr = (txn) => {
+	const rate = txn.feeConfigId?.mdrPercent;
+	if (!isSuccessStatus(normalizeUpper(txn.status), txn.sourceFileType) || rate == null) return txn;
+	const mdrFee = calculateMdr(txn.capturedAmount || 0, rate);
+	return {
+		...txn, mdrFee,
+		totalFees: sumMoney([txn.totalFees || 0, -(txn.mdrFee || 0), mdrFee]),
+		netSettlement: sumMoney([txn.netSettlement || 0, txn.mdrFee || 0, -mdrFee]),
+	};
+};
+
+export const buildMerchantReportData = async ({
 	settlementBatchId,
 	memberId,
 	reportDate,
 	fromDate,
 	toDate,
+	acquirer,
+	reportId,
 }) => {
 	const query = {
 		settlementBatchId: new mongoose.Types.ObjectId(settlementBatchId),
@@ -2405,10 +2460,27 @@ const buildMerchantReportData = async ({
 		if (toDate) query.transactionDate.$lte = endOfDate(toDate);
 	}
 
-	const transactions = await MerchantTransaction.find(query)
+	if (reportId) {
+		const selectedReport =
+			await MerchantSettlementReport.findById(reportId).lean();
+		if (
+			!selectedReport ||
+			String(selectedReport.settlementBatchId?._id || selectedReport.settlementBatchId) !== String(settlementBatchId) ||
+			selectedReport.memberId !== memberId
+		) {
+			settlementDownloadError(
+				"Report does not belong to this settlement batch and MID.",
+			);
+		}
+		Object.assign(query, getReportTransactionQuery(selectedReport, "matched"));
+	}
+	if (acquirer !== undefined) query.acquirer = acquirerMatchRegex(acquirer);
+
+	const storedTransactions = await MerchantTransaction.find(query)
 		.populate("feeConfigId")
 		.sort({ transactionDate: 1 })
 		.lean();
+	const transactions = storedTransactions.map(withPreciseTransactionMdr);
 
 	const first = transactions[0];
 
@@ -2420,6 +2492,15 @@ const buildMerchantReportData = async ({
 	const transactionFromDate = transactionDates[0] || null;
 	const transactionToDate =
 		transactionDates[transactionDates.length - 1] || transactionFromDate;
+	const datestampDates = transactions
+		.filter((txn) => isDatestampSource(txn.sourceFileType))
+		.map((txn) => txn.transactionDate ? new Date(txn.transactionDate) : null)
+		.filter((date) => date && Number.isFinite(date.getTime()))
+		.sort((a, b) => a.getTime() - b.getTime());
+	const datestampPeriod = {
+		fromDate: datestampDates[0] || null,
+		toDate: datestampDates[datestampDates.length - 1] || null,
+	};
 
 	const summary = {
 		totalTransactions: transactions.length,
@@ -2465,14 +2546,11 @@ const buildMerchantReportData = async ({
 		capturedAmount: 0,
 		reversalAmount: 0,
 		chargebackAmount: 0,
-		mdrFee: 0,
 		approvalFee: 0,
 		declineFee: 0,
 		reversalFee: 0,
 		chargebackFee: 0,
 		rollingReserveAmount: 0,
-		totalFees: 0,
-		netSettlement: 0,
 	};
 
 	for (const txn of transactions) {
@@ -2584,7 +2662,6 @@ const buildMerchantReportData = async ({
 			txn.chargebackAmountValue,
 		);
 
-		summaryCents.mdrFee = addCents(summaryCents.mdrFee, txn.mdrFee);
 		summaryCents.approvalFee = addCents(
 			summaryCents.approvalFee,
 			txn.approvalFee,
@@ -2601,11 +2678,6 @@ const buildMerchantReportData = async ({
 		summaryCents.rollingReserveAmount = addCents(
 			summaryCents.rollingReserveAmount,
 			txn.rollingReserveAmount,
-		);
-		summaryCents.totalFees = addCents(summaryCents.totalFees, txn.totalFees);
-		summaryCents.netSettlement = addCents(
-			summaryCents.netSettlement,
-			txn.netSettlement,
 		);
 
 		const statusKey = txn.status || "UNKNOWN";
@@ -2859,12 +2931,10 @@ const buildMerchantReportData = async ({
 			addMoneyToBucket(bucket, "chargebackAmount", txn.chargebackAmountValue);
 			addMoneyToBucket(bucket, "chargebackFee", txn.chargebackFee);
 
-			bucket.totalDeduction = fromCents(
-				(bucket._cents?.reversalAmount || 0) +
-					(bucket._cents?.reversalFee || 0) +
-					(bucket._cents?.chargebackAmount || 0) +
-					(bucket._cents?.chargebackFee || 0),
-			);
+			bucket.totalDeduction = sumMoney([
+				bucket.reversalAmount, bucket.reversalFee,
+				bucket.chargebackAmount, bucket.chargebackFee,
+			]);
 
 			addMoneyToBucket(bucket, "netSettlement", txn.netSettlement);
 		}
@@ -3013,68 +3083,30 @@ const buildMerchantReportData = async ({
 
 	setMoneyFromCents(summary, summaryCents, Object.keys(summaryCents));
 
-	const finalSummaryCents = {
-		feesBeforeSettlementExpense: 0,
-		settlementExpenseBase: 0,
-		settlementExpense: 0,
-		totalFees: 0,
-		netSettlement: 0,
-	};
-
 	for (const currencyRow of Object.values(currencySummary)) {
-		const feesBeforeSettlementExpenseCents =
-			toCents(currencyRow.mdrFee) +
-			toCents(currencyRow.approvalFee) +
-			toCents(currencyRow.declineFee) +
-			toCents(currencyRow.reversalFee) +
-			toCents(currencyRow.chargebackFee) +
-			toCents(currencyRow.rollingReserveAmount) +
-			toCents(currencyRow.reversalAmount) +
-			toCents(currencyRow.chargebackAmount);
-
-		const settlementExpenseBaseCents =
-			toCents(currencyRow.capturedAmount) - feesBeforeSettlementExpenseCents;
-
-		const settlementExpensePercent = currencyRow.settlementExpensePercent || 0;
-
-		const settlementExpenseCents =
-			settlementExpenseBaseCents > 0
-				? percentFeeCents(settlementExpenseBaseCents, settlementExpensePercent)
-				: 0;
-
-		const totalFeesCents =
-			feesBeforeSettlementExpenseCents + settlementExpenseCents;
-
-		const netSettlementCents =
-			toCents(currencyRow.capturedAmount) - totalFeesCents;
-
-		currencyRow.feesBeforeSettlementExpense = fromCents(
-			feesBeforeSettlementExpenseCents,
+		currencyRow.feesBeforeSettlementExpense = sumMoney([
+			currencyRow.mdrFee, currencyRow.approvalFee, currencyRow.declineFee,
+			currencyRow.reversalFee, currencyRow.chargebackFee, currencyRow.rollingReserveAmount,
+			currencyRow.reversalAmount, currencyRow.chargebackAmount,
+		]);
+		currencyRow.settlementExpenseBase = sumMoney([
+			currencyRow.capturedAmount, -currencyRow.feesBeforeSettlementExpense,
+		]);
+		currencyRow.settlementExpense = settlementExpenseAmount(
+			currencyRow.settlementExpenseBase, currencyRow.settlementExpensePercent,
 		);
-
-		currencyRow.settlementExpenseBase = fromCents(settlementExpenseBaseCents);
-
-		currencyRow.settlementExpense = fromCents(settlementExpenseCents);
-		currencyRow.totalFees = fromCents(totalFeesCents);
-		currencyRow.netSettlement = fromCents(netSettlementCents);
-
-		finalSummaryCents.feesBeforeSettlementExpense +=
-			feesBeforeSettlementExpenseCents;
-		finalSummaryCents.settlementExpenseBase += settlementExpenseBaseCents;
-		finalSummaryCents.settlementExpense += settlementExpenseCents;
-		finalSummaryCents.totalFees += totalFeesCents;
-		finalSummaryCents.netSettlement += netSettlementCents;
+		currencyRow.totalFees = sumMoney([
+			currencyRow.feesBeforeSettlementExpense, currencyRow.settlementExpense,
+		]);
+		currencyRow.netSettlement = roundMoney(sumMoney([
+			currencyRow.capturedAmount, -currencyRow.totalFees,
+		]));
 	}
 
-	summary.feesBeforeSettlementExpense = fromCents(
-		finalSummaryCents.feesBeforeSettlementExpense,
-	);
-	summary.settlementExpenseBase = fromCents(
-		finalSummaryCents.settlementExpenseBase,
-	);
-	summary.settlementExpense = fromCents(finalSummaryCents.settlementExpense);
-	summary.totalFees = fromCents(finalSummaryCents.totalFees);
-	summary.netSettlement = fromCents(finalSummaryCents.netSettlement);
+	for (const field of ["mdrFee", "feesBeforeSettlementExpense", "settlementExpenseBase",
+		"settlementExpense", "totalFees", "netSettlement"]) {
+		summary[field] = sumMoney(Object.values(currencySummary).map((row) => row[field]));
+	}
 
 	summary.settlementExpensePercent = [
 		...new Set(
@@ -3092,12 +3124,18 @@ const buildMerchantReportData = async ({
 	removeInternalCents(feeRateSummary);
 	removeInternalCents(daySummaryMap);
 	return {
+		mdrCalculationVersion: MDR_CALCULATION_VERSION,
 		merchantName: first?.merchantCompanyName || "Unknown Merchant",
 		memberId: first?.memberId || memberId,
 		partnerName: first?.partnerName || "",
 		reportDate: reportDate || toDate || transactionToDate || new Date(),
 		fromDate: fromDate || reportDate || transactionFromDate || null,
 		toDate: toDate || reportDate || transactionToDate || null,
+		datestampPeriod,
+		transactionPeriod: {
+			fromDate: fromDate || reportDate || transactionFromDate,
+			toDate: toDate || reportDate || transactionToDate,
+		},
 
 		summary,
 		currencySummary,
@@ -3298,20 +3336,6 @@ const slugify = (value) =>
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "");
 
-const formatDate = (value) => {
-	if (!value) return "-";
-
-	const date = new Date(value);
-
-	if (Number.isNaN(date.getTime())) return "-";
-
-	return date.toLocaleDateString("en-GB", {
-		day: "2-digit",
-		month: "short",
-		year: "numeric",
-	});
-};
-
 const formatNumber = (value) =>
 	Number(value || 0).toLocaleString("en-US", {
 		minimumFractionDigits: 2,
@@ -3486,15 +3510,16 @@ const getPrimaryCurrency = (report) =>
 	Object.keys(report.currencySummary || {})[0] || "";
 
 const getReportDateQuery = (report) => {
-	if (report.fromDate || report.toDate) {
+	const period = getReportTransactionPeriod(report);
+	if (period.fromDate || period.toDate) {
 		const query = {};
 
-		if (report.fromDate) {
-			query.$gte = startOfDate(report.fromDate);
+		if (period.fromDate) {
+			query.$gte = startOfDate(period.fromDate);
 		}
 
-		if (report.toDate) {
-			query.$lte = endOfDate(report.toDate);
+		if (period.toDate) {
+			query.$lte = endOfDate(period.toDate);
 		}
 
 		return query;
@@ -3503,14 +3528,14 @@ const getReportDateQuery = (report) => {
 	return getDateRange(report.reportDate);
 };
 
-const getReportTransactionQuery = (report, matchStatus = "matched") => {
+export const getReportTransactionQuery = (report, matchStatus = "matched") => {
 	const query = {
 		memberId: report.memberId,
 		matchStatus,
 	};
 
 	if (report.settlementBatchId) {
-		query.settlementBatchId = report.settlementBatchId;
+		query.settlementBatchId = report.settlementBatchId._id || report.settlementBatchId;
 	}
 
 	if (matchStatus === "matched" && report._id) {
@@ -3526,6 +3551,57 @@ const getReportTransactionQuery = (report, matchStatus = "matched") => {
 	}
 
 	return query;
+};
+
+export const refreshSettlementMdr = async (report) => {
+	if (report.reportData?.mdrCalculationVersion === MDR_CALCULATION_VERSION ||
+		report.mdrCalculationVersion === MDR_CALCULATION_VERSION) return report;
+	if (!report._id || !report.settlementBatchId || !report.memberId) return report;
+	const data = await buildMerchantReportData({
+		settlementBatchId: report.settlementBatchId._id || report.settlementBatchId,
+		memberId: report.memberId, reportId: report._id,
+	});
+	const rateVolumes = (rows) => {
+		const groups = {};
+		for (const row of Object.values(rows || {})) {
+			const key = JSON.stringify([row.currency, row.brandGroup,
+				row.appliedRateRegion || row.countryCategory || "ALL", Number(row.mdrPercent || 0)]);
+			groups[key] = sumMoney([groups[key] || 0, row.capturedAmount]);
+		}
+		return groups;
+	};
+	const savedRates = rateVolumes(report.reportData?.feeRateSummary);
+	const currentRates = rateVolumes(data.feeRateSummary);
+	if (Object.keys(savedRates).length &&
+		(Object.keys(savedRates).length !== Object.keys(currentRates).length ||
+			Object.entries(savedRates).some(([key, amount]) => moneyUnits(amount) !== moneyUnits(currentRates[key])))) {
+		settlementDownloadError("Cannot refresh MDR: configured rates differ from the saved report. Review the rates and regenerate this report.", 409);
+	}
+	// A read must never silently change the saved transaction scope or other fees.
+	const preservedFields = ["capturedAmount", "reversalAmount", "chargebackAmount", "approvalFee",
+		"declineFee", "reversalFee", "chargebackFee", "rollingReserveAmount",
+		"txns", "successTxns", "failedTxns", "adjustmentTxns", "settlementExpensePercent"];
+	if (data.summary.totalTransactions !== report.summary?.totalTransactions ||
+		Object.keys(data.currencySummary).length !== Object.keys(report.currencySummary || {}).length ||
+		Object.entries(data.currencySummary).some(([currency, row]) => !report.currencySummary?.[currency] ||
+			preservedFields.some((field) => moneyUnits(row[field]) !== moneyUnits(report.currencySummary[currency][field])))) {
+		settlementDownloadError("Cannot refresh MDR: saved report transactions or non-MDR charges have changed. Regenerate this report.", 409);
+	}
+	return {
+		...report, summary: data.summary, currencySummary: data.currencySummary,
+		statusSummary: data.statusSummary, brandSummary: data.paymentBrandSummary, modeSummary: data.modeSummary,
+		reportData: { ...report.reportData, ...data,
+			transactionPeriod: getReportTransactionPeriod(report),
+			fromDate: report.fromDate, toDate: report.toDate, reportDate: report.reportDate },
+	};
+};
+
+const withDatestampReportPeriods = async (reports) => {
+	const refreshed = [];
+	for (const report of reports) refreshed.push(await refreshSettlementMdr(report));
+	return resolveDatestampReportPeriods(refreshed, {
+		Transaction: MerchantTransaction, getTransactionQuery: getReportTransactionQuery,
+	});
 };
 
 export const listMerchantSettlementReports = async (req, res) => {
@@ -3575,11 +3651,12 @@ export const listMerchantSettlementReports = async (req, res) => {
 
 		MerchantSettlementReport.countDocuments(query),
 	]);
+	const reports = await withDatestampReportPeriods(data);
 
 	return res.json({
 		success: true,
 
-		data,
+		data: reports,
 
 		meta: {
 			total,
@@ -3602,7 +3679,7 @@ export const getMerchantSettlementReport = async (req, res) => {
 
 	return res.json({
 		success: true,
-		data: report,
+		data: (await withDatestampReportPeriods([report]))[0],
 	});
 };
 
@@ -4372,7 +4449,7 @@ const buildDetailedBrandSections = ({
 						toCents(row.capturedAmount || 0) - totalFeesCents,
 					);
 
-					delete row._cents;
+					delete row._units;
 
 					row.countryNote = getCountryListText(row.countryNames);
 
@@ -4390,7 +4467,7 @@ const buildDetailedBrandSections = ({
 
 			const declineRows = [...section.declineMap.values()]
 				.map((row) => {
-					delete row._cents;
+					delete row._units;
 
 					row.countryNote = getCountryListText(row.countryNames);
 
@@ -5065,7 +5142,7 @@ const getOtherChargeRows = ({
 	return rows;
 };
 
-const calculateSettlementConversion = (report, payload) => {
+export const calculateSettlementConversion = (report, payload) => {
 	const settlementCurrency = normalizeUpper(payload?.settlementCurrency);
 
 	if (!["EUR", "USDT"].includes(settlementCurrency)) {
@@ -6260,8 +6337,15 @@ const calculateSettlementConversion = (report, payload) => {
 // 	return res.send(buffer);
 // };
 
-export const buildSettlementPdfBuffer = async (report, conversion = null) =>
-	new Promise((resolve, reject) => {
+export const buildSettlementPdfBuffer = async (report, conversion = null, options = {}) => {
+	[report] = await withDatestampReportPeriods([report]);
+	if (conversion) {
+		conversion = calculateSettlementConversion(report, {
+			settlementCurrency: conversion.settlementCurrency,
+			rates: Object.fromEntries((conversion.rows || []).map((row) => [row.currency, row.rate])),
+		});
+	}
+	return new Promise((resolve, reject) => {
 		const doc = new PDFDocument({
 			size: "A4",
 			margin: 43,
@@ -6338,6 +6422,9 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 		const settlementCurrency =
 			conversion?.settlementCurrency ||
 			(isMultiCurrency ? "Multi Currency" : primaryCurrency || "-");
+		const finalPayableText = conversion
+			? formatMoney(conversion.finalPayable, conversion.settlementCurrency)
+			: isMultiCurrency ? "See currency totals" : formatMoney(totalNetPayable, primaryCurrency);
 
 		const print = (
 			value,
@@ -6379,7 +6466,7 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 			doc.rect(0, 0, pageWidth, 5).fill(C.primary);
 
 			print(
-				"SETTLEMENT  /  MERCHANT REPORTING",
+				options.audience === "internal" ? "SETTLEMENT  /  ACQUIRER REPORTING" : "SETTLEMENT  /  MERCHANT REPORTING",
 				margin,
 				28,
 				8,
@@ -6389,7 +6476,15 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 
 			print(title, margin, 48, 17, C.text, bold, { width: usableWidth });
 
-			print(subtitle, margin, 77, 9, C.muted, regular, { width: usableWidth });
+			print(
+				report.acquirer ? `Acquirer: ${report.acquirer}` : subtitle,
+				margin,
+				77,
+				9,
+				C.muted,
+				regular,
+				{ width: usableWidth },
+			);
 
 			line(98);
 			doc.y = 115;
@@ -6407,21 +6502,14 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 				["SETTLEMENT CURRENCY", settlementCurrency],
 				[
 					"REPORTING PERIOD",
-					`${formatDate(report.fromDate || report.reportDate)} - ${formatDate(
-						report.toDate || report.reportDate,
-					)}`,
+					report.fromDate && report.toDate
+						? `${formatDate(report.fromDate)} - ${formatDate(report.toDate)}`
+						: "No datestamp transactions",
 				],
-				["GENERATED ON", formatDate(new Date())],
+				["GENERATED ON", formatDate(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone)],
 				[
 					"FINAL PAYABLE",
-					conversion
-						? formatMoney(
-								conversion.finalPayable,
-								conversion.settlementCurrency,
-							)
-						: isMultiCurrency
-							? "See currency totals"
-							: formatMoney(totalNetPayable, primaryCurrency),
+					finalPayableText,
 				],
 			];
 
@@ -6553,13 +6641,7 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 				regular,
 			);
 
-			const amount = conversion
-				? formatMoney(conversion.finalPayable, conversion.settlementCurrency)
-				: isMultiCurrency
-					? "See currency totals"
-					: formatMoney(totalNetPayable, primaryCurrency);
-
-			print(amount, margin + usableWidth * 0.46, y + 16, 18, C.primary, bold, {
+			print(finalPayableText, margin + usableWidth * 0.46, y + 16, 18, C.primary, bold, {
 				width: usableWidth * 0.51,
 				align: "right",
 			});
@@ -6574,7 +6656,7 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
     */
 
 		drawPageHeader(
-			"Merchant settlement statement",
+			options.audience === "internal" ? "Acquirer settlement statement" : "Merchant settlement statement",
 			"Settlement activity and payout summary",
 		);
 
@@ -6912,7 +6994,9 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 				.fontSize(7)
 				.fillColor(C.muted)
 				.text(
-					`MERCHANT SETTLEMENT STATEMENT | ${String(report.merchantName || "").toUpperCase()}`,
+					options.audience === "internal"
+						? `${report.acquirer} | ACQUIRER SETTLEMENT | ${String(report.merchantName || "").toUpperCase()}`
+						: `MERCHANT SETTLEMENT STATEMENT | ${String(report.merchantName || "").toUpperCase()}`,
 					margin,
 					footerY + 12,
 					{
@@ -6922,7 +7006,7 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 					},
 				);
 
-			doc
+			if (!options.omitPageNumbers) doc
 				.font(regular)
 				.fontSize(7)
 				.fillColor(C.muted)
@@ -6942,9 +7026,51 @@ export const buildSettlementPdfBuffer = async (report, conversion = null) =>
 
 		doc.end();
 	});
+};
+
+const acquirerSettlementService = createAcquirerSettlementService({
+	Report: MerchantSettlementReport,
+	Transaction: MerchantTransaction,
+	getTransactionQuery: getReportTransactionQuery,
+	buildReportData: buildMerchantReportData,
+	resolveReportPeriods: withDatestampReportPeriods,
+});
+
+export const getMerchantSettlementAcquirers = async (req, res) => {
+	const result = await acquirerSettlementService.load(req.params.id);
+	return res.json({
+		success: true,
+		data: acquirerSettlementService.discovery(result),
+	});
+};
+
+export const downloadAcquirerSettlementPdf = async (req, res) => {
+	const { report, parts, snapshot } = await acquirerSettlementService.load(req.params.id);
+	if (req.body?.snapshot !== undefined && req.body.snapshot !== snapshot) {
+		settlementDownloadError("Settlement amounts changed. Reopen the download dialog to refresh them.", 409);
+	}
+	const conversions = validateAcquirerConversions(parts, req.body, calculateSettlementConversion);
+	const buffer = await buildCombinedAcquirerPdfBuffer(report, parts, conversions, buildSettlementPdfBuffer, {
+		registerFonts: registerReportFonts,
+	});
+	const name = `MID${safeSettlementFilePart(report.memberId)}-${safeSettlementFilePart(report.merchantName)}-Acquirer-Settlement.pdf`;
+	res.setHeader("Content-Type", "application/pdf");
+	res.setHeader("Content-Disposition", `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+	res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+	res.setHeader("Content-Length", buffer.length);
+	return res.send(buffer);
+};
+
+export const downloadMerchantFacingSettlementPdf = async (req, res) => {
+	if (!/^[a-f\d]{24}$/i.test(String(req.params.id))) settlementDownloadError("Invalid settlement report ID.");
+	if (req.body?.ratesByAcquirer || req.body?.settlementCurrenciesByAcquirer) {
+		settlementDownloadError("Merchant PDF uses its original merchant-wide settlementCurrency and rates.");
+	}
+	return downloadMerchantSettlementPdf(req, res);
+};
 
 export const downloadMerchantSettlementPdf = async (req, res) => {
-	const report = await MerchantSettlementReport.findById(req.params.id).lean();
+	let report = await MerchantSettlementReport.findById(req.params.id).lean();
 
 	if (!report) {
 		return res.status(404).json({
@@ -6953,6 +7079,7 @@ export const downloadMerchantSettlementPdf = async (req, res) => {
 		});
 	}
 
+	[report] = await withDatestampReportPeriods([report]);
 	let conversion = null;
 
 	/*
@@ -7016,7 +7143,7 @@ export const downloadMerchantSettlementPdf = async (req, res) => {
 */
 
 const transactionToExcelRow = (txn) => ({
-	Date: txn.transactionDate,
+	Date: settlementDateToExcelCell(txn.transactionDate),
 	"Source File": txn.sourceFileType,
 	"Member ID": txn.memberId,
 	Merchant: txn.merchantCompanyName,
@@ -7046,12 +7173,14 @@ const transactionToExcelRow = (txn) => ({
 });
 
 export const buildSettlementExcelBuffer = async (report) => {
-	const matchedTransactions = await MerchantTransaction.find(
+	[report] = await withDatestampReportPeriods([report]);
+	const storedMatchedTransactions = await MerchantTransaction.find(
 		getReportTransactionQuery(report, "matched"),
 	)
 		.populate("feeConfigId")
 		.sort({ transactionDate: 1 })
 		.lean();
+	const matchedTransactions = storedMatchedTransactions.map(withPreciseTransactionMdr);
 
 	const unmatchedTransactions = await MerchantTransaction.find(
 		getReportTransactionQuery(report, "unmatched_fee"),
@@ -7069,8 +7198,8 @@ export const buildSettlementExcelBuffer = async (report) => {
 		["Merchant", report.merchantName],
 		["Member ID", report.memberId],
 		["Report Date", formatDate(report.reportDate)],
-		["Period From", formatDate(report.fromDate || report.reportDate)],
-		["Period To", formatDate(report.toDate || report.reportDate)],
+		["Period From", formatDate(report.fromDate)],
+		["Period To", formatDate(report.toDate)],
 		["Currency", currency],
 		["Email Status", report.emailStatus || "draft"],
 		[],
@@ -7427,11 +7556,12 @@ export const listMerchantSettlementBatches = async (req, res) => {
 
 		MerchantSettlementBatch.countDocuments(query),
 	]);
+	const batches = await resolveDatestampBatchPeriods(data, MerchantTransaction);
 
 	return res.json({
 		success: true,
 
-		data,
+		data: batches,
 
 		meta: {
 			total,

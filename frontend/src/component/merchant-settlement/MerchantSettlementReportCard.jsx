@@ -3,6 +3,7 @@ import { FileSpreadsheet, FileText, Mail } from "lucide-react";
 import ActionMenu from "../UI/ActionMenu";
 
 import { formatDate, formatInteger, formatNumber } from "../../utils/appUtils";
+import { formatSettlementDate } from "../../utils/settlementDate";
 
 const getEmailStatusClassName = (status) => {
   switch (String(status || "").toLowerCase()) {
@@ -106,7 +107,9 @@ export default function MerchantSettlementReportCard({
           </p>
 
           <p className="mt-2 whitespace-nowrap text-sm font-semibold text-on-surface">
-            {formatDate(report?.fromDate)} - {formatDate(report?.toDate)}
+            {report?.datestampPeriod && !report.datestampPeriod.fromDate
+              ? "No datestamp transactions"
+              : `${formatSettlementDate(report?.fromDate)} - ${formatSettlementDate(report?.toDate)}`}
           </p>
         </div>
 

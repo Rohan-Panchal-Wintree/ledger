@@ -27,6 +27,15 @@ export async function decryptApiResponse(encryptedPayload, hexKey) {
   return JSON.parse(text);
 }
 
+// Download requests receive JSON errors as blobs. Decode those through the
+// same session encryption as ordinary JSON responses before showing messages.
+export async function readApiErrorPayload(data, responseKey) {
+  const payload = data instanceof Blob ? JSON.parse(await data.text()) : data;
+  if (payload?.encrypted !== true) return payload;
+  if (!responseKey) throw new Error("Missing response decryption key");
+  return decryptApiResponse(payload, responseKey);
+}
+
 function hexToBytes(hex) {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {

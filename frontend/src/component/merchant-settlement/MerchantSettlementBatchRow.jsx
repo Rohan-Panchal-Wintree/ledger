@@ -1,6 +1,7 @@
 import { ChevronRight, FileSpreadsheet } from "lucide-react";
 
 import { formatDate, formatInteger } from "../../utils/appUtils";
+import { formatSettlementDate } from "../../utils/settlementDate";
 
 const formatText = (value) => {
   const normalized = String(value ?? "").trim();
@@ -10,26 +11,27 @@ const formatText = (value) => {
 
 const getBatchDisplayName = (batch) => {
   if (batch?.reportDate) {
-    return `Settlement Batch - ${formatDate(batch.reportDate)}`;
+    return `Settlement Batch - ${formatSettlementDate(batch.reportDate)}`;
   }
 
   if (batch?.fromDate || batch?.toDate) {
-    return `Settlement Batch - ${formatDate(batch?.fromDate || batch?.toDate)}`;
+    return `Settlement Batch - ${formatSettlementDate(batch?.fromDate || batch?.toDate)}`;
   }
 
   return formatText(batch?.batchName);
 };
 
 const getPeriodLabel = (batch) => {
+  if (batch?.datestampPeriod && !batch.datestampPeriod.fromDate) return "-";
   const fromDate = batch?.fromDate;
   const toDate = batch?.toDate;
 
   if (fromDate && toDate) {
-    return `${formatDate(fromDate)} - ${formatDate(toDate)}`;
+    return `${formatSettlementDate(fromDate)} - ${formatSettlementDate(toDate)}`;
   }
 
   if (batch?.reportDate) {
-    return formatDate(batch.reportDate);
+    return formatSettlementDate(batch.reportDate);
   }
 
   return "-";

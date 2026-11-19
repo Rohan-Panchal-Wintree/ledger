@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { merchantSettlementApi, paymentApi, wiresheetApi } from "../api";
 import { dashboardQueryKeys } from "./dashboardQueries";
+import { createSettlementUploadFormData } from "../utils/settlementUpload";
 
 export const uploadQueryKeys = {
   all: ["uploads"],
@@ -104,36 +105,18 @@ async function uploadSettlementBatchTransactionsApi({
   datestampFile = null,
   timestampFile = null,
   reportDate = "",
+  fromDate = "",
+  toDate = "",
   batchName = "",
 } = {}) {
-  if (!datestampFile && !timestampFile) {
-    throw new Error("Please select at least one settlement transaction file.");
-  }
-
-  if (!reportDate) {
-    throw new Error("Report date is required.");
-  }
-
-  if (!batchName) {
-    throw new Error("Batch name is required.");
-  }
-
-  const formData = new FormData();
-
-  if (datestampFile) {
-    formData.append("datestampFile", datestampFile);
-  }
-
-  if (timestampFile) {
-    formData.append("timestampFile", timestampFile);
-  }
-
-  formData.append("reportDate", reportDate);
-  formData.append("batchName", batchName);
+  const formData = createSettlementUploadFormData({
+    datestampFile, timestampFile, reportDate, fromDate, toDate, batchName,
+  });
 
   const response = await merchantSettlementApi.post(
     "/settlement-batches/upload",
     formData,
+    { decodeErrorResponse: true },
   );
 
   const data = response?.data?.data || {};

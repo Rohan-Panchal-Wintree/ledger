@@ -1,3 +1,5 @@
+import { formatSettlementDate as formatDate } from "../../utils/settlementDate";
+
 const formatText = (value) => {
   const normalized = String(value ?? "").trim();
 
@@ -15,16 +17,6 @@ const formatAmount = (value, currency = "") => {
   });
 
   return currency ? `${formatted} ${currency}` : formatted;
-};
-
-const formatDate = (value) => {
-  if (!value) return "-";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleDateString();
 };
 
 export default function MerchantSettlementTransactionRow({ transaction }) {

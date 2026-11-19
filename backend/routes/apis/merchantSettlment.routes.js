@@ -17,6 +17,9 @@ import {
 	listMerchantSettlementReports,
 	getMerchantSettlementReport,
 	downloadMerchantSettlementPdf,
+	getMerchantSettlementAcquirers,
+	downloadAcquirerSettlementPdf,
+	downloadMerchantFacingSettlementPdf,
 	downloadMerchantSettlementExcel,
 	sendMerchantSettlementEmail,
 	sendAllSettlementEmailsForBatch,
@@ -178,6 +181,23 @@ router.post(
 
 router.get("/reports", asyncHandler(listMerchantSettlementReports));
 router.get("/reports/:id", asyncHandler(getMerchantSettlementReport));
+
+router.get(
+	"/reports/:id/acquirers",
+	asyncHandler(getMerchantSettlementAcquirers),
+);
+
+router.post(
+	"/reports/:id/download-acquirer-pdf",
+	authenticatedWriteLimiter,
+	asyncHandler(downloadAcquirerSettlementPdf),
+);
+
+router.post(
+	"/reports/:id/download-merchant-pdf",
+	authenticatedWriteLimiter,
+	asyncHandler(downloadMerchantFacingSettlementPdf),
+);
 
 router.get(
 	"/reports/:id/download-pdf",
