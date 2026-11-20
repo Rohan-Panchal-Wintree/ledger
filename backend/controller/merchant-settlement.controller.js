@@ -2106,13 +2106,6 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 		req.files?.timestamp?.[0] ||
 		req.files?.timeStampFile?.[0];
 
-	if (!datestampFile && !timestampFile) {
-		return res.status(400).json({
-			success: false,
-			message: "Datestamp file or timestamp file is required",
-		});
-	}
-
 	/*
 	 * CSV is streamed; XLSX worksheets are read through the transaction reader.
 	 */
@@ -2122,6 +2115,9 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 		await cleanupFiles();
 		return res.status(400).json({ success: false, message });
 	};
+	if (!datestampFile) {
+		return rejectUpload("A datestamp file is required. The timestamp file is optional.");
+	}
 
 	const invalidFile = receivedFiles.find(
 		(file) => !isSettlementTransactionFilename(file.originalname),
@@ -2171,7 +2167,7 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 	try {
 		/*
 		 * These are relatively small lookup maps and
-		 * can remain in memory while both files process.
+		 * can remain in memory while the supplied files process.
 		 */
 		const feeIndexes = await buildFeeIndexes();
 
@@ -2212,8 +2208,7 @@ export const uploadSettlementBatchTransactions = async (req, res) => {
 		}
 
 		/*
-		 * Generate reports only after both transaction
-		 * streams are completely persisted.
+		 * Generate reports after all supplied transaction files are persisted.
 		 */
 		const generatedReportIds = await generateReportsForBatch({
 			settlementBatchId: settlementBatch._id,

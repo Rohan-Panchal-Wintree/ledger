@@ -88,7 +88,7 @@ export default function Upload() {
     isCountriesTab,
     countryFile,
     isSettlementTransactionsTab,
-    hasBothSettlementTransactionFiles,
+    hasDatestampSettlementFile,
     hasValidSettlementPeriod,
 
     currentFileLimit,
@@ -493,8 +493,8 @@ export default function Upload() {
             simpleUpload
             mode={settlementTransactionFileList.length > 0 ? "filled" : "empty"}
             title="Upload Settlement Transaction Files"
-            description='Select exactly two XLSX or CSV files: one filename containing "datestamp" and one containing "timestamp". Both files are required.'
-            dropLabel="Drop datestamp or timestamp files here"
+            description='Select a datestamp XLSX or CSV file (required), and a timestamp file if available (optional). Filenames must contain "datestamp" or "timestamp".'
+            dropLabel="Drop your datestamp file and optional timestamp file here"
             selectedFiles={settlementTransactionFileList}
             isDragging={isSettlementTransactionsDragging}
             onBrowse={handleSettlementTransactionsBrowseClick}
@@ -506,11 +506,11 @@ export default function Upload() {
             onProcess={handleUploadSettlementTransactions}
             isProcessing={uploadSettlementTransactionsMutation.isPending}
             processDisabled={
-              !hasBothSettlementTransactionFiles || !hasValidSettlementPeriod
+              !hasDatestampSettlementFile || !hasValidSettlementPeriod
             }
           />
 
-          {hasBothSettlementTransactionFiles ? (
+          {hasDatestampSettlementFile ? (
             <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-5">
               <div className="mb-4">
                 <h3 className="text-sm font-bold text-on-surface">
@@ -518,8 +518,7 @@ export default function Upload() {
                 </h3>
 
                 <p className="mt-1 text-xs text-on-surface-variant">
-                  Select the date or date range covered by these transaction
-                  files.
+                  Select the date or date range covered by the datestamp file.
                 </p>
               </div>
 

@@ -20,7 +20,7 @@ export const buildSettlementUploadPeriod = (mode, value) => {
 };
 
 export const createSettlementUploadFormData = ({ datestampFile, timestampFile, reportDate = "", fromDate = "", toDate = "", batchName = "" } = {}) => {
-  if (!datestampFile && !timestampFile) throw new Error("Please select at least one settlement transaction file.");
+  if (!datestampFile) throw new Error("A datestamp file is required. The timestamp file is optional.");
   if (!reportDate) throw new Error("Report date is required.");
   if (!batchName) throw new Error("Batch name is required.");
   if (Boolean(fromDate) !== Boolean(toDate)) throw new Error("Provide both start and end dates for the settlement period.");

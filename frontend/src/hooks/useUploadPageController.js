@@ -164,23 +164,9 @@ export const useUploadPageController = () => {
 
   const settlementTransactionFileCount = settlementTransactionFileList.length;
 
-  const hasBothSettlementTransactionFiles = useMemo(() => {
-    const getFileName = (item) => {
-      const file = item?.file || item?.source?.file || item?.source || item;
-
-      return String(file?.name || "").toLowerCase();
-    };
-
-    const hasDatestampFile = settlementTransactionFileList.some((item) =>
-      getFileName(item).includes("datestamp"),
-    );
-
-    const hasTimestampFile = settlementTransactionFileList.some((item) =>
-      getFileName(item).includes("timestamp"),
-    );
-
-    return hasDatestampFile && hasTimestampFile;
-  }, [settlementTransactionFileList]);
+  const hasDatestampSettlementFile = Boolean(
+    settlementTransactionFiles.datestampFile,
+  );
 
   const hasValidSettlementPeriod = useMemo(() => {
     try {
@@ -795,9 +781,9 @@ Non EU: ${response?.totalNonEuCountries || 0}`,
   const handleUploadSettlementTransactions = useCallback(async () => {
     const { datestampFile, timestampFile } = settlementTransactionFiles;
 
-    if (!datestampFile || !timestampFile) {
+    if (!datestampFile) {
       toast.error(
-        "Both the datestamp and timestamp files are required before uploading.",
+        "A datestamp file is required. The timestamp file is optional.",
       );
       return;
     }
@@ -1315,7 +1301,7 @@ Skipped: ${response?.skippedCount || 0}`,
       isRatesTab,
       isCountriesTab,
       isSettlementTransactionsTab,
-      hasBothSettlementTransactionFiles,
+      hasDatestampSettlementFile,
 
       currentFileLimit,
       currentFileCount,
@@ -1403,7 +1389,7 @@ Skipped: ${response?.skippedCount || 0}`,
       currentTab,
       displayedRows,
       settlementTransactionFileList,
-      hasBothSettlementTransactionFiles,
+      hasDatestampSettlementFile,
       settlementDateMode,
       settlementDateValue,
       handleBrowseClick,
